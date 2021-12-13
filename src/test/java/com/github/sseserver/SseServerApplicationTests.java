@@ -24,10 +24,49 @@ public class SseServerApplicationTests {
     @RestController
     @RequestMapping("/api/sse")
     public static class MyController extends SseWebController {
+        /**
+         * 获取当前登录用户
+         *
+         * @return 自己业务系统的登录连接令牌
+         */
         @Override
         protected AccessUser getAccessUser() {
-            return super.getAccessUser();
+            MyAccessUser user = new MyAccessUser();
+            user.setUserId(1);
+            user.setUsername("hao");
+            user.setAccessToken("ak123456");
+            return user;
         }
     }
 
+    public static class MyAccessUser implements AccessUser {
+        private String accessToken;
+        private Integer userId;
+        private String username;
+
+        public Integer getUserId() {
+            return userId;
+        }
+
+        public void setUserId(Integer userId) {
+            this.userId = userId;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        @Override
+        public String getAccessToken() {
+            return accessToken;
+        }
+
+        public void setAccessToken(String accessToken) {
+            this.accessToken = accessToken;
+        }
+    }
 }

@@ -15,7 +15,7 @@ public interface AccessUser {
     /**
      * 使用者自己业务系统的登录连接令牌
      *
-     * @return
+     * @return 自己业务系统的登录连接令牌
      */
     String getAccessToken();
 
