@@ -60,6 +60,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService {
         });
         try {
             sseEmitter.send(SseEmitter.event()
+                    .reconnectTime(5000L)
                     .name("connect-finish")
                     .data("{\"connectionId\":" + sseEmitter.getId() + "}"));
             return sseEmitter;
