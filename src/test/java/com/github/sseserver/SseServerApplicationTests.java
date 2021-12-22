@@ -32,8 +32,8 @@ public class SseServerApplicationTests {
         @Override
         protected AccessUser getAccessUser() {
             MyAccessUser user = new MyAccessUser();
-            user.setUserId(1);
-            user.setUsername("hao");
+            user.setId(1);
+            user.setName("hao");
             user.setAccessToken("ak123456");
             return user;
         }
@@ -41,23 +41,35 @@ public class SseServerApplicationTests {
 
     public static class MyAccessUser implements AccessUser {
         private String accessToken;
-        private Integer userId;
-        private String username;
+        private Integer id;
+        private String name;
+        private Integer status;
 
-        public Integer getUserId() {
-            return userId;
+        @Override
+        public Integer getId() {
+            return id;
         }
 
-        public void setUserId(Integer userId) {
-            this.userId = userId;
+        public void setId(Integer id) {
+            this.id = id;
         }
 
-        public String getUsername() {
-            return username;
+        @Override
+        public String getName() {
+            return name;
         }
 
-        public void setUsername(String username) {
-            this.username = username;
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public Integer getStatus() {
+            return status;
+        }
+
+        public void setStatus(Integer status) {
+            this.status = status;
         }
 
         @Override
