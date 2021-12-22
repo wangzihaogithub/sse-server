@@ -43,7 +43,6 @@ public class SseServerApplicationTests {
         private String accessToken;
         private Integer id;
         private String name;
-        private Integer status;
 
         @Override
         public Integer getId() {
@@ -61,15 +60,6 @@ public class SseServerApplicationTests {
 
         public void setName(String name) {
             this.name = name;
-        }
-
-        @Override
-        public Integer getStatus() {
-            return status;
-        }
-
-        public void setStatus(Integer status) {
-            this.status = status;
         }
 
         @Override

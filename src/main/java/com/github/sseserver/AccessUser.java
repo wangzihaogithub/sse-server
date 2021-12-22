@@ -25,10 +25,6 @@ public interface AccessUser {
             return null;
         }
 
-        @Override
-        public Integer getStatus() {
-            return null;
-        }
     };
 
     /**
@@ -41,7 +37,5 @@ public interface AccessUser {
     String getName();
 
     Integer getId();
-
-    Integer getStatus();
 
 }
