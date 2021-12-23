@@ -153,8 +153,12 @@ public class LocalConnectionServiceImpl implements LocalConnectionService {
                 sseEmitter.send(message);
                 count++;
             } catch (IOException e) {
-                log.warn("sse send {} io exception = {}", sseEmitter, e.toString(), e);
-                sseEmitter.disconnect();
+                if (isSkipException(e)) {
+
+                } else {
+                    log.warn("sse send {} io exception = {}", sseEmitter, e.toString(), e);
+                    sseEmitter.disconnect();
+                }
             }
         }
         return count;
@@ -182,8 +186,12 @@ public class LocalConnectionServiceImpl implements LocalConnectionService {
                     next.send(message);
                     count++;
                 } catch (IOException e) {
-                    log.warn("sse send {} io exception = {}", next, e.toString(), e);
-                    next.disconnect();
+                    if (isSkipException(e)) {
+
+                    } else {
+                        log.warn("sse send {} io exception = {}", next, e.toString(), e);
+                        next.disconnect();
+                    }
                 }
             }
         }
@@ -317,6 +325,11 @@ public class LocalConnectionServiceImpl implements LocalConnectionService {
             log.debug("sse error 发生错误：{}, {}", sseEmitter, throwable.toString(), throwable);
             sseEmitter.disconnect();
         };
+    }
+
+    private boolean isSkipException(IOException e) {
+        String exceptionMessage = e.getMessage();
+        return exceptionMessage != null && exceptionMessage.contains("Broken pipe");
     }
 
 }
