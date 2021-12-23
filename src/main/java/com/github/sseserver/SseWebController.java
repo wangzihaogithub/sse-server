@@ -26,12 +26,14 @@ import java.util.*;
  */
 //@RestController
 //@RequestMapping("/api/sse")
-public class SseWebController<ACCESS_USER extends AccessUser> {
+public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     private LocalConnectionService localConnectionService;
 
-    @Autowired
+    @Autowired(required = false)
     public void setLocalConnectionService(LocalConnectionService localConnectionService) {
-        this.localConnectionService = localConnectionService;
+        if (this.localConnectionService == null) {
+            this.localConnectionService = localConnectionService;
+        }
     }
 
     /**
@@ -40,11 +42,11 @@ public class SseWebController<ACCESS_USER extends AccessUser> {
      * @return 使用者自己系统的用户
      */
     protected ACCESS_USER getAccessUser() {
-        return (ACCESS_USER) AccessUser.NULL;
+        return null;
     }
 
-    protected Object wrapResponse(Object result) {
-        return new ResponseData<>(result);
+    protected Object wrapOkResponse(Object result) {
+        return new ResponseWrap<>(result);
     }
 
     protected void onConnect(SseEmitter<ACCESS_USER> conncet) {
@@ -87,7 +89,7 @@ public class SseWebController<ACCESS_USER extends AccessUser> {
             message.putAll(body);
         }
         int count = localConnectionService.sendAll(buildEvent(message));
-        return ResponseEntity.ok(wrapResponse((Collections.singletonMap("count", count))));
+        return ResponseEntity.ok(wrapOkResponse((Collections.singletonMap("count", count))));
     }
 
     /**
@@ -103,7 +105,7 @@ public class SseWebController<ACCESS_USER extends AccessUser> {
             message.putAll(body);
         }
         int count = localConnectionService.send(accessToken, buildEvent(message));
-        return ResponseEntity.ok(wrapResponse(Collections.singletonMap("count", count)));
+        return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", count)));
     }
 
     /**
@@ -117,7 +119,7 @@ public class SseWebController<ACCESS_USER extends AccessUser> {
         if (disconnect != null) {
             onDisconnect(Collections.singletonList(disconnect), accessUser, accessToken, connectionId);
         }
-        return ResponseEntity.ok(wrapResponse(Collections.singletonMap("count", disconnect != null ? 1 : 0)));
+        return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", disconnect != null ? 1 : 0)));
     }
 
     /**
@@ -131,7 +133,7 @@ public class SseWebController<ACCESS_USER extends AccessUser> {
         if (count.size() > 0) {
             onDisconnect(count, accessUser, accessToken, null);
         }
-        return ResponseEntity.ok(wrapResponse(Collections.singletonMap("count", count.size())));
+        return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", count.size())));
     }
 
     private SseEmitter.SseEventBuilder buildEvent(Map rawMessage) {
@@ -172,7 +174,7 @@ public class SseWebController<ACCESS_USER extends AccessUser> {
         return true;
     }
 
-    public class ResponseData<T> implements Serializable {
+    public static class ResponseWrap<T> implements Serializable {
 
         /**
          * 请求是否成功
@@ -195,10 +197,10 @@ public class SseWebController<ACCESS_USER extends AccessUser> {
          */
         private String errorMessage;
 
-        public ResponseData() {
+        public ResponseWrap() {
         }
 
-        public ResponseData(T data) {
+        public ResponseWrap(T data) {
             this.data = data;
         }
 

@@ -27,19 +27,19 @@ public interface LocalConnectionService {
      * @param keepaliveTime 链接最大保持时间 ，0表示不过期。默认30秒，超过时间未完成会抛出异常：AsyncRequestTimeoutException
      * @return SseEmitter
      */
-    <ACCESS_USER extends AccessUser> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime);
+    <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime);
 
-    <ACCESS_USER extends AccessUser> void addConnectListener(String accessToken, String channel, Consumer<SseEmitter<ACCESS_USER>> consumer);
+    <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(String accessToken, String channel, Consumer<SseEmitter<ACCESS_USER>> consumer);
 
-    <ACCESS_USER extends AccessUser> void addConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer);
+    <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer);
 
-    <ACCESS_USER extends AccessUser> void addConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer);
+    <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer);
 
-    <ACCESS_USER extends AccessUser> void addDisConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer);
+    <ACCESS_USER extends AccessUser & AccessToken> void addDisConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer);
 
-    <ACCESS_USER extends AccessUser> void addDisConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer);
+    <ACCESS_USER extends AccessUser & AccessToken> void addDisConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer);
 
-    <ACCESS_USER extends AccessUser> int send(SseEmitter<ACCESS_USER> sseEmitter, SseEventBuilder message);
+    <ACCESS_USER extends AccessUser & AccessToken> int send(SseEmitter<ACCESS_USER> sseEmitter, SseEventBuilder message);
 
     /**
      * 给指定链接发送信息
@@ -73,14 +73,14 @@ public interface LocalConnectionService {
      *
      * @return 移除了几个链接
      */
-    <ACCESS_USER extends AccessUser> List<SseEmitter<ACCESS_USER>> disconnect(String accessToken);
+    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> disconnect(String accessToken);
 
     /**
      * 移除用户连接
      *
      * @return 是否成功
      */
-    <ACCESS_USER extends AccessUser> SseEmitter<ACCESS_USER> disconnect(String accessToken, Long connectionId);
+    <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> disconnect(String accessToken, Long connectionId);
 
     /**
      * 获取当前连接信息

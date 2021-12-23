@@ -39,7 +39,7 @@ public class SseServerApplicationTests {
         }
     }
 
-    public static class MyAccessUser implements AccessUser {
+    public static class MyAccessUser implements AccessUser, AccessToken {
         private String accessToken;
         private Integer id;
         private String name;
@@ -54,21 +54,21 @@ public class SseServerApplicationTests {
         }
 
         @Override
-        public String getName() {
-            return name;
-        }
-
-        public void setName(String name) {
-            this.name = name;
-        }
-
-        @Override
         public String getAccessToken() {
             return accessToken;
         }
 
         public void setAccessToken(String accessToken) {
             this.accessToken = accessToken;
+        }
+
+        @Override
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
         }
     }
 }

@@ -41,7 +41,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService {
      * @return SseEmitter
      */
     @Override
-    public <ACCESS_USER extends AccessUser> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime) {
+    public <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime) {
         if (keepaliveTime == null) {
             keepaliveTime = 0L;
         }
@@ -70,9 +70,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService {
         }
     }
 
-    private <ACCESS_USER extends AccessUser> void notifyListener(SseEmitter<ACCESS_USER> sseEmitter,
-                                                                 List<Consumer<SseEmitter>> listeners,
-                                                                 Map<String, List<Predicate<SseEmitter>>> listenerMap) {
+    private <ACCESS_USER extends AccessUser & AccessToken> void notifyListener(SseEmitter<ACCESS_USER> sseEmitter,
+                                                                               List<Consumer<SseEmitter>> listeners,
+                                                                               Map<String, List<Predicate<SseEmitter>>> listenerMap) {
         for (Consumer<SseEmitter> listener : listeners) {
             listener.accept(sseEmitter);
         }
@@ -87,7 +87,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService {
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser> void addConnectListener(String accessToken, String channel, Consumer<SseEmitter<ACCESS_USER>> consumer) {
+    public <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(String accessToken, String channel, Consumer<SseEmitter<ACCESS_USER>> consumer) {
         List<SseEmitter> sseEmitters = connectionMap.get(accessToken);
         if (sseEmitters != null) {
             for (SseEmitter sseEmitter : sseEmitters) {
@@ -107,7 +107,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService {
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser> void addConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer) {
+    public <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer) {
         List<SseEmitter> sseEmitters = connectionMap.get(accessToken);
         if (sseEmitters != null) {
             for (SseEmitter sseEmitter : sseEmitters) {
@@ -122,17 +122,17 @@ public class LocalConnectionServiceImpl implements LocalConnectionService {
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser> void addConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer) {
+    public <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer) {
         connectListeners.add((Consumer) consumer);
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser> void addDisConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer) {
+    public <ACCESS_USER extends AccessUser & AccessToken> void addDisConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer) {
         disconnectListeners.add((Consumer) consumer);
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser> void addDisConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer) {
+    public <ACCESS_USER extends AccessUser & AccessToken> void addDisConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer) {
         disconnectListenerMap.computeIfAbsent(accessToken, e -> new ArrayList<>()).add(e -> {
             consumer.accept(e);
             return true;
@@ -140,7 +140,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService {
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser> int send(SseEmitter<ACCESS_USER> sseEmitter, SseEventBuilder message) {
+    public <ACCESS_USER extends AccessUser & AccessToken> int send(SseEmitter<ACCESS_USER> sseEmitter, SseEventBuilder message) {
         int count = 0;
         if (sseEmitter != null) {
             if (sseEmitter.isDisconnect()) {
