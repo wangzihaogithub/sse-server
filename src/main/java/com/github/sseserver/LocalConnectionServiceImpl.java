@@ -327,7 +327,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService {
         };
     }
 
-    private boolean isSkipException(IOException e) {
+    protected boolean isSkipException(IOException e) {
         String exceptionMessage = e.getMessage();
         return exceptionMessage != null && exceptionMessage.contains("Broken pipe");
     }
