@@ -67,6 +67,11 @@ public class SseServerApplicationTests {
             return name;
         }
 
+        @Override
+        public String getRole() {
+            return null;
+        }
+
         public void setName(String name) {
             this.name = name;
         }

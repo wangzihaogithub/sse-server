@@ -8,6 +8,8 @@ package com.github.sseserver;
 public interface AccessUser {
     String getName();
 
+    String getRole();
+
     Integer getId();
 
     default boolean isBySystemOperate() {
