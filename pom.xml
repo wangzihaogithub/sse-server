@@ -56,6 +56,29 @@
         </dependency>
     </dependencies>
 
+    <licenses>
+        <license>
+            <name>The Apache License, Version 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+    <scm>
+        <connection>scm:git:https://github.com/wangzihaogithub/sse-server.git</connection>
+        <developerConnection>scm:git:git@github.com:wangzihaogithub/sse-server.git</developerConnection>
+        <url>git@github.com:wangzihaogithub/sse-server.git</url>
+        <tag>v1.0.0</tag>
+    </scm>
+
+    <!-- 开发者信息 -->
+    <developers>
+        <developer>
+            <id>wangzihao</id>
+            <name>wangzihao</name>
+            <email>842156727@qq.com</email>
+        </developer>
+    </developers>
+
     <build>
         <plugins>
             <plugin>
