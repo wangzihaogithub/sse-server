@@ -16,48 +16,68 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     private final static Logger log = LoggerFactory.getLogger(SseEmitter.class);
     private static final AtomicLong ID_INCR = new AtomicLong();
     private static final MediaType TEXT_PLAIN = new MediaType("text", "plain", StandardCharsets.UTF_8);
-    private final long id = ID_INCR.getAndIncrement();
-    private final String accessToken;
+    private final long id = newId();
     private final ACCESS_USER accessUser;
     private final AtomicBoolean disconnect = new AtomicBoolean();
-    private final Map<String, List<SseEmitter>> connectionMap;
     private final List<Consumer<SseEmitter<ACCESS_USER>>> connectListeners = new ArrayList<>();
     private final List<Consumer<SseEmitter<ACCESS_USER>>> disconnectListeners = new ArrayList<>();
     private final Map<String, Object> attributeMap = new LinkedHashMap<>();
+    private final long createTime = System.currentTimeMillis();
     private boolean connect = false;
     private int count;
     private String channel;
+
 
     /**
      * timeout = 0是永不过期
      */
     public SseEmitter(Long timeout) {
-        this(timeout, new HashMap<>(), null);
+        this(timeout, null);
     }
 
     /**
      * timeout = 0是永不过期
      */
-    public SseEmitter(Long timeout, Map<String, List<SseEmitter>> connectionMap, ACCESS_USER accessUser) {
+    public SseEmitter(Long timeout, ACCESS_USER accessUser) {
         super(timeout);
-        this.connectionMap = connectionMap;
         this.accessUser = accessUser;
-        this.accessToken = accessUser != null ? accessUser.getAccessToken() : null;
-        connectionMap.computeIfAbsent(accessToken, e -> Collections.synchronizedList(new ArrayList<>()))
-                .add(this);
-        log.info("sse connection create : {}", this);
+    }
+
+    private static long newId() {
+        long id = ID_INCR.getAndIncrement();
+        if (id == Long.MAX_VALUE) {
+            id = 0;
+            ID_INCR.set(1);
+        }
+        return id;
     }
 
     public static SseEventBuilder event() {
         return new SseEventBuilderImpl();
     }
 
+    public int getCount() {
+        return count;
+    }
+
+    public long getCreateTime() {
+        return createTime;
+    }
+
     public long getId() {
         return id;
     }
 
+    public Integer getUserId() {
+        return accessUser == null ? null : accessUser.getId();
+    }
+
     public String getAccessToken() {
-        return accessToken;
+        return accessUser != null ? accessUser.getAccessToken() : null;
+    }
+
+    public Integer getCustomerId() {
+        return accessUser != null && accessUser instanceof CustomerAccessUser ? ((CustomerAccessUser) accessUser).getCustomerId() : null;
     }
 
     public ACCESS_USER getAccessUser() {
@@ -88,6 +108,10 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         this.channel = channel;
     }
 
+    public boolean isConnect() {
+        return connect;
+    }
+
     public void addConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer) {
         if (connect) {
             try {
@@ -102,7 +126,11 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
 
     public void addDisConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer) {
         if (isDisconnect()) {
-            consumer.accept(this);
+            try {
+                consumer.accept(this);
+            } catch (Exception e) {
+                log.warn("addDisConnectListener connectListener error = {} {}", e.toString(), consumer, e);
+            }
         } else {
             disconnectListeners.add(consumer);
         }
@@ -139,7 +167,6 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     }
 
     public boolean disconnect() {
-        boolean remove = false;
         if (disconnect.compareAndSet(false, true)) {
             for (Consumer<SseEmitter<ACCESS_USER>> disconnectListener : new ArrayList<>(disconnectListeners)) {
                 try {
@@ -150,26 +177,15 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
             }
             disconnectListeners.clear();
 
-            List<SseEmitter> sseEmitterList = connectionMap.get(accessToken);
-            if (sseEmitterList != null) {
-                try {
-                    remove = sseEmitterList.remove(this);
-                    log.debug("sse connection disconnect : {}", this);
-                } catch (Exception e) {
-                    remove = false;
-                }
-                if (sseEmitterList.isEmpty()) {
-                    connectionMap.remove(accessToken);
-                }
-            }
-
             try {
                 complete();
             } catch (Exception e) {
                 log.warn("sse connection disconnect exception : {}. {}", e.toString(), this);
             }
+            return true;
+        } else {
+            return false;
         }
-        return remove;
     }
 
     @Override
@@ -179,6 +195,19 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         } else {
             return id + "#" + accessUser;
         }
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj instanceof SseEmitter) {
+            return ((SseEmitter) obj).id == this.id;
+        }
+        return false;
+    }
+
+    @Override
+    public int hashCode() {
+        return Long.hashCode(this.id);
     }
 
     /**
@@ -255,5 +284,4 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
             }
         }
     }
-
 }

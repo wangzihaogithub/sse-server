@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import javax.servlet.http.HttpServletRequest;
 import java.io.Serializable;
 import java.util.*;
 
@@ -25,16 +26,22 @@ import java.util.*;
  * @author hao 2021年12月7日19:29:51
  */
 //@RestController
-//@RequestMapping("/api/sse")
+//@RequestMapping("/a/sse")
+//@RequestMapping("/b/sse")
 public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     private LocalConnectionService localConnectionService;
 
-    @Autowired(required = false)
     public void setLocalConnectionService(LocalConnectionService localConnectionService) {
-        if (this.localConnectionService == null) {
-            this.localConnectionService = localConnectionService;
+        this.localConnectionService = localConnectionService;
+    }
+
+    @Autowired(required = false)
+    public void setLocalConnectionServiceMap(Map<String, LocalConnectionService> localConnectionServiceMap) {
+        if (this.localConnectionService == null && localConnectionServiceMap != null && localConnectionServiceMap.size() > 0) {
+            this.localConnectionService = localConnectionServiceMap.values().iterator().next();
         }
     }
+
 
     /**
      * 获取当前登录用户, 这里返回后, 就可以获取 {@link SseEmitter#getAccessUser()}
@@ -57,22 +64,42 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
 
     }
 
+    protected ResponseEntity buildIfConnectVerifyErrorResponse(ACCESS_USER accessUser,
+                                                               Map query, Map body,
+                                                               Long keepaliveTime, HttpServletRequest request) {
+        return null;
+    }
+
     /**
      * 创建连接
      */
     @RequestMapping("/connect")
-    public SseEmitter connect(@RequestParam Map query, @RequestBody(required = false) Map body,
-                              Long keepaliveTime) {
+    public Object connect(@RequestParam Map query, @RequestBody(required = false) Map body,
+                          Long keepaliveTime, HttpServletRequest request) {
         Map message = new LinkedHashMap<>(query);
         if (body != null) {
             message.putAll(body);
         }
         ACCESS_USER accessUser = getAccessUser();
+        ResponseEntity responseEntity = buildIfConnectVerifyErrorResponse(accessUser, query, body, keepaliveTime, request);
+        if (responseEntity != null) {
+            return responseEntity;
+        }
         SseEmitter<ACCESS_USER> emitter = localConnectionService.connect(accessUser, keepaliveTime);
         emitter.getAttributeMap().putAll(message);
 
         String channel = Objects.toString(message.get("channel"), null);
         emitter.setChannel(isBlank(channel) ? null : channel);
+
+        Enumeration<String> headerNames = request.getHeaderNames();
+        Map<String, String> headerMap = new LinkedHashMap<>();
+        while (headerNames.hasMoreElements()) {
+            String name = headerNames.nextElement();
+            headerMap.put(name, request.getHeader(name));
+        }
+        emitter.setAttribute("httpHeaders", headerMap);
+        emitter.setAttribute("httpCookies", request.getCookies());
+        emitter.setAttribute("httpParameters", new LinkedHashMap<>(request.getParameterMap()));
         onConnect(emitter);
         return emitter;
     }
@@ -95,16 +122,16 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     /**
      * 发送给单个人
      *
-     * @param accessToken
+     * @param userId
      * @return
      */
-    @RequestMapping("/send/{accessToken}")
-    public ResponseEntity sendOne(@RequestParam Map query, @RequestBody(required = false) Map body, @PathVariable String accessToken) {
+    @RequestMapping("/send/{userId}")
+    public ResponseEntity sendOne(@RequestParam Map query, @RequestBody(required = false) Map body, @PathVariable Object userId) {
         Map message = new LinkedHashMap<>(query);
         if (body != null) {
             message.putAll(body);
         }
-        int count = localConnectionService.send(accessToken, buildEvent(message));
+        int count = localConnectionService.sendByUserId(userId, buildEvent(message));
         return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", count)));
     }
 
@@ -115,7 +142,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     public ResponseEntity disconnect(@PathVariable Long connectionId) {
         ACCESS_USER accessUser = getAccessUser();
         String accessToken = accessUser.getAccessToken();
-        SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnect(accessToken, connectionId);
+        SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
         if (disconnect != null) {
             onDisconnect(Collections.singletonList(disconnect), accessUser, accessToken, connectionId);
         }
@@ -126,14 +153,22 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
      * 关闭连接
      */
     @RequestMapping("/disconnect")
-    public ResponseEntity disconnect() {
+    public ResponseEntity disconnect0(Long connectionId) {
         ACCESS_USER accessUser = getAccessUser();
         String accessToken = accessUser.getAccessToken();
-        List<SseEmitter<ACCESS_USER>> count = localConnectionService.disconnect(accessToken);
-        if (count.size() > 0) {
-            onDisconnect(count, accessUser, accessToken, null);
+        if (connectionId != null) {
+            SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
+            if (disconnect != null) {
+                onDisconnect(Collections.singletonList(disconnect), accessUser, accessToken, connectionId);
+            }
+            return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", disconnect != null ? 1 : 0)));
+        } else {
+            List<SseEmitter<ACCESS_USER>> count = localConnectionService.disconnectByAccessToken(accessToken);
+            if (count.size() > 0) {
+                onDisconnect(count, accessUser, accessToken, null);
+            }
+            return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", count.size())));
         }
-        return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", count.size())));
     }
 
     private SseEmitter.SseEventBuilder buildEvent(Map rawMessage) {

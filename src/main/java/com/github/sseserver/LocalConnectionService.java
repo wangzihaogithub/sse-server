@@ -20,6 +20,8 @@ import java.util.function.Consumer;
  */
 public interface LocalConnectionService {
 
+    /* connect */
+
     /**
      * 创建用户连接并返回 SseEmitter
      *
@@ -28,6 +30,14 @@ public interface LocalConnectionService {
      * @return SseEmitter
      */
     <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime);
+
+    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> disconnectByUserId(Object userId);
+
+    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> disconnectByAccessToken(String accessToken);
+
+    <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> disconnectByConnectionId(Long connectionId);
+
+    /* listener*/
 
     <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(String accessToken, String channel, Consumer<SseEmitter<ACCESS_USER>> consumer);
 
@@ -39,53 +49,58 @@ public interface LocalConnectionService {
 
     <ACCESS_USER extends AccessUser & AccessToken> void addDisConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer);
 
-    <ACCESS_USER extends AccessUser & AccessToken> int send(SseEmitter<ACCESS_USER> sseEmitter, SseEventBuilder message);
+    /* getConnection */
 
-    /**
-     * 给指定链接发送信息
-     */
-    int send(long connectionId, SseEventBuilder message);
+    <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> getConnectionById(Long connectionId);
 
-    /**
-     * 给指定管道发送信息
-     */
-    int sendToChannel(String channel, SseEventBuilder message);
+    <ACCESS_USER extends AccessUser & AccessToken> Collection<SseEmitter<ACCESS_USER>> getConnectionByChannel(String channel);
 
-    /**
-     * 给指定用户发送信息
-     */
-    int send(String accessToken, SseEventBuilder message);
+    <ACCESS_USER extends AccessUser & AccessToken> Collection<SseEmitter<ACCESS_USER>> getConnectionByAccessToken(String accessToken);
 
-    /**
-     * 群发消息
-     *
-     * @return 发送成功几个人
-     */
-    int send(Collection<String> accessTokens, SseEventBuilder message);
+    <ACCESS_USER extends AccessUser & AccessToken> Collection<SseEmitter<ACCESS_USER>> getConnectionByUserId(Object userId);
 
-    /**
-     * 群发所有人
-     */
+    <ACCESS_USER extends AccessUser & AccessToken> Collection<SseEmitter<ACCESS_USER>> getConnectionByCustomerId(Object userId);
+
+    <ACCESS_USER extends AccessUser & AccessToken> Collection<SseEmitter<ACCESS_USER>> getConnectionAll();
+
+    /* send */
+
+    int send(Collection<SseEmitter> sseEmitterList, SseEventBuilder message);
+
     int sendAll(SseEventBuilder message);
 
-    /**
-     * 移除用户连接
-     *
-     * @return 移除了几个链接
-     */
-    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> disconnect(String accessToken);
+    int sendByConnectionId(Collection<Long> connectionIds, SseEventBuilder message);
 
-    /**
-     * 移除用户连接
-     *
-     * @return 是否成功
-     */
-    <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> disconnect(String accessToken, Long connectionId);
+    int sendByChannel(Collection<String> channels, SseEventBuilder message);
 
-    /**
-     * 获取当前连接信息
-     */
+    int sendByAccessToken(Collection<String> accessTokens, SseEventBuilder message);
+
+    int sendByUserId(Collection<?> userIds, SseEventBuilder message);
+
+    int sendByUserId(Object userId, SseEventBuilder message);
+
+    int sendByCustomerId(Collection<?> customerIds, SseEventBuilder message);
+
+    int sendByCustomerId(Object customerId, SseEventBuilder message);
+
+    /* getUser */
+
+    List<Long> getConnectionIds();
+
     List<String> getAccessTokens();
+
+    List<Object> getUserIds();
+
+    List<Object> getCustomerIds();
+
+    List<String> getChannels();
+
+    /* count */
+
+    /**
+     * 获取当前登录端数量
+     */
+    int getAccessTokenCount();
 
     /**
      * 获取当前用户数量
@@ -97,4 +112,10 @@ public interface LocalConnectionService {
      */
     int getConnectionCount();
 
+    /**
+     * 可以在spring里多实例 （例如：HR系统的用户链接，猎头系统的用户链接）
+     *
+     * @return spring的bean名称
+     */
+    String getBeanName();
 }
