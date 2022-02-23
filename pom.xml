@@ -7,6 +7,14 @@
     <version>1.0.0</version>
     <name>sse-server</name>
     <description>Sse server for Spring Boot</description>
+    <url>https://github.com/wangzihaogithub/sse-server.git</url>
+
+    <parent>
+        <groupId>org.sonatype.oss</groupId>
+        <artifactId>oss-parent</artifactId>
+        <version>9</version>
+    </parent>
+
     <properties>
         <argLine>-Dfile.encoding=UTF-8</argLine>
         <!-- 文件拷贝时的编码 -->
