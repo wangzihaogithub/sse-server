@@ -1,7 +1,7 @@
 # sse-server
 
 #### 介绍
-sse协议的后端API
+sse协议的后端API, 比websocket轻量的实时通信
 
 #### 软件架构
 软件架构说明
