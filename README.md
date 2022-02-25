@@ -9,9 +9,83 @@ sse协议的后端API
 
 #### 安装教程
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+1.  添加maven依赖
+
+        <!-- https://mvnrepository.com/artifact/com.github.wangzihaogithub/sse-server -->
+        <dependency>
+            <groupId>com.github.wangzihaogithub</groupId>
+            <artifactId>sse-server</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+        
+2.  配置业务逻辑
+
+        @Bean
+        public LocalConnectionService hrLocalConnectionService() {
+            // hr系统
+            return new LocalConnectionServiceImpl();
+        }
+    
+        @Bean
+        public LocalConnectionService hunterLocalConnectionService() {
+            // hunter系统
+            return new LocalConnectionServiceImpl();
+        }
+        
+        
+        /**
+         * 消息事件推送 (非分布式)
+         * <p>
+         * 1. 如果用nginx代理, 要加下面的配置
+         * # 长连接配置
+         * proxy_buffering off;
+         * proxy_read_timeout 7200s;
+         * proxy_pass http://172.17.83.249:9095;
+         * proxy_http_version 1.1; #nginx默认是http1.0, 改为1.1 支持长连接, 和后端保持长连接,复用,防止出现文件句柄打开数量过多的错误
+         * proxy_set_header Connection ""; # 去掉Connection的close字段
+         *
+         * @author hao 2021年12月7日19:29:51
+         */
+        @RestController
+        @RequestMapping("/api/messageEvent")
+        @Slf4j
+        public class MessageEventController extends SseWebController<HrAccessUser> {
+            @Override
+            protected HrAccessUser getAccessUser() {
+                return WebSecurityAccessFilter.getCurrentAccessUser();
+            }
+        
+            @Autowired
+            @Override
+            public void setLocalConnectionService(LocalConnectionService hrLocalConnectionService) {
+                super.setLocalConnectionService(hrLocalConnectionService);
+            }
+        
+            @SneakyThrows
+            @Override
+            protected ResponseEntity buildIfConnectVerifyErrorResponse(HrAccessUser accessUser, Map query, Map body, Long keepaliveTime, HttpServletRequest request) {
+                if (accessUser != null) {
+                    return null;
+                }
+                HttpHeaders headers = new HttpHeaders();
+                return new ResponseEntity<>("没有访问权限", headers, HttpStatus.UNAUTHORIZED);
+            }
+        
+            @Override
+            protected Object wrapOkResponse(Object result) {
+                return ResponseData.success(result);
+            }
+        }
+
+3.  实现推送信息业务逻辑
+
+            MyBellDTO bellDTO = new MyBellDTO();
+            bellDTO.setCount(100);
+            hrLocalConnectionService.sendByUserId(userId,
+                    SseEmitter.event()
+                            .data(bellDTO)
+                            .name(MyBellDTO.EVENT_NAME)
+            );
 
 #### 使用说明
 
