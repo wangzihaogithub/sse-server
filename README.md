@@ -9,7 +9,8 @@ sse协议的后端API, 比websocket轻量的实时通信
 
 #### 安装教程
 
-1.  添加maven依赖
+1.  添加maven依赖, 在pom.xml中加入 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.wangzihaogithub/sse-server/badge.svg)](https://search.maven.org/search?q=g:com.github.wangzihaogithub%20AND%20a:sse-server)
+
 
         <!-- https://mvnrepository.com/artifact/com.github.wangzihaogithub/sse-server -->
         <dependency>
@@ -19,6 +20,7 @@ sse协议的后端API, 比websocket轻量的实时通信
         </dependency>
         
 2.  配置业务逻辑
+
 
         @Bean
         public LocalConnectionService hrLocalConnectionService() {
@@ -78,6 +80,7 @@ sse协议的后端API, 比websocket轻量的实时通信
         }
 
 3.  实现推送信息业务逻辑
+
 
             MyBellDTO bellDTO = new MyBellDTO();
             bellDTO.setCount(100);
