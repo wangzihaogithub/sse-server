@@ -6,15 +6,10 @@ package com.github.sseserver;
  * @author hao 2021年12月13日13:48:58
  */
 public interface AccessUser {
-    String getName();
-
-    Integer getId();
-
-    default String getRole() {
+    default String getName() {
         return null;
     }
 
-    default boolean isBySystemOperate() {
-        return false;
-    }
+    Object getId();
+
 }

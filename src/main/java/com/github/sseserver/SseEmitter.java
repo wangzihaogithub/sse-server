@@ -68,7 +68,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         return id;
     }
 
-    public Integer getUserId() {
+    public Object getUserId() {
         return accessUser == null ? null : accessUser.getId();
     }
 
@@ -76,7 +76,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         return accessUser != null ? accessUser.getAccessToken() : null;
     }
 
-    public Integer getCustomerId() {
+    public Object getCustomerId() {
         return accessUser != null && accessUser instanceof CustomerAccessUser ? ((CustomerAccessUser) accessUser).getCustomerId() : null;
     }
 

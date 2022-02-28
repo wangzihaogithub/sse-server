@@ -7,13 +7,6 @@ package com.github.sseserver;
  */
 public interface CustomerAccessUser extends AccessUser {
 
-    Integer getCustomerId();
+    Object getCustomerId();
 
-    default String getRequestDomain() {
-        return null;
-    }
-
-    default Integer getUserType() {
-        return null;
-    }
 }
