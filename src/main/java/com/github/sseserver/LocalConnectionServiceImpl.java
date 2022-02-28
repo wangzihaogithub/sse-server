@@ -392,12 +392,12 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public List<Object> getUserIds() {
+    public List<String> getUserIds() {
         return new ArrayList<>(userId2AccessTokenMap.keySet());
     }
 
     @Override
-    public List<Object> getCustomerIds() {
+    public List<String> getCustomerIds() {
         return new ArrayList<>(customerId2ConnectionIdMap.keySet());
     }
 

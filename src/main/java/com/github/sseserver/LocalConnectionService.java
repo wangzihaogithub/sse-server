@@ -89,9 +89,9 @@ public interface LocalConnectionService {
 
     List<String> getAccessTokens();
 
-    List<Object> getUserIds();
+    List<String> getUserIds();
 
-    List<Object> getCustomerIds();
+    List<String> getCustomerIds();
 
     List<String> getChannels();
 
