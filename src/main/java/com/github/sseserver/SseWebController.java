@@ -106,7 +106,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     /**
      * 推送给所有人
      *
-     * @return
+     * @return http原生响应
      */
     @RequestMapping("/send")
     public ResponseEntity send(@RequestParam Map query, @RequestBody(required = false) Map body) {
@@ -121,8 +121,8 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     /**
      * 发送给单个人
      *
-     * @param userId
-     * @return
+     * @param userId 用户ID
+     * @return http原生响应
      */
     @RequestMapping("/send/{userId}")
     public ResponseEntity sendOne(@RequestParam Map query, @RequestBody(required = false) Map body, @PathVariable Object userId) {
