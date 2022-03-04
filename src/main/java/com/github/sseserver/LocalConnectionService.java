@@ -3,7 +3,9 @@ package com.github.sseserver;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -30,6 +32,8 @@ public interface LocalConnectionService {
      * @return SseEmitter
      */
     <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime);
+
+    <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap);
 
     <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> disconnectByUserId(Object userId);
 
@@ -71,17 +75,33 @@ public interface LocalConnectionService {
 
     int sendByConnectionId(Collection<Long> connectionIds, SseEventBuilder message);
 
+    default int sendByConnectionId(Long connectionId, SseEventBuilder message) {
+        return sendByConnectionId(Collections.singletonList(connectionId), message);
+    }
+
     int sendByChannel(Collection<String> channels, SseEventBuilder message);
+
+    default int sendByChannel(String channel, SseEventBuilder message) {
+        return sendByChannel(Collections.singletonList(channel), message);
+    }
 
     int sendByAccessToken(Collection<String> accessTokens, SseEventBuilder message);
 
+    default int sendByAccessToken(String accessToken, SseEventBuilder message) {
+        return sendByAccessToken(Collections.singletonList(accessToken), message);
+    }
+
     int sendByUserId(Collection<?> userIds, SseEventBuilder message);
 
-    int sendByUserId(Object userId, SseEventBuilder message);
+    default int sendByUserId(Object userId, SseEventBuilder message) {
+        return sendByUserId(Collections.singletonList(userId), message);
+    }
 
     int sendByCustomerId(Collection<?> customerIds, SseEventBuilder message);
 
-    int sendByCustomerId(Object customerId, SseEventBuilder message);
+    default int sendByCustomerId(Object customerId, SseEventBuilder message) {
+        return sendByCustomerId(Collections.singletonList(customerId), message);
+    }
 
     /* getUser */
 

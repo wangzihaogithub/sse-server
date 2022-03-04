@@ -13,7 +13,7 @@ import java.util.*;
 
 /**
  * 消息事件推送 (非分布式)
- * 注: !! 这里是示例代码, 根据自己项目封装的用户逻辑, 复制到自己项目里
+ * 注: !! 这里是示例代码, 根据自己项目封装的用户逻辑, 继承类或复制到自己项目里都行
  * <p>
  * 1. 如果用nginx代理, 要加下面的配置
  * # 长连接配置
@@ -76,7 +76,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     @RequestMapping("/connect")
     public Object connect(@RequestParam Map query, @RequestBody(required = false) Map body,
                           Long keepaliveTime, HttpServletRequest request) {
-        Map message = new LinkedHashMap<>(query);
+        Map<String, Object> message = new LinkedHashMap<>(query);
         if (body != null) {
             message.putAll(body);
         }
@@ -85,8 +85,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         if (responseEntity != null) {
             return responseEntity;
         }
-        SseEmitter<ACCESS_USER> emitter = localConnectionService.connect(accessUser, keepaliveTime);
-        emitter.getAttributeMap().putAll(message);
+        SseEmitter<ACCESS_USER> emitter = localConnectionService.connect(accessUser, keepaliveTime, message);
 
         String channel = Objects.toString(message.get("channel"), null);
         emitter.setChannel(isBlank(channel) ? null : channel);

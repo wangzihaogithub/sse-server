@@ -59,6 +59,11 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
      */
     @Override
     public <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime) {
+        return connect(accessUser, keepaliveTime, null);
+    }
+
+    @Override
+    public <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap) {
         if (keepaliveTime == null) {
             keepaliveTime = 0L;
         }
@@ -112,6 +117,10 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             }
         });
         result.addConnectListener(e -> {
+            String channel = wrapStringKey(result.getChannel());
+            channel2ConnectionIdMap.computeIfAbsent(channel, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
+                    .add(e.getId());
+
             log.debug("sse {} connection create : {}", beanName, e);
             notifyListener(e, connectListeners, connectListenerMap);
         });
@@ -119,12 +128,8 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         long id = result.getId();
         String accessToken = wrapStringKey(result.getAccessToken());
         String userId = wrapStringKey(Objects.toString(result.getUserId(), null));
-        String channel = wrapStringKey(result.getChannel());
         String customerId = wrapStringKey(Objects.toString(result.getCustomerId(), null));
         connectionMap.put(id, result);
-
-        channel2ConnectionIdMap.computeIfAbsent(channel, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
-                .add(id);
 
         accessToken2ConnectionIdMap.computeIfAbsent(accessToken, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
                 .add(id);
@@ -135,6 +140,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         userId2AccessTokenMap.computeIfAbsent(userId, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
                 .add(accessToken);
 
+        if (attributeMap != null) {
+            result.getAttributeMap().putAll(attributeMap);
+        }
         try {
             int reconnectTime = 5000;
             result.send(SseEmitter.event()
@@ -363,22 +371,12 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public int sendByUserId(Object userId, SseEventBuilder message) {
-        return send(getConnectionByUserId(userId), message);
-    }
-
-    @Override
     public int sendByCustomerId(Collection<?> customerIds, SseEventBuilder message) {
         int count = 0;
         for (Object customerId : customerIds) {
             count += send(getConnectionByCustomerId(customerId), message);
         }
         return count;
-    }
-
-    @Override
-    public int sendByCustomerId(Object customerId, SseEventBuilder message) {
-        return send(getConnectionByCustomerId(customerId), message);
     }
 
     @Override
@@ -476,7 +474,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         }
     }
 
-    protected <ACCESS_USER extends AccessUser & AccessToken> boolean send(SseEmitter<ACCESS_USER> sseEmitter, SseEventBuilder message) {
+    public <ACCESS_USER extends AccessUser & AccessToken> boolean send(SseEmitter<ACCESS_USER> sseEmitter, SseEventBuilder message) {
         if (sseEmitter != null && !sseEmitter.isDisconnect()) {
             try {
                 sseEmitter.send(message);
