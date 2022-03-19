@@ -105,6 +105,8 @@ public interface LocalConnectionService {
 
     /* getUser */
 
+    <ACCESS_USER extends AccessUser & AccessToken> List<ACCESS_USER> getUsers();
+
     List<Long> getConnectionIds();
 
     List<String> getAccessTokens();

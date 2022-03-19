@@ -380,6 +380,14 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
+    public <ACCESS_USER extends AccessUser & AccessToken> List<ACCESS_USER> getUsers() {
+        return connectionMap.values().stream()
+                .map(e -> (ACCESS_USER) e.getAccessUser())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public List<Long> getConnectionIds() {
         return new ArrayList<>(connectionMap.keySet());
     }
@@ -480,12 +488,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                 sseEmitter.send(message);
                 return true;
             } catch (IOException e) {
-                if (isSkipException(e)) {
-
-                } else {
-                    log.warn("sse {} send {} io exception = {}", beanName, sseEmitter, e.toString(), e);
-                    sseEmitter.disconnect();
-                }
+                sseEmitter.disconnect();
             }
         }
         return false;
