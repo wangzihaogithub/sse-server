@@ -69,11 +69,11 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     }
 
     public Object getUserId() {
-        return accessUser == null ? null : accessUser.getId();
+        return accessUser != null && accessUser instanceof AccessUser ? ((AccessUser) accessUser).getId() : null;
     }
 
     public String getAccessToken() {
-        return accessUser != null ? accessUser.getAccessToken() : null;
+        return accessUser != null && accessUser instanceof AccessToken ? ((AccessToken) accessUser).getAccessToken() : null;
     }
 
     public Object getCustomerId() {
