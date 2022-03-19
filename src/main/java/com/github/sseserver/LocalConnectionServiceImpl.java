@@ -384,6 +384,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         return connectionMap.values().stream()
                 .map(e -> (ACCESS_USER) e.getAccessUser())
                 .filter(Objects::nonNull)
+                .distinct()
                 .collect(Collectors.toList());
     }
 
@@ -399,17 +400,35 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
     @Override
     public List<String> getUserIds() {
-        return new ArrayList<>(userId2AccessTokenMap.keySet());
+        return connectionMap.values().stream()
+                .map(SseEmitter::getUserId)
+                .filter(Objects::nonNull)
+                .map(Object::toString)
+                .map(this::wrapStringKey)
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     @Override
     public List<String> getCustomerIds() {
-        return new ArrayList<>(customerId2ConnectionIdMap.keySet());
+        return connectionMap.values().stream()
+                .map(SseEmitter::getCustomerId)
+                .filter(Objects::nonNull)
+                .map(Object::toString)
+                .map(this::wrapStringKey)
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     @Override
     public List<String> getChannels() {
-        return new ArrayList<>(channel2ConnectionIdMap.keySet());
+        return connectionMap.values().stream()
+                .map(SseEmitter::getChannel)
+                .filter(Objects::nonNull)
+                .map(Object::toString)
+                .map(this::wrapStringKey)
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     /**
@@ -425,7 +444,13 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
      */
     @Override
     public int getUserCount() {
-        return userId2AccessTokenMap.size();
+        return (int) connectionMap.values().stream()
+                .map(SseEmitter::getChannel)
+                .filter(Objects::nonNull)
+                .map(Object::toString)
+                .map(this::wrapStringKey)
+                .distinct()
+                .count();
     }
 
     /**
