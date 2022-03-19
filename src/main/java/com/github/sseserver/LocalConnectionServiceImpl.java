@@ -464,7 +464,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         for (Consumer<SseEmitter> listener : listeners) {
             listener.accept(emitter);
         }
-        List<Predicate<SseEmitter>> consumerList = listenerMap.get(emitter.getAccessToken());
+        List<Predicate<SseEmitter>> consumerList = listenerMap.get(wrapStringKey(emitter.getAccessToken()));
         if (consumerList != null) {
             for (Predicate<SseEmitter> listener : new ArrayList<>(consumerList)) {
                 if (listener.test(emitter)) {
