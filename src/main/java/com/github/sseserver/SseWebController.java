@@ -1,6 +1,8 @@
 package com.github.sseserver;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import javax.servlet.http.HttpServletRequest;
+import java.io.InputStream;
 import java.io.Serializable;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -80,6 +83,18 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         HttpHeaders headers = new HttpHeaders();
         headers.setConnection("close");
         return new ResponseEntity<>("", headers, HttpStatus.UNAUTHORIZED);
+    }
+
+    /**
+     * 前端文件
+     */
+    @RequestMapping("/sse.js")
+    public Object ssejs() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Content-Type", "application/javascript;charset=utf-8");
+        InputStream stream = SseWebController.class.getResourceAsStream("/sse.js");
+        Resource body = new InputStreamResource(stream);
+        return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 
     /**
