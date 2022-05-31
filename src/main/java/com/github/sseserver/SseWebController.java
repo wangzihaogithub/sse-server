@@ -62,11 +62,11 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         return new ResponseWrap<>(result);
     }
 
-    protected void onConnect(SseEmitter<ACCESS_USER> conncet) {
+    protected void onConnect(SseEmitter<ACCESS_USER> conncet, Map<String, Object> query) {
 
     }
 
-    protected void onDisconnect(List<SseEmitter<ACCESS_USER>> disconnectList, ACCESS_USER accessUser, String accessToken, Long connectionId) {
+    protected void onDisconnect(List<SseEmitter<ACCESS_USER>> disconnectList, ACCESS_USER accessUser, Map query) {
 
     }
 
@@ -126,7 +126,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         emitter.setAttribute("httpHeaders", headerMap);
         emitter.setAttribute("httpCookies", request.getCookies());
         emitter.setAttribute("httpParameters", new LinkedHashMap<>(request.getParameterMap()));
-        onConnect(emitter);
+        onConnect(emitter, message);
         return emitter;
     }
 
@@ -165,15 +165,14 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
      * 关闭连接
      */
     @RequestMapping("/disconnect/{connectionId}")
-    public ResponseEntity disconnect(@PathVariable Long connectionId) {
+    public ResponseEntity disconnect(@PathVariable Long connectionId, @RequestParam Map query) {
         ACCESS_USER accessUser = getAccessUser();
         if (accessUser == null) {
             return buildUnauthorizedResponse();
         }
-        String accessToken = accessUser.getAccessToken();
         SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
         if (disconnect != null) {
-            onDisconnect(Collections.singletonList(disconnect), accessUser, accessToken, connectionId);
+            onDisconnect(Collections.singletonList(disconnect), accessUser, query);
         }
         return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", disconnect != null ? 1 : 0)));
     }
@@ -182,7 +181,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
      * 关闭连接
      */
     @RequestMapping("/disconnect")
-    public ResponseEntity disconnect0(Long connectionId) {
+    public ResponseEntity disconnect0(Long connectionId, @RequestParam Map query) {
         ACCESS_USER accessUser = getAccessUser();
         if (accessUser == null) {
             return buildUnauthorizedResponse();
@@ -191,13 +190,13 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         if (connectionId != null) {
             SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
             if (disconnect != null) {
-                onDisconnect(Collections.singletonList(disconnect), accessUser, accessToken, connectionId);
+                onDisconnect(Collections.singletonList(disconnect), accessUser, query);
             }
             return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", disconnect != null ? 1 : 0)));
         } else {
             List<SseEmitter<ACCESS_USER>> count = localConnectionService.disconnectByAccessToken(accessToken);
             if (count.size() > 0) {
-                onDisconnect(count, accessUser, accessToken, null);
+                onDisconnect(count, accessUser, query);
             }
             return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", count.size())));
         }
@@ -207,15 +206,14 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
      * 关闭连接
      */
     @RequestMapping("/disconnectUser")
-    public ResponseEntity disconnectUser(String userId) {
+    public ResponseEntity disconnectUser(String userId, @RequestParam Map query) {
         ACCESS_USER accessUser = getAccessUser();
         if (accessUser == null) {
             return buildUnauthorizedResponse();
         }
-        String accessToken = accessUser.getAccessToken();
         List<SseEmitter<ACCESS_USER>> disconnectList = localConnectionService.disconnectByUserId(userId);
         if (disconnectList.size() > 0) {
-            onDisconnect(disconnectList, accessUser, accessToken, null);
+            onDisconnect(disconnectList, accessUser, query);
         }
         return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", disconnectList.size())));
     }

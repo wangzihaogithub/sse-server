@@ -29,6 +29,14 @@ class Sse {
   constructor(options) {
     this.options = Object.assign({}, Sse.DEFAULT_OPTIONS, options)
 
+    let clientId = this.options.clientId || localStorage.getItem('clientId')
+    if (!clientId) {
+      const h = () => Math.floor(65536 * (1 + Math.random())).toString(16).substring(1)
+      clientId = `${h() + h()}-${h()}-${h()}-${h()}-${h()}${h()}${h()}`
+    }
+    localStorage.setItem('clientId', clientId)
+    this.clientId = clientId
+
     this.handleConnectionFinish = (event) => {
       const res = JSON.parse(event.data)
       this.connectionId = res.connectionId
@@ -59,7 +67,7 @@ class Sse {
         return this.es
       }
       this.state = Sse.STATE_CONNECT
-      const es = new EventSource(`${this.options.url}/connect?sseVersion=${Sse.version}`)
+      const es = new EventSource(`${this.options.url}/connect?clientId=${this.clientId}&clientVersion=${Sse.version}`)
       es.addEventListener('connect-finish', this.handleConnectionFinish)
       es.addEventListener('open', this.handleOpen)    // 连接成功
       es.addEventListener('error', this.handleError)  // 失败
@@ -83,18 +91,21 @@ class Sse {
 
     this.destroy = () => {
       this.clearReconnectTimer()
-      this.close()
+      this.close('destroy')
     }
 
-    this.close = () => {
+    this.close = (reason = 'close') => {
       this.state = Sse.STATE_CLOSED
       if (this.es) {
         this.es.close()
       }
-      if (this.connectionId !== undefined) {
+      const connectionId = this.connectionId
+      if (connectionId !== undefined) {
+        this.connectionId = undefined
         let params = new URLSearchParams()
-        params.set('connectionId', this.connectionId)
-        params.set('method', 'close')
+        params.set('clientId', this.clientId)
+        params.set('connectionId', connectionId)
+        params.set('reason', reason)
         params.set('sseVersion', Sse.version)
         navigator.sendBeacon(`${this.options.url}/disconnect`, params)
         this.clearReconnectTimer()
@@ -102,22 +113,23 @@ class Sse {
       }
     }
 
+    // 页签关闭时
+    window.addEventListener('unload', () => {
+      this.close('unload')
+    }, false)
+
+    window.addEventListener('beforeunload', () => {
+      this.close('beforeunload')
+    }, false)
+
     // 监听浏览器窗口切换时
     document.addEventListener('visibilitychange', (e) => {
       if (document.visibilityState === 'visible') {
         this.es = this.newEventSource()
       } else {
-        this.close()
+        this.close('visibilitychange')
       }
     })
-    // 页签关闭时
-    window.addEventListener('unload', () => {
-      let params = new URLSearchParams()
-      params.set('connectionId', this.connectionId)
-      params.set('method', 'unload')
-      params.set('sseVersion', Sse.version)
-      navigator.sendBeacon(`${this.options.url}/disconnect`, params)
-    }, false)
 
     this.es = this.newEventSource()
   }

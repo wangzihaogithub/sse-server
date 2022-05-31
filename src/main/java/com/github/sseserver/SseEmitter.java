@@ -70,6 +70,14 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         return id;
     }
 
+    public String getClientId() {
+        return (String) attributeMap.get("clientId");
+    }
+
+    public String getClientVersion() {
+        return (String) attributeMap.get("clientVersion");
+    }
+
     public Object getUserId() {
         return accessUser != null && accessUser instanceof AccessUser ? ((AccessUser) accessUser).getId() : null;
     }
