@@ -29,12 +29,12 @@ class Sse {
   constructor(options) {
     this.options = Object.assign({}, Sse.DEFAULT_OPTIONS, options)
 
-    let clientId = this.options.clientId || localStorage.getItem('clientId')
+    let clientId = this.options.clientId || localStorage.getItem('sseClientId')
     if (!clientId) {
       const h = () => Math.floor(65536 * (1 + Math.random())).toString(16).substring(1)
       clientId = `${h() + h()}-${h()}-${h()}-${h()}-${h()}${h()}${h()}`
     }
-    localStorage.setItem('clientId', clientId)
+    localStorage.setItem('sseClientId', clientId)
     this.clientId = clientId
 
     this.handleConnectionFinish = (event) => {
