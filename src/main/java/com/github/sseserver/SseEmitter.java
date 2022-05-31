@@ -11,6 +11,8 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends org.springframework.web.servlet.mvc.method.annotation.SseEmitter {
     private final static Logger log = LoggerFactory.getLogger(SseEmitter.class);
@@ -186,6 +188,25 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         } else {
             return false;
         }
+    }
+
+    public boolean isChange(Object newMessage, String messageType) {
+        Object oldMessage = getAttribute(messageType);
+        if (Objects.equals(oldMessage, newMessage)) {
+            return false;
+        }
+        setAttribute(messageType, newMessage);
+        return true;
+    }
+
+    public <MESSAGE, MESSAGE_ID> List<MESSAGE> distinct(List<MESSAGE> messageList,
+                                                        Function<MESSAGE, MESSAGE_ID> idGetter,
+                                                        String messageType) {
+        Set<MESSAGE_ID> distinctSet = (Set) getAttributeMap().computeIfAbsent(messageType, o -> new HashSet<>());
+        return messageList.stream()
+                .filter(e -> !distinctSet.contains(idGetter.apply(e)))
+                .peek(e -> distinctSet.add(idGetter.apply(e)))
+                .collect(Collectors.toList());
     }
 
     @Override

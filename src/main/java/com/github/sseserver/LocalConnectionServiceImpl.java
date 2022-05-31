@@ -50,6 +50,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     protected final Map<String, List<Predicate<SseEmitter>>> connectListenerMap = new ConcurrentHashMap<>();
     protected final Map<String, List<Predicate<SseEmitter>>> disconnectListenerMap = new ConcurrentHashMap<>();
     private String beanName = getClass().getSimpleName();
+    private int reconnectTime = 5000;
 
     /**
      * 创建用户连接并返回 SseEmitter
@@ -144,7 +145,6 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             result.getAttributeMap().putAll(attributeMap);
         }
         try {
-            int reconnectTime = 5000;
             result.send(SseEmitter.event()
                     .reconnectTime(reconnectTime)
                     .name("connect-finish")
@@ -389,6 +389,18 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
+    public <ACCESS_USER extends AccessUser & AccessToken> ACCESS_USER getUser(Object userId) {
+        List<SseEmitter> list = getConnectionByUserId(userId);
+        return list.isEmpty() ? null : (ACCESS_USER) list.get(0).getAccessUser();
+    }
+
+    @Override
+    public boolean isOnline(Object userId) {
+        Set<String> tokenSet = userId2AccessTokenMap.get(wrapStringKey(Objects.toString(userId, null)));
+        return tokenSet != null && !tokenSet.isEmpty();
+    }
+
+    @Override
     public List<Long> getConnectionIds() {
         return new ArrayList<>(connectionMap.keySet());
     }
@@ -482,11 +494,6 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         };
     }
 
-    protected boolean isSkipException(IOException e) {
-        String exceptionMessage = e.getMessage();
-        return exceptionMessage != null && exceptionMessage.contains("Broken pipe");
-    }
-
     protected String wrapStringKey(String key) {
         return key == null ? "" : key;
     }
@@ -517,6 +524,14 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             }
         }
         return false;
+    }
+
+    public int getReconnectTime() {
+        return reconnectTime;
+    }
+
+    public void setReconnectTime(int reconnectTime) {
+        this.reconnectTime = reconnectTime;
     }
 
     @Override

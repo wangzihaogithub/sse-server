@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * 单机长连接(非分布式)
@@ -107,11 +108,22 @@ public interface LocalConnectionService {
 
     <ACCESS_USER extends AccessUser & AccessToken> List<ACCESS_USER> getUsers();
 
+    <ACCESS_USER extends AccessUser & AccessToken> ACCESS_USER getUser(Object userId);
+
+    boolean isOnline(Object userId);
+
     List<Long> getConnectionIds();
 
     List<String> getAccessTokens();
 
     List<String> getUserIds();
+
+    default List<Integer> getUserIdsInt() {
+        return getUserIds().stream()
+                .filter(e -> e != null && e.length() > 0)
+                .map(Integer::valueOf)
+                .collect(Collectors.toList());
+    }
 
     List<String> getCustomerIds();
 
