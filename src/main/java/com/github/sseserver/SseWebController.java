@@ -235,12 +235,12 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                     })
                     .collect(Collectors.toList());
         }
-        return PageInfo.of(list, pageNum, pageSize);
+        return ResponseEntity.ok(wrapOkResponse(PageInfo.of(list, pageNum, pageSize)));
     }
 
     @RequestMapping("/connectionIds")
     public Object connectionIds() {
-        return localConnectionService.getConnectionIds();
+        return ResponseEntity.ok(wrapOkResponse(localConnectionService.getConnectionIds()));
     }
 
     private SseEmitter.SseEventBuilder buildEvent(Map rawMessage) {
