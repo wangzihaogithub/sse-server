@@ -174,12 +174,9 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
      */
     @RequestMapping("/disconnect/{connectionId}")
     public ResponseEntity disconnect(@PathVariable Long connectionId, @RequestParam Map query) {
-        ACCESS_USER accessUser = getAccessUser();
-        if (accessUser == null) {
-            return buildUnauthorizedResponse();
-        }
         SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
         if (disconnect != null) {
+            ACCESS_USER accessUser = getAccessUser();
             onDisconnect(Collections.singletonList(disconnect), accessUser, query);
         }
         return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", disconnect != null ? 1 : 0)));
@@ -190,23 +187,24 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
      */
     @RequestMapping("/disconnect")
     public ResponseEntity disconnect0(Long connectionId, @RequestParam Map query) {
-        ACCESS_USER accessUser = getAccessUser();
-        if (accessUser == null) {
-            return buildUnauthorizedResponse();
-        }
-        String accessToken = accessUser.getAccessToken();
         if (connectionId != null) {
             SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
             if (disconnect != null) {
+                ACCESS_USER accessUser = getAccessUser();
                 onDisconnect(Collections.singletonList(disconnect), accessUser, query);
             }
             return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", disconnect != null ? 1 : 0)));
         } else {
-            List<SseEmitter<ACCESS_USER>> count = localConnectionService.disconnectByAccessToken(accessToken);
-            if (count.size() > 0) {
-                onDisconnect(count, accessUser, query);
+            ACCESS_USER accessUser = getAccessUser();
+            if (accessUser != null) {
+                List<SseEmitter<ACCESS_USER>> count = localConnectionService.disconnectByAccessToken(accessUser.getAccessToken());
+                if (count.size() > 0) {
+                    onDisconnect(count, accessUser, query);
+                }
+                return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", count.size())));
+            } else {
+                return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", 0)));
             }
-            return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", count.size())));
         }
     }
 
