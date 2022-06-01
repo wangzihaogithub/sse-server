@@ -19,18 +19,18 @@ sse协议的后端API, 比websocket轻量的实时通信
             <version>1.0.4</version>
         </dependency>
         
-2.  配置业务逻辑
+2.  配置业务逻辑 （后端）
 
 
         @Bean
         public LocalConnectionService hrLocalConnectionService() {
-            // hr系统
+            // hr系统 用hrLocalConnectionService
             return new LocalConnectionServiceImpl();
         }
     
         @Bean
         public LocalConnectionService hunterLocalConnectionService() {
-            // hunter系统
+            // hunter系统 用hunterLocalConnectionService
             return new LocalConnectionServiceImpl();
         }
         
@@ -49,9 +49,9 @@ sse协议的后端API, 比websocket轻量的实时通信
          * @author hao 2021年12月7日19:29:51
          */
         @RestController
-        @RequestMapping("/api/messageEvent")
+        @RequestMapping("/sse/hr")
         @Slf4j
-        public class MessageEventController extends SseWebController<HrAccessUser> {
+        public class HrController extends SseWebController<HrAccessUser> {
             @Override
             protected HrAccessUser getAccessUser() {
                 return WebSecurityAccessFilter.getCurrentAccessUser();
@@ -63,33 +63,57 @@ sse协议的后端API, 比websocket轻量的实时通信
                 super.setLocalConnectionService(hrLocalConnectionService);
             }
         
-            @SneakyThrows
-            @Override
-            protected ResponseEntity buildIfConnectVerifyErrorResponse(HrAccessUser accessUser, Map query, Map body, Long keepaliveTime, HttpServletRequest request) {
-                if (accessUser != null) {
-                    return null;
-                }
-                HttpHeaders headers = new HttpHeaders();
-                return new ResponseEntity<>("没有访问权限", headers, HttpStatus.UNAUTHORIZED);
-            }
-        
             @Override
             protected Object wrapOkResponse(Object result) {
                 return ResponseData.success(result);
             }
         }
 
-3.  实现推送信息业务逻辑
+3.  实现推送信息业务逻辑（后端）
 
 
-            MyBellDTO bellDTO = new MyBellDTO();
+            MyHrBellDTO bellDTO = new MyHrBellDTO();
             bellDTO.setCount(100);
-            hrLocalConnectionService.sendByUserId(userId,
+            hrLocalConnectionService.sendByUserId(hrUserId,
                     SseEmitter.event()
                             .data(bellDTO)
-                            .name(MyBellDTO.EVENT_NAME)
+                            .name("myHrBell")
             );
+            
+4.  编写业务逻辑 （前端） 
 
+    前端代码 https://github.com/wangzihaogithub/sse-js.git
+
+    1. Vue示例：
+    
+    
+            import Sse from '../util/sse.js'
+    
+            mounted() {
+              // 来自HR系统的服务端推送
+              this.hrSse = new Sse({
+                url : '/sse/hr',
+                eventListeners:{
+                  'myHrBell': this.onHrBell,
+                  'xxx-xx': this.xx
+                }
+              })
+              
+              // 来自猎头系统的服务端推送
+              this.hunterSse = new Sse({
+                url : '/sse/hunter',
+                eventListeners:{
+                  'myHunterBell': this.onHunterBell,
+                  'xxx-xx': this.xx
+                }
+              })
+            },
+            beforeDestroy() {
+              this.hrSse.destroy()
+              this.hunterSse.destroy()
+            }
+    
+        
 #### 使用说明
 
 1.  xxxx
