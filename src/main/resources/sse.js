@@ -15,13 +15,17 @@
 class Sse {
   static version = '1.0.0'
   static DEFAULT_OPTIONS = {
-    url: '/common/sse',
+    url: '/api/sse',
     eventListeners: {}
   }
   static DEFAULT_RECONNECT_TIME = 5000
   static STATE_ESTABLISHED = 'ESTABLISHED'
   static STATE_CONNECT = 'CONNECT'
   static STATE_CLOSED = 'CLOSED'
+  static install = function (Vue, opts = {}) {
+    window.Sse = Sse
+    console.log('install Sse')
+  }
 
   state = Sse.STATE_CLOSED
   connectionName = ''
@@ -135,4 +139,5 @@ class Sse {
   }
 }
 
+window.Sse = Sse
 export default Sse
