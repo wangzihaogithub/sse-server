@@ -10,7 +10,6 @@ public class PageInfo<T> implements Serializable, Iterable<T> {
     private static final long serialVersionUID = 1L;
 
     private long total;
-    private int pages;
     private int pageNum;
     private int pageSize;
     private List<T> list;
@@ -22,15 +21,6 @@ public class PageInfo<T> implements Serializable, Iterable<T> {
     public PageInfo(List<T> list) {
         this.list = Objects.requireNonNull(list);
         this.total = (long) list.size();
-        if (this.pageNum == 0) {
-            this.pageNum = 1;
-        }
-        if (this.pages == 0) {
-            this.pages = 0;
-        }
-        if (this.pageSize == 0) {
-            this.pageSize = 10;
-        }
     }
 
     public static <T> PageInfo<T> empty() {
@@ -53,11 +43,9 @@ public class PageInfo<T> implements Serializable, Iterable<T> {
      */
     public static <T> PageInfo<T> of(List<T> list, int pageNum, int pageSize, boolean copy) {
         int total = list.size();
-        int pages;
         List<T> sublist;
         if (pageSize <= 0) {
             sublist = Collections.emptyList();
-            pages = 0;
         } else {
             int offsetBegin = (Math.max(pageNum, 1) - 1) * pageSize;
             int offsetEnd = Math.min(offsetBegin + pageSize, total);
@@ -72,7 +60,6 @@ public class PageInfo<T> implements Serializable, Iterable<T> {
             if (copy) {
                 sublist = new ArrayList<>(sublist);
             }
-            pages = (int) Math.ceil((double) total / ((double) pageSize));
         }
 
         PageInfo<T> pageInfo = new PageInfo<>();
@@ -80,7 +67,6 @@ public class PageInfo<T> implements Serializable, Iterable<T> {
         pageInfo.setTotal(total);
         pageInfo.setPageNum(pageNum);
         pageInfo.setPageSize(pageSize);
-        pageInfo.setPages(pages);
         return pageInfo;
     }
 
@@ -98,7 +84,6 @@ public class PageInfo<T> implements Serializable, Iterable<T> {
 
     public static <SOURCE, TARGET> PageInfo<TARGET> of(PageInfo<SOURCE> source, Function<SOURCE, TARGET> map) {
         PageInfo<TARGET> target = new PageInfo<>();
-        target.pages = source.pages;
         target.pageNum = source.pageNum;
         target.pageSize = source.pageSize;
         target.total = source.total;
@@ -116,14 +101,6 @@ public class PageInfo<T> implements Serializable, Iterable<T> {
 
     public void setTotal(long total) {
         this.total = total;
-    }
-
-    public int getPages() {
-        return pages;
-    }
-
-    public void setPages(int pages) {
-        this.pages = pages;
     }
 
     public int getPageNum() {

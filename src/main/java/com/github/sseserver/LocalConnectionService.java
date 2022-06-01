@@ -58,15 +58,15 @@ public interface LocalConnectionService {
 
     <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> getConnectionById(Long connectionId);
 
-    <ACCESS_USER extends AccessUser & AccessToken> Collection<SseEmitter<ACCESS_USER>> getConnectionByChannel(String channel);
+    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByChannel(String channel);
 
-    <ACCESS_USER extends AccessUser & AccessToken> Collection<SseEmitter<ACCESS_USER>> getConnectionByAccessToken(String accessToken);
+    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByAccessToken(String accessToken);
 
-    <ACCESS_USER extends AccessUser & AccessToken> Collection<SseEmitter<ACCESS_USER>> getConnectionByUserId(Object userId);
+    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByUserId(Object userId);
 
-    <ACCESS_USER extends AccessUser & AccessToken> Collection<SseEmitter<ACCESS_USER>> getConnectionByCustomerId(Object userId);
+    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByCustomerId(Object userId);
 
-    <ACCESS_USER extends AccessUser & AccessToken> Collection<SseEmitter<ACCESS_USER>> getConnectionAll();
+    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionAll();
 
     /* send */
 

@@ -66,20 +66,21 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     @Override
     public <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap) {
         if (keepaliveTime == null) {
-            keepaliveTime = 0L;
+            keepaliveTime = 300_000L;
         }
         // 设置超时时间，0表示不过期。tomcat默认30秒，超过时间未完成会抛出异常：AsyncRequestTimeoutException
         SseEmitter<ACCESS_USER> result = new SseEmitter<>(keepaliveTime, accessUser);
         result.onCompletion(completionCallBack(result));
         result.onError(errorCallBack(result));
         result.onTimeout(timeoutCallBack(result));
-        result.addDisConnectListener(e -> {
-            long id = e.getId();
-            String accessToken = wrapStringKey(e.getAccessToken());
-            String userId = wrapStringKey(Objects.toString(e.getUserId(), null));
-            String channel = wrapStringKey(e.getChannel());
-            String customerId = wrapStringKey(Objects.toString(e.getCustomerId(), null));
 
+        Long id = result.getId();
+        String accessToken = wrapStringKey(result.getAccessToken());
+        String userId = wrapStringKey(Objects.toString(result.getUserId(), null));
+        String customerId = wrapStringKey(Objects.toString(result.getCustomerId(), null));
+        String channel = wrapStringKey(result.getChannel());
+
+        result.addDisConnectListener(e -> {
             log.debug("sse {} connection disconnect : {}", beanName, e);
 
             notifyListener(e, disconnectListeners, disconnectListenerMap);
@@ -105,7 +106,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             if (customerList != null) {
                 customerList.remove(id);
                 if (customerList.isEmpty()) {
-                    customerId2ConnectionIdMap.remove(userId);
+                    customerId2ConnectionIdMap.remove(customerId);
                 }
             }
 
@@ -118,26 +119,17 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             }
         });
         result.addConnectListener(e -> {
-            String channel = wrapStringKey(result.getChannel());
             channel2ConnectionIdMap.computeIfAbsent(channel, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
                     .add(e.getId());
-
             log.debug("sse {} connection create : {}", beanName, e);
             notifyListener(e, connectListeners, connectListenerMap);
         });
 
-        long id = result.getId();
-        String accessToken = wrapStringKey(result.getAccessToken());
-        String userId = wrapStringKey(Objects.toString(result.getUserId(), null));
-        String customerId = wrapStringKey(Objects.toString(result.getCustomerId(), null));
         connectionMap.put(id, result);
-
         accessToken2ConnectionIdMap.computeIfAbsent(accessToken, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
                 .add(id);
-
         customerId2ConnectionIdMap.computeIfAbsent(customerId, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
                 .add(id);
-
         userId2AccessTokenMap.computeIfAbsent(userId, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
                 .add(accessToken);
 
@@ -199,7 +191,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Collection<SseEmitter> getConnectionAll() {
+    public List<SseEmitter> getConnectionAll() {
         return new ArrayList<>(connectionMap.values());
     }
 

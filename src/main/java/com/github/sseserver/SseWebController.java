@@ -15,6 +15,7 @@ import javax.servlet.http.HttpServletRequest;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -230,7 +231,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                         String name) {
         List<? extends AccessUser> list = localConnectionService.getUsers();
         String nameTrim = name != null ? name.trim() : null;
-        if (name != null && nameTrim.length() > 0) {
+        if (nameTrim != null && nameTrim.length() > 0) {
             list = list.stream()
                     .filter(e -> {
                         String eachName = e.getName();
@@ -241,15 +242,69 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                     })
                     .collect(Collectors.toList());
         }
-        return ResponseEntity.ok(wrapOkResponse(PageInfo.of(list, pageNum, pageSize)));
+        PageInfo<Object> pageInfo = PageInfo.of(list, pageNum, pageSize).map(e -> mapToUserVO((ACCESS_USER) e));
+        return ResponseEntity.ok(wrapOkResponse(pageInfo));
     }
 
-    @RequestMapping("/connectionIds")
-    public Object connectionIds() {
-        return ResponseEntity.ok(wrapOkResponse(localConnectionService.getConnectionIds()));
+    @RequestMapping("/connections")
+    public Object connections(@RequestParam(required = false, defaultValue = "1") Integer pageNum,
+                              @RequestParam(required = false, defaultValue = "100") Integer pageSize,
+                              String name,
+                              String clientId,
+                              Long id) {
+        List<SseEmitter<? extends AccessUser>> list = (List) localConnectionService.getConnectionAll();
+        String nameTrim = name != null ? name.trim() : null;
+        list = list.stream()
+                .filter(e -> {
+                    if (id != null) {
+                        return e.getId() == id;
+                    }
+                    if (clientId != null && clientId.length() > 0) {
+                        return clientId.equals(e.getClientId());
+                    }
+                    if (nameTrim == null || nameTrim.isEmpty()) {
+                        return true;
+                    }
+                    AccessUser accessUser = e.getAccessUser();
+                    if (accessUser == null) {
+                        return false;
+                    }
+                    String eachName = accessUser.getName();
+                    if (eachName == null) {
+                        return false;
+                    }
+                    return eachName.contains(nameTrim);
+                })
+                .sorted(Comparator.comparing((Function<SseEmitter<? extends AccessUser>, String>)
+                        emitter -> Optional.ofNullable(emitter)
+                                .map(SseEmitter::getAccessUser)
+                                .map(AccessUser::getName)
+                                .orElse(""))
+                        .thenComparingLong(SseEmitter::getId))
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(wrapOkResponse(PageInfo.of(list, pageNum, pageSize).map(this::mapToConnectionVO)));
     }
 
-    private SseEmitter.SseEventBuilder buildEvent(Map rawMessage) {
+    protected Object mapToUserVO(ACCESS_USER user) {
+        return user;
+    }
+
+    protected Object mapToConnectionVO(SseEmitter<? extends AccessUser> emitter) {
+        ConnectionVO vo = new ConnectionVO();
+        vo.setId(emitter.getId());
+        vo.setAccessToken(emitter.getAccessToken());
+        vo.setAccessUserId(emitter.getUserId());
+        vo.setAccessUser(emitter.getAccessUser());
+        vo.setClientId(emitter.getClientId());
+        vo.setClientVersion(emitter.getClientVersion());
+        vo.setMessageCount(emitter.getCount());
+        vo.setTimeout(emitter.getTimeout());
+        vo.setChannel(emitter.getChannel());
+        vo.setCreateTime(new Date(emitter.getCreateTime()));
+        return vo;
+    }
+
+    protected SseEmitter.SseEventBuilder buildEvent(Map rawMessage) {
         Map message = new LinkedHashMap(rawMessage);
         SseEmitter.SseEventBuilder event = SseEmitter.event();
         Object id = message.remove("id");
@@ -357,4 +412,110 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             this.errorMessage = errorMessage;
         }
     }
+
+    public static class ConnectionVO {
+        private Long id;
+        private Object accessUserId;
+        private String accessToken;
+        private AccessUser accessUser;
+
+        private String clientId;
+        private String clientVersion;
+        private Date createTime;
+        private Integer messageCount;
+        private Long timeout;
+        private String channel;
+
+        public String getChannel() {
+            return channel;
+        }
+
+        public void setChannel(String channel) {
+            this.channel = channel;
+        }
+
+        public String getClientId() {
+            return clientId;
+        }
+
+        public void setClientId(String clientId) {
+            this.clientId = clientId;
+        }
+
+        public String getClientVersion() {
+            return clientVersion;
+        }
+
+        public void setClientVersion(String clientVersion) {
+            this.clientVersion = clientVersion;
+        }
+
+        public Date getCreateTime() {
+            return createTime;
+        }
+
+        public void setCreateTime(Date createTime) {
+            this.createTime = createTime;
+        }
+
+        public Integer getMessageCount() {
+            return messageCount;
+        }
+
+        public void setMessageCount(Integer messageCount) {
+            this.messageCount = messageCount;
+        }
+
+        public Long getTimeout() {
+            return timeout;
+        }
+
+        public void setTimeout(Long timeout) {
+            this.timeout = timeout;
+        }
+
+        public Date getExpireTime() {
+            if (timeout != null && timeout > 0) {
+                return new Date(createTime.getTime() + timeout);
+            }
+            return null;
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public String getAccessUserName() {
+            return accessUser != null ? accessUser.getName() : null;
+        }
+
+        public Object getAccessUserId() {
+            return accessUserId;
+        }
+
+        public void setAccessUserId(Object accessUserId) {
+            this.accessUserId = accessUserId;
+        }
+
+        public String getAccessToken() {
+            return accessToken;
+        }
+
+        public void setAccessToken(String accessToken) {
+            this.accessToken = accessToken;
+        }
+
+        public AccessUser getAccessUser() {
+            return accessUser;
+        }
+
+        public void setAccessUser(AccessUser accessUser) {
+            this.accessUser = accessUser;
+        }
+    }
+
 }

@@ -9,13 +9,14 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.0.4</version>
+ *      <version>1.0.5</version>
  *   </dependency>
  */
 class Sse {
   static version = '1.0.0'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
+    keepaliveTime: 300000,
     eventListeners: {}
   }
   static DEFAULT_RECONNECT_TIME = 5000
@@ -33,7 +34,6 @@ class Sse {
   /**
    * CLOSED（数值 2）
    * 连接未打开，并且用户代理未尝试重新连接。要么存在致命错误，要么close()调用了该方法。
-   * @type {number}
    */
   static STATE_CLOSED = 2
 
@@ -91,7 +91,7 @@ class Sse {
         }
       }
       this.state = Sse.STATE_CONNECTING
-      const es = new EventSource(`${this.options.url}/connect?clientId=${this.clientId}&clientVersion=${Sse.version}`)
+      const es = new EventSource(`${this.options.url}/connect?keepaliveTime=${this.options.keepaliveTime}clientId=${this.clientId}&clientVersion=${Sse.version}`)
       es.addEventListener('connect-finish', this.handleConnectionFinish)
       es.addEventListener('open', this.handleOpen)    // 连接成功
       es.addEventListener('error', this.handleError)  // 失败
