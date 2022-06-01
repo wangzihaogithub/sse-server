@@ -19,9 +19,24 @@ class Sse {
     eventListeners: {}
   }
   static DEFAULT_RECONNECT_TIME = 5000
-  static STATE_ESTABLISHED = 'ESTABLISHED'
-  static STATE_CONNECT = 'CONNECT'
-  static STATE_CLOSED = 'CLOSED'
+  /**
+   * CONNECTING（数值 0）
+   * 连接尚未建立，或者它已关闭并且用户代理正在重新连接
+   * 创建对象时，readyState必须将其设置为CONNECTING(0)。下面给出的用于处理连接的规则定义了值何时更改。
+   */
+  static STATE_CONNECTING = 0
+  /**
+   * OPEN（数值 1）
+   * 用户代理有一个打开的连接，并在接收到事件时分派它们。
+   */
+  static STATE_OPEN = 1
+  /**
+   * CLOSED（数值 2）
+   * 连接未打开，并且用户代理未尝试重新连接。要么存在致命错误，要么close()调用了该方法。
+   * @type {number}
+   */
+  static STATE_CLOSED = 2
+
   static install = function (Vue, opts = {}) {
     window.Sse = Sse
     console.log('install Sse')
@@ -42,10 +57,10 @@ class Sse {
     this.clientId = clientId
 
     this.handleConnectionFinish = (event) => {
+      this.clearReconnectTimer()
       const res = JSON.parse(event.data)
       this.connectionId = res.connectionId
       this.reconnectDuration = this.options.reconnectTime || res.reconnectTime || Sse.DEFAULT_RECONNECT_TIME
-      this.state = Sse.STATE_ESTABLISHED
       this.connectionTimestamp = res.serverTime
       this.connectionName = res.name
     }
@@ -55,22 +70,27 @@ class Sse {
     }
 
     this.handleOpen = () => {
-      this.clearReconnectTimer()
+      this.state = Sse.STATE_OPEN
     }
 
+    /**
+     * 则将该属性CLOSED设置readyState为CLOSED并触发error在该EventSource对象上 命名的事件。一旦用户代理连接失败，它就不会尝试重新连接。
+     */
     this.handleError = () => {
       this.state = Sse.STATE_CLOSED
-      this.clearReconnectTimer()
-      this.timer = setTimeout(() => {
-        this.es = this.newEventSource()
-      }, this.reconnectDuration || this.options.reconnectTime || Sse.DEFAULT_RECONNECT_TIME)
+      this.timer = setTimeout(this.newEventSource, this.reconnectDuration || this.options.reconnectTime || Sse.DEFAULT_RECONNECT_TIME)
     }
 
     this.newEventSource = () => {
-      if (this.state !== Sse.STATE_CLOSED) {
-        return this.es
+      if (this.es) {
+        if (this.es.readyState === Sse.STATE_CLOSED) {
+          this.removeEventSource()
+        } else {
+          this.state = this.es.readyState
+          return
+        }
       }
-      this.state = Sse.STATE_CONNECT
+      this.state = Sse.STATE_CONNECTING
       const es = new EventSource(`${this.options.url}/connect?clientId=${this.clientId}&clientVersion=${Sse.version}`)
       es.addEventListener('connect-finish', this.handleConnectionFinish)
       es.addEventListener('open', this.handleOpen)    // 连接成功
@@ -83,7 +103,7 @@ class Sse {
           console.error(`addEventListener(${eventName}) error`, e)
         }
       }
-      return es
+      this.es = es
     }
 
     this.clearReconnectTimer = () => {
@@ -94,15 +114,32 @@ class Sse {
     }
 
     this.destroy = () => {
-      this.clearReconnectTimer()
       this.close('destroy')
+    }
+
+    this.removeEventSource = () => {
+      if (!this.es) {
+        return
+      }
+      this.es.removeEventListener('error', this.handleError)
+      this.es.removeEventListener('open', this.handleOpen)
+      this.es.removeEventListener('connect-finish', this.handleConnectionFinish)
+      // 用户事件
+      for (let eventName in this.options.eventListeners) {
+        try {
+          this.es.removeEventListener(eventName, this.options.eventListeners[eventName])
+        } catch (e) {
+          console.error(`removeEventListener(${eventName}) error`, e)
+        }
+      }
+      this.es.close()
+      this.es = null
     }
 
     this.close = (reason = 'close') => {
       this.state = Sse.STATE_CLOSED
-      if (this.es) {
-        this.es.close()
-      }
+      this.removeEventSource()
+      this.clearReconnectTimer()
       const connectionId = this.connectionId
       if (connectionId !== undefined) {
         this.connectionId = undefined
@@ -112,8 +149,6 @@ class Sse {
         params.set('reason', reason)
         params.set('sseVersion', Sse.version)
         navigator.sendBeacon(`${this.options.url}/disconnect`, params)
-        this.clearReconnectTimer()
-        this.es = null
       }
     }
 
@@ -127,15 +162,15 @@ class Sse {
     }, false)
 
     // 监听浏览器窗口切换时
-    document.addEventListener('visibilitychange', (e) => {
+    document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
-        this.es = this.newEventSource()
+        this.newEventSource()
       } else {
         this.close('visibilitychange')
       }
     })
 
-    this.es = this.newEventSource()
+    this.newEventSource()
   }
 }
 
