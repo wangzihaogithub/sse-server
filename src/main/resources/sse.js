@@ -13,7 +13,7 @@
  *   </dependency>
  */
 class Sse {
-  static version = '1.0.0'
+  static version = '1.0.5'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 300000,
