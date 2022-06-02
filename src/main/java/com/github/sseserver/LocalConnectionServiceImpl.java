@@ -68,7 +68,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         if (keepaliveTime == null) {
             keepaliveTime = 300_000L;
         }
-        // 设置超时时间，0表示不过期。tomcat默认30秒，超过时间未完成会抛出异常：AsyncRequestTimeoutException
+        // 设置超时时间，0表示不过期。servlet默认30秒，超过时间未完成会抛出异常：AsyncRequestTimeoutException
         SseEmitter<ACCESS_USER> result = new SseEmitter<>(keepaliveTime, accessUser);
         result.onCompletion(completionCallBack(result));
         result.onError(errorCallBack(result));

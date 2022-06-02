@@ -130,32 +130,37 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     }
 
     public Date getAccessTime() {
-        Long accessTime = castLong(attributeMap.get("accessTime"));
+        Long accessTime = castLong(httpParameters.get("accessTime"));
         return accessTime != null ? new Date(accessTime) : null;
     }
 
+    public List<String> getListeners() {
+        String listeners = (String) httpParameters.get("listeners");
+        return listeners != null && listeners.length() > 0 ? Arrays.asList(listeners.split(",")) : Collections.emptyList();
+    }
+
     public String getClientId() {
-        return (String) attributeMap.get("clientId");
+        return (String) httpParameters.get("clientId");
     }
 
     public String getScreen() {
-        return (String) attributeMap.get("screen");
+        return (String) httpParameters.get("screen");
     }
 
     public Long getTotalJSHeapSize() {
-        return castLong(attributeMap.get("totalJSHeapSize"));
+        return castLong(httpParameters.get("totalJSHeapSize"));
     }
 
     public Long getUsedJSHeapSize() {
-        return castLong(attributeMap.get("usedJSHeapSize"));
+        return castLong(httpParameters.get("usedJSHeapSize"));
     }
 
     public Long getJsHeapSizeLimit() {
-        return castLong(attributeMap.get("jsHeapSizeLimit"));
+        return castLong(httpParameters.get("jsHeapSizeLimit"));
     }
 
     public String getClientVersion() {
-        return (String) attributeMap.get("clientVersion");
+        return (String) httpParameters.get("clientVersion");
     }
 
     public Object getUserId() {
@@ -278,7 +283,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         }
     }
 
-    public boolean isChange(Object newMessage, String messageType) {
+    public boolean isMessageChange(Object newMessage, String messageType) {
         Object oldMessage = getAttribute(messageType);
         if (Objects.equals(oldMessage, newMessage)) {
             return false;
@@ -287,9 +292,9 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         return true;
     }
 
-    public <MESSAGE, MESSAGE_ID> List<MESSAGE> distinct(List<MESSAGE> messageList,
-                                                        Function<MESSAGE, MESSAGE_ID> idGetter,
-                                                        String messageType) {
+    public <MESSAGE, MESSAGE_ID> List<MESSAGE> distinctMessageList(List<MESSAGE> messageList,
+                                                                   Function<MESSAGE, MESSAGE_ID> idGetter,
+                                                                   String messageType) {
         Set<MESSAGE_ID> distinctSet = (Set) getAttributeMap().computeIfAbsent(messageType, o -> new HashSet<>());
         return messageList.stream()
                 .filter(e -> !distinctSet.contains(idGetter.apply(e)))
