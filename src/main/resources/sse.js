@@ -53,7 +53,7 @@ class Sse {
       let accessTimestamp = sessionStorage.getItem('sseAccessTimestamp')
       this.options.accessTimestamp = accessTimestamp? Number(accessTimestamp): Date.now()
     }
-    sessionStorage.setItem('sseAccessTimestamp', this.options.accessTimestamp)
+    sessionStorage.setItem('sseAccessTimestamp', `${this.options.accessTimestamp}`)
 
     let clientId = this.options.clientId || localStorage.getItem('sseClientId')
     if (!clientId) {
