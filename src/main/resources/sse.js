@@ -48,9 +48,12 @@ class Sse {
 
   constructor(options) {
     this.options = Object.assign({}, Sse.DEFAULT_OPTIONS, options)
+
     if(!this.options.accessTimestamp){
-      this.options.accessTimestamp = Date.now()
+      let accessTimestamp = sessionStorage.getItem('sseAccessTimestamp')
+      this.options.accessTimestamp = accessTimestamp? Number(accessTimestamp): Date.now()
     }
+    sessionStorage.setItem('sseAccessTimestamp', this.options.accessTimestamp)
 
     let clientId = this.options.clientId || localStorage.getItem('sseClientId')
     if (!clientId) {
