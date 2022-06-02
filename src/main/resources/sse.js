@@ -48,6 +48,9 @@ class Sse {
 
   constructor(options) {
     this.options = Object.assign({}, Sse.DEFAULT_OPTIONS, options)
+    if(!this.options.accessTimestamp){
+      this.options.accessTimestamp = Date.now()
+    }
 
     let clientId = this.options.clientId || localStorage.getItem('sseClientId')
     if (!clientId) {
@@ -98,6 +101,8 @@ class Sse {
       query.append('clientId', this.clientId)
       query.append('clientVersion', Sse.version)
       query.append('screen', `${window.screen.width}x${window.screen.height}`)
+      query.append('accessTime', this.options.accessTimestamp)
+      query.append('listeners', Object.keys(this.options.eventListeners).join(','))
       if (window.performance.memory) {
         for (let key in window.performance.memory) {
           query.append(key, window.performance.memory[key])

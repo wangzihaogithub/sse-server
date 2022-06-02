@@ -1,4 +1,4 @@
-package com.github.sseserver;
+package com.github.sseserver.util;
 
 import java.io.Serializable;
 import java.util.*;

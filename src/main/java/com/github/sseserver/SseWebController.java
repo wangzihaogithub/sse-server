@@ -1,5 +1,7 @@
 package com.github.sseserver;
 
+import com.github.sseserver.util.PageInfo;
+import com.github.sseserver.util.WebUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
@@ -112,30 +114,38 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     @RequestMapping("/connect")
     public Object connect(@RequestParam Map query, @RequestBody(required = false) Map body,
                           Long keepaliveTime, HttpServletRequest request) {
-        Map<String, Object> message = new LinkedHashMap<>(query);
+        // args
+        Map<String, Object> attributeMap = new LinkedHashMap<>(query);
         if (body != null) {
-            message.putAll(body);
+            attributeMap.putAll(body);
         }
+
+        // Verify login
         ACCESS_USER accessUser = getAccessUser();
         ResponseEntity responseEntity = buildIfConnectVerifyErrorResponse(accessUser, query, body, keepaliveTime, request);
         if (responseEntity != null) {
             return responseEntity;
         }
-        SseEmitter<ACCESS_USER> emitter = localConnectionService.connect(accessUser, keepaliveTime, message);
 
-        String channel = Objects.toString(message.get("channel"), null);
+        // build connect
+        SseEmitter<ACCESS_USER> emitter = localConnectionService.connect(accessUser, keepaliveTime, attributeMap);
+
+        // dump
+        String channel = Objects.toString(attributeMap.get("channel"), null);
         emitter.setChannel(isBlank(channel) ? null : channel);
-
+        emitter.setUserAgent(request.getHeader("User-Agent"));
+        emitter.setRequestIp(WebUtil.getRequestIpAddr(request));
+        emitter.setRequestDomain(WebUtil.getRequestDomain(request, false));
+        emitter.setHttpCookies(request.getCookies());
+        emitter.getHttpParameters().putAll(attributeMap);
         Enumeration<String> headerNames = request.getHeaderNames();
-        Map<String, String> headerMap = new LinkedHashMap<>();
         while (headerNames.hasMoreElements()) {
             String name = headerNames.nextElement();
-            headerMap.put(name, request.getHeader(name));
+            emitter.getHttpHeaders().put(name, request.getHeader(name));
         }
-        emitter.setAttribute("httpHeaders", headerMap);
-        emitter.setAttribute("httpCookies", request.getCookies());
-        emitter.setAttribute("httpParameters", new LinkedHashMap<>(request.getParameterMap()));
-        onConnect(emitter, message);
+
+        // callback
+        onConnect(emitter, attributeMap);
         return emitter;
     }
 
@@ -230,7 +240,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                         @RequestParam(required = false, defaultValue = "100") Integer pageSize,
                         String name) {
         List<? extends AccessUser> list = localConnectionService.getUsers();
-        String nameTrim = name != null ? name.trim() : null;
+        String nameTrim = name != null ? name.trim().toLowerCase() : null;
         if (nameTrim != null && nameTrim.length() > 0) {
             list = list.stream()
                     .filter(e -> {
@@ -238,7 +248,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                         if (eachName == null) {
                             return false;
                         }
-                        return eachName.contains(nameTrim);
+                        return eachName.toLowerCase().contains(nameTrim);
                     })
                     .collect(Collectors.toList());
         }
@@ -253,7 +263,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                               String clientId,
                               Long id) {
         List<SseEmitter<? extends AccessUser>> list = (List) localConnectionService.getConnectionAll();
-        String nameTrim = name != null ? name.trim() : null;
+        String nameTrim = name != null ? name.trim().toLowerCase() : null;
         list = list.stream()
                 .filter(e -> {
                     if (id != null) {
@@ -273,7 +283,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                     if (eachName == null) {
                         return false;
                     }
-                    return eachName.contains(nameTrim);
+                    return eachName.toLowerCase().contains(nameTrim);
                 })
                 .sorted(Comparator.comparing((Function<SseEmitter<? extends AccessUser>, String>)
                         emitter -> Optional.ofNullable(emitter)
@@ -292,15 +302,29 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     protected Object mapToConnectionVO(SseEmitter<? extends AccessUser> emitter) {
         ConnectionVO vo = new ConnectionVO();
         vo.setId(emitter.getId());
-        vo.setAccessToken(emitter.getAccessToken());
-        vo.setAccessUserId(emitter.getUserId());
-        vo.setAccessUser(emitter.getAccessUser());
-        vo.setClientId(emitter.getClientId());
-        vo.setClientVersion(emitter.getClientVersion());
         vo.setMessageCount(emitter.getCount());
         vo.setTimeout(emitter.getTimeout());
         vo.setChannel(emitter.getChannel());
         vo.setCreateTime(new Date(emitter.getCreateTime()));
+        vo.setAccessTime(emitter.getAccessTime());
+
+        vo.setAccessToken(emitter.getAccessToken());
+        vo.setAccessUserId(emitter.getUserId());
+        vo.setAccessUser(emitter.getAccessUser());
+
+        vo.setClientId(emitter.getClientId());
+        vo.setClientVersion(emitter.getClientVersion());
+
+        vo.setRequestIp(emitter.getRequestIp());
+        vo.setRequestDomain(emitter.getRequestDomain());
+        vo.setUserAgent(emitter.getUserAgent());
+        vo.setHttpHeaders(emitter.getHttpHeaders());
+        vo.setHttpParameters(emitter.getHttpParameters());
+
+        vo.setScreen(emitter.getScreen());
+        vo.setJsHeapSizeLimit(emitter.getJsHeapSizeLimit());
+        vo.setTotalJSHeapSize(emitter.getTotalJSHeapSize());
+        vo.setUsedJSHeapSize(emitter.getUsedJSHeapSize());
         return vo;
     }
 
@@ -414,17 +438,115 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     }
 
     public static class ConnectionVO {
+        // connection
         private Long id;
+        private Date createTime;
+        private Long timeout;
+        private Date accessTime;
+        private Integer messageCount;
+        private String channel;
+
+        // user
         private Object accessUserId;
         private String accessToken;
         private AccessUser accessUser;
 
+        // client
         private String clientId;
         private String clientVersion;
-        private Date createTime;
-        private Integer messageCount;
-        private Long timeout;
-        private String channel;
+
+        // http
+        private String requestIp;
+        private String requestDomain;
+        private String userAgent;
+        private Map<String, Object> httpParameters;
+        private Map<String, String> httpHeaders;
+
+        // browser
+        private String screen;
+        private Long totalJSHeapSize;
+        private Long usedJSHeapSize;
+        private Long jsHeapSizeLimit;
+
+        public String getScreen() {
+            return screen;
+        }
+
+        public void setScreen(String screen) {
+            this.screen = screen;
+        }
+
+        public Long getTotalJSHeapSize() {
+            return totalJSHeapSize;
+        }
+
+        public void setTotalJSHeapSize(Long totalJSHeapSize) {
+            this.totalJSHeapSize = totalJSHeapSize;
+        }
+
+        public Long getUsedJSHeapSize() {
+            return usedJSHeapSize;
+        }
+
+        public void setUsedJSHeapSize(Long usedJSHeapSize) {
+            this.usedJSHeapSize = usedJSHeapSize;
+        }
+
+        public Long getJsHeapSizeLimit() {
+            return jsHeapSizeLimit;
+        }
+
+        public void setJsHeapSizeLimit(Long jsHeapSizeLimit) {
+            this.jsHeapSizeLimit = jsHeapSizeLimit;
+        }
+
+        public String getRequestIp() {
+            return requestIp;
+        }
+
+        public void setRequestIp(String requestIp) {
+            this.requestIp = requestIp;
+        }
+
+        public String getRequestDomain() {
+            return requestDomain;
+        }
+
+        public void setRequestDomain(String requestDomain) {
+            this.requestDomain = requestDomain;
+        }
+
+        public String getUserAgent() {
+            return userAgent;
+        }
+
+        public void setUserAgent(String userAgent) {
+            this.userAgent = userAgent;
+        }
+
+        public Map<String, Object> getHttpParameters() {
+            return httpParameters;
+        }
+
+        public void setHttpParameters(Map<String, Object> httpParameters) {
+            this.httpParameters = httpParameters;
+        }
+
+        public Map<String, String> getHttpHeaders() {
+            return httpHeaders;
+        }
+
+        public void setHttpHeaders(Map<String, String> httpHeaders) {
+            this.httpHeaders = httpHeaders;
+        }
+
+        public Date getAccessTime() {
+            return accessTime;
+        }
+
+        public void setAccessTime(Date accessTime) {
+            this.accessTime = accessTime;
+        }
 
         public String getChannel() {
             return channel;

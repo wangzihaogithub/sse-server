@@ -5,8 +5,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.ServerHttpResponse;
 
+import javax.servlet.http.Cookie;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -29,6 +31,13 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     private int count;
     private String channel;
 
+    private String requestIp;
+    private String requestDomain;
+    private String userAgent;
+
+    private final Map<String, Object> httpParameters = new LinkedHashMap<>();
+    private Map<String, String> httpHeaders = new LinkedHashMap<>();
+    private Cookie[] httpCookies;
 
     /**
      * timeout = 0是永不过期
@@ -47,7 +56,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
 
     private static long newId() {
         long id = ID_INCR.getAndIncrement();
-        if (id == Long.MAX_VALUE) {
+        if (id == Integer.MAX_VALUE) {
             id = 0;
             ID_INCR.set(1);
         }
@@ -59,7 +68,53 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     }
 
     private static Long castLong(Object value) {
-        return value == null || "".equals(value) ? null : Long.valueOf(value.toString());
+        if (value == null || "".equals(value)) {
+            return null;
+        }
+        if (value instanceof Date) {
+            return ((Date) value).getTime();
+        }
+        return Long.valueOf(value.toString());
+    }
+
+    public void setHttpCookies(Cookie[] httpCookies) {
+        this.httpCookies = httpCookies;
+    }
+
+    public Map<String, Object> getHttpParameters() {
+        return httpParameters;
+    }
+
+    public Cookie[] getHttpCookies() {
+        return httpCookies;
+    }
+
+    public Map<String, String> getHttpHeaders() {
+        return httpHeaders;
+    }
+
+    public String getRequestIp() {
+        return requestIp;
+    }
+
+    public void setRequestIp(String requestIp) {
+        this.requestIp = requestIp;
+    }
+
+    public String getRequestDomain() {
+        return requestDomain;
+    }
+
+    public void setRequestDomain(String requestDomain) {
+        this.requestDomain = requestDomain;
+    }
+
+    public String getUserAgent() {
+        return userAgent;
+    }
+
+    public void setUserAgent(String userAgent) {
+        this.userAgent = userAgent;
     }
 
     public int getCount() {
@@ -72,6 +127,11 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
 
     public long getId() {
         return id;
+    }
+
+    public Date getAccessTime() {
+        Long accessTime = castLong(attributeMap.get("accessTime"));
+        return accessTime != null ? new Date(accessTime) : null;
     }
 
     public String getClientId() {
