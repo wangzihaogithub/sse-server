@@ -18,7 +18,8 @@ class Sse {
     url: '/api/sse',
     keepaliveTime: 300000,
     eventListeners: {},
-    query: {}
+    query: {},
+    withCredentials: true
   }
   static DEFAULT_RECONNECT_TIME = 5000
   /**
@@ -115,7 +116,7 @@ class Sse {
         query.append(key, this.options.query[key])
       }
 
-      const es = new EventSource(`${this.options.url}/connect?${query.toString()}`)
+      const es = new EventSource(`${this.options.url}/connect?${query.toString()}`,  { withCredentials: this.options.withCredentials })
       es.addEventListener('connect-finish', this.handleConnectionFinish)
       es.addEventListener('open', this.handleOpen)    // 连接成功
       es.addEventListener('error', this.handleError)  // 失败
