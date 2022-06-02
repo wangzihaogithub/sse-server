@@ -292,14 +292,14 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                                 .orElse(""))
                         .thenComparingLong(SseEmitter::getId))
                 .collect(Collectors.toList());
-        return ResponseEntity.ok(wrapOkResponse(PageInfo.of(list, pageNum, pageSize).map(this::mapToConnectionVO)));
+        return ResponseEntity.ok(wrapOkResponse(PageInfo.of(list, pageNum, pageSize).map(e-> mapToConnectionVO((SseEmitter<ACCESS_USER>) e))));
     }
 
     protected Object mapToUserVO(ACCESS_USER user) {
         return user;
     }
 
-    protected Object mapToConnectionVO(SseEmitter<? extends AccessUser> emitter) {
+    protected Object mapToConnectionVO(SseEmitter<ACCESS_USER> emitter) {
         ConnectionVO vo = new ConnectionVO();
         vo.setId(emitter.getId());
         vo.setMessageCount(emitter.getCount());
