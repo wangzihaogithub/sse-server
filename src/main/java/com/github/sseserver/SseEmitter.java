@@ -58,6 +58,10 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         return new SseEventBuilderImpl();
     }
 
+    private static Long castLong(Object value) {
+        return value == null || "".equals(value) ? null : Long.valueOf(value.toString());
+    }
+
     public int getCount() {
         return count;
     }
@@ -72,6 +76,22 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
 
     public String getClientId() {
         return (String) attributeMap.get("clientId");
+    }
+
+    public String getScreen() {
+        return (String) attributeMap.get("screen");
+    }
+
+    public Long getTotalJSHeapSize() {
+        return castLong(attributeMap.get("totalJSHeapSize"));
+    }
+
+    public Long getUsedJSHeapSize() {
+        return castLong(attributeMap.get("usedJSHeapSize"));
+    }
+
+    public Long getJsHeapSizeLimit() {
+        return castLong(attributeMap.get("jsHeapSizeLimit"));
     }
 
     public String getClientVersion() {

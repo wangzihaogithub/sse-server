@@ -78,10 +78,11 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         String accessToken = wrapStringKey(result.getAccessToken());
         String userId = wrapStringKey(Objects.toString(result.getUserId(), null));
         String customerId = wrapStringKey(Objects.toString(result.getCustomerId(), null));
-        String channel = wrapStringKey(result.getChannel());
 
         result.addDisConnectListener(e -> {
             log.debug("sse {} connection disconnect : {}", beanName, e);
+
+            String channel = wrapStringKey(e.getChannel());
 
             notifyListener(e, disconnectListeners, disconnectListenerMap);
             connectionMap.remove(id);
@@ -119,6 +120,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             }
         });
         result.addConnectListener(e -> {
+            String channel = wrapStringKey(e.getChannel());
             channel2ConnectionIdMap.computeIfAbsent(channel, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
                     .add(e.getId());
             log.debug("sse {} connection create : {}", beanName, e);

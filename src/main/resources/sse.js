@@ -17,7 +17,8 @@ class Sse {
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 300000,
-    eventListeners: {}
+    eventListeners: {},
+    query: {}
   }
   static DEFAULT_RECONNECT_TIME = 5000
   /**
@@ -91,7 +92,22 @@ class Sse {
         }
       }
       this.state = Sse.STATE_CONNECTING
-      const es = new EventSource(`${this.options.url}/connect?keepaliveTime=${this.options.keepaliveTime}clientId=${this.clientId}&clientVersion=${Sse.version}`)
+
+      const query = new URLSearchParams()
+      query.append('keepaliveTime', this.options.keepaliveTime)
+      query.append('clientId', this.clientId)
+      query.append('clientVersion', Sse.version)
+      query.append('screen', `${window.screen.width}x${window.screen.height}`)
+      if (window.performance.memory) {
+        for (let key in window.performance.memory) {
+          query.append(key, window.performance.memory[key])
+        }
+      }
+      for (let key in this.options.query) {
+        query.append(key, this.options.query[key])
+      }
+
+      const es = new EventSource(`${this.options.url}/connect?${query.toString()}`)
       es.addEventListener('connect-finish', this.handleConnectionFinish)
       es.addEventListener('open', this.handleOpen)    // 连接成功
       es.addEventListener('error', this.handleError)  // 失败
