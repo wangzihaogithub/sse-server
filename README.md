@@ -156,7 +156,9 @@ sse协议的后端API, 比websocket轻量的实时通信,
 4.  编写业务逻辑 （前端） 
             
             
-    1. 强烈推荐! 原生html示例, 或Vue (不需要前端引入任何依赖sse.js, 只需要这几行代码)
+1. 强烈推荐! 原生html示例, 或Vue (不需要前端引入任何依赖sse.js, 只需要这几行代码)
+    
+    
     
           1. 函数声明, 在index.html或Vue的index.html里加入代码
           
@@ -177,7 +179,8 @@ sse协议的后端API, 比websocket轻量的实时通信,
             })
              
            
-    2. Vue示例(方式1)：
+2. Vue示例(方式1)：
+     
      
      
             下载前端代码 https://github.com/wangzihaogithub/sse-js.git, 或复制本项目中的 /src/resources/sse.js
