@@ -1,7 +1,39 @@
 # sse-server
 
 #### 介绍
-sse协议的后端API, 比websocket轻量的实时通信
+sse协议的后端API, 比websocket轻量的实时通信, 
+
+实现与封装了业务LocalConnectionService (浏览器tab切换逻辑, 断线重连, 根据用户ID发送, 获取在线用户, 上线通知, 离线通知)
+
+
+1. 只有用户当前能看到或正在使用的页签会保持链接. 如果用户不浏览会自动下线, 强实时在线.
+
+2. 不需要前端引入任何js代码和任何依赖, 客户端代码在后端更新, 前端立即生效. 使用的是es6的前端语法, 动态import(接口)
+
+3. 支持双向通信, 后端发送消息后会返回是否成功, 前端发送有可靠保证, 会自动重连, 成功后会自动将离线期间的请求继续发送.
+
+
+        // 1.后端给前端 
+        const listeners = {
+           'myHunterBell': (event) => {console.log(event.data)},
+           'xxx-xx': this.xx
+         }
+        addSseEventListener('/sse/hr', listeners).then(sseConnection => {
+           this.sseConnection = sseConnection
+        })
+
+        // 2.前端给后端 当前连接的json请求
+        sseConnection.send(path, body, query, headers).then(response =>{
+            console.log(response)
+        })
+        // 3.前端给后端 当前连接的文件上传
+        sseConnection.upload(path, new FormData(), query, headers).then(response =>{
+            console.log(response)
+        })
+
+4. 在nginx开启http2情况下, 可以和其他短链接ajax请求, 复用一个连接, 摆脱了浏览器单个域名下的最大连接数限制, 在客户网络繁忙或网卡老化的情况下有奇效, 这是websocket做不到的. 
+
+
 
 #### 软件架构
 软件架构说明
@@ -22,6 +54,17 @@ sse协议的后端API, 比websocket轻量的实时通信
 2.  配置业务逻辑 （后端）
 
 
+        // 实现AccessUser 可以使用sendByUserId()接口. 
+        // 实现AccessToken 可以使用sendByAccessToken()接口, (多客户端登陆系统)
+        // 实现CustomerAccessUser 可以使用sendByCustomerId()接口, (于多租户系统)
+        @Data
+        public class HrAccessUser implements AccessToken, AccessUser, CustomerAccessUser {
+            private String accessToken;
+            private Integer id;
+            private String name;
+        }
+
+        // 支持多系统
         @Bean
         public LocalConnectionService hrLocalConnectionService() {
             // hr系统 用hrLocalConnectionService
@@ -49,7 +92,7 @@ sse协议的后端API, 比websocket轻量的实时通信
          * @author hao 2021年12月7日19:29:51
          */
         @RestController
-        @RequestMapping("/sse/hr")
+        @RequestMapping("/sse/hr") // 这里自定义地址, 给前端这个地址连
         @Slf4j
         public class HrController extends SseWebController<HrAccessUser> {
             @Override
@@ -69,24 +112,77 @@ sse协议的后端API, 比websocket轻量的实时通信
             }
         }
 
-3.  实现推送信息业务逻辑（后端）
+
+3.  接口示例: 实现推送信息业务逻辑（后端）
 
 
+            // 获取所有在线用户
+            List<ACCESS_USER> userList = hrLocalConnectionService.getUsers();
+            // 上线通知
+            hrLocalConnectionService.addConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer);
+            // 离线通知
+            hrLocalConnectionService.addDisConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer);
+            
+            // 推送消息 (根据用户ID)
             MyHrBellDTO bellDTO = new MyHrBellDTO();
             bellDTO.setCount(100);
-            hrLocalConnectionService.sendByUserId(hrUserId,
+            int successCount = hrLocalConnectionService.sendByUserId(hrUserId,
                     SseEmitter.event()
                             .data(bellDTO)
                             .name("myHrBell")
             );
             
+            // 推送消息 (根据登陆令牌)
+            int sendByAccessToken(accessToken, message)
+            
+            // 推送消息 (根据租户ID)
+            int sendByCustomerId(channel, message)
+                        
+            // 推送消息 (根据自定义信道)
+            int sendByChannel(channel, message)
+            
+            // 推送消息 (群发)
+            int sendAll(message);
+            
+            // 默认自带http接口 (分页查询当前在线用户) 在SseWebController
+            http://localhost:8080/sse/hr/users
+            
+            // 默认自带http接口 (分页查询当前在线连接) 在SseWebController
+            http://localhost:8080/sse/hr/connections
+            
+            // 默认自带http接口 (踢掉用户) 在SseWebController
+            http://localhost:8080/sse/hr/disconnectUser
+                        
+           
 4.  编写业务逻辑 （前端） 
-
-    前端代码 https://github.com/wangzihaogithub/sse-js.git
-
-
-    1. Vue示例(方式1)：
+            
+            
+    1. 强烈推荐! 原生html示例, 或Vue (不需要前端引入任何依赖sse.js, 只需要这几行代码)
     
+          1. 函数声明, 在index.html或Vue的index.html里加入代码
+          
+          <script>
+                function addSseEventListener(url, eventListeners) {
+                  return import(url).then(module => new module.default({url, eventListeners}))
+                }
+          </script>
+  
+         2. 使用
+         
+            const listeners = {
+               'myHunterBell': this.onHunterBell,
+               'xxx-xx': this.xx
+             }
+            addSseEventListener('/sse/hr', listeners).then(sseConnection => {
+               this.sseConnection = sseConnection
+            })
+             
+           
+    2. Vue示例(方式1)：
+     
+     
+            下载前端代码 https://github.com/wangzihaogithub/sse-js.git, 或复制本项目中的 /src/resources/sse.js
+
             import Sse from '../util/sse.js'
     
             mounted() {
@@ -112,29 +208,8 @@ sse协议的后端API, 比websocket轻量的实时通信
               this.hrSse.destroy()
               this.hunterSse.destroy()
             }
-            
-            
-    2. 原生html示例, 或Vue (方式2) (不需要前端引入任何依赖sse.js, 只需要前端下面几行代码)
-    
-          1. 在index.html加入代码
-          
-          <script>
-                function addSseEventListener(url, eventListeners) {
-                  return import(url).then(module => new module.default({url, eventListeners}))
-                }
-          </script>
-  
-         2. 使用
-         
-            const listeners = {
-               'myHunterBell': this.onHunterBell,
-               'xxx-xx': this.xx
-             }
-            addSseEventListener('/sse/hr', listeners).then(sseConnection => {
-               this.sseConnection = sseConnection
-            })
-             
-             
+
+
 #### 使用说明
 
 1.  xxxx
