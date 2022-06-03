@@ -18,7 +18,7 @@ sse协议的后端API, 比websocket轻量的实时通信,
            'myHunterBell': (event) => {console.log(event.data)},
            'xxx-xx': this.xx
          }
-        addSseEventListener('/sse/hr', listeners).then(sseConnection => {
+        sseEventListener('/sse/hr', listeners).then(sseConnection => {
            this.sseConnection = sseConnection
         })
 
@@ -162,7 +162,7 @@ sse协议的后端API, 比websocket轻量的实时通信,
           1. 函数声明, 在index.html或Vue的index.html里加入代码
           
           <script>
-                function addSseEventListener(url, eventListeners) {
+                function sseEventListener(url, eventListeners) {
                   return import(url).then(module => new module.default({url, eventListeners}))
                 }
           </script>
@@ -173,7 +173,7 @@ sse协议的后端API, 比websocket轻量的实时通信,
                'myHunterBell': this.onHunterBell,
                'xxx-xx': this.xx
              }
-            addSseEventListener('/sse/hr', listeners).then(sseConnection => {
+            sseEventListener('/sse/hr', listeners).then(sseConnection => {
                this.sseConnection = sseConnection
             })
              
