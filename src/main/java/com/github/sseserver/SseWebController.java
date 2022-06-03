@@ -41,6 +41,8 @@ import java.util.stream.Collectors;
 //@RequestMapping("/a/sse")
 //@RequestMapping("/b/sse")
 public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
+    @Autowired
+    protected HttpServletRequest request;
     protected LocalConnectionService localConnectionService;
 
     /**
@@ -334,6 +336,14 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         vo.setCreateTime(new Date(emitter.getCreateTime()));
         vo.setAccessTime(emitter.getAccessTime());
 
+        vo.setListeners(emitter.getListeners());
+        vo.setRequestMessageCount(emitter.getRequestMessageCount());
+        vo.setRequestUploadCount(emitter.getRequestUploadCount());
+        long lastRequestTimestamp = emitter.getLastRequestTimestamp();
+        if (lastRequestTimestamp > 0) {
+            vo.setLastRequestTime(new Date(lastRequestTimestamp));
+        }
+
         vo.setAccessToken(emitter.getAccessToken());
         vo.setAccessUserId(emitter.getUserId());
         vo.setAccessUser(emitter.getAccessUser());
@@ -472,6 +482,12 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         private Integer messageCount;
         private String channel;
 
+        // request
+        private Date lastRequestTime;
+        private Integer requestMessageCount;
+        private Integer requestUploadCount;
+        private List<String> listeners;
+
         // user
         private Object accessUserId;
         private String accessToken;
@@ -572,6 +588,38 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
 
         public void setAccessTime(Date accessTime) {
             this.accessTime = accessTime;
+        }
+
+        public Date getLastRequestTime() {
+            return lastRequestTime;
+        }
+
+        public void setLastRequestTime(Date lastRequestTime) {
+            this.lastRequestTime = lastRequestTime;
+        }
+
+        public Integer getRequestMessageCount() {
+            return requestMessageCount;
+        }
+
+        public void setRequestMessageCount(Integer requestMessageCount) {
+            this.requestMessageCount = requestMessageCount;
+        }
+
+        public Integer getRequestUploadCount() {
+            return requestUploadCount;
+        }
+
+        public void setRequestUploadCount(Integer requestUploadCount) {
+            this.requestUploadCount = requestUploadCount;
+        }
+
+        public List<String> getListeners() {
+            return listeners;
+        }
+
+        public void setListeners(List<String> listeners) {
+            this.listeners = listeners;
         }
 
         public String getChannel() {
