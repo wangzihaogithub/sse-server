@@ -93,11 +93,10 @@ sse协议的后端API, 比websocket轻量的实时通信,
          */
         @RestController
         @RequestMapping("/sse/hr") // 这里自定义地址, 给前端这个地址连
-        @Slf4j
         public class HrController extends SseWebController<HrAccessUser> {
             @Override
             protected HrAccessUser getAccessUser() {
-                return WebSecurityAccessFilter.getCurrentAccessUser();
+                return WebSecurityAccessFilter.getCurrentAccessUser(super.request);
             }
         
             @Autowired
