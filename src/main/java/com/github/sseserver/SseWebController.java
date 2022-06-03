@@ -108,7 +108,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
 
     protected ResponseEntity buildIfConnectVerifyErrorResponse(ACCESS_USER accessUser,
                                                                Map query, Map body,
-                                                               Long keepaliveTime, HttpServletRequest request) {
+                                                               Long keepaliveTime) {
         if (accessUser == null) {
             return buildUnauthorizedResponse();
         }
@@ -126,7 +126,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
      */
     @RequestMapping("/connect")
     public Object connect(@RequestParam Map query, @RequestBody(required = false) Map body,
-                          Long keepaliveTime, HttpServletRequest request) {
+                          Long keepaliveTime) {
         // args
         Map<String, Object> attributeMap = new LinkedHashMap<>(query);
         if (body != null) {
@@ -135,7 +135,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
 
         // Verify login
         ACCESS_USER accessUser = getAccessUser();
-        ResponseEntity responseEntity = buildIfConnectVerifyErrorResponse(accessUser, query, body, keepaliveTime, request);
+        ResponseEntity responseEntity = buildIfConnectVerifyErrorResponse(accessUser, query, body, keepaliveTime);
         if (responseEntity != null) {
             return responseEntity;
         }
