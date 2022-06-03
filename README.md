@@ -114,7 +114,7 @@ sse协议的后端API, 比websocket轻量的实时通信
             }
             
             
-    2. 原生html示例, 或Vue (方式2)：
+    2. 原生html示例, 或Vue (方式2) (不需要前端引入任何依赖sse.js, 只需要前端下面几行代码)
     
           1. 在index.html加入代码
           
