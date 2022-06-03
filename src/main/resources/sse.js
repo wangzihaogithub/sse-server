@@ -9,14 +9,14 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.0.5</version>
+ *      <version>1.0.6</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.0.5'
+  static version = '1.0.6'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
-    keepaliveTime: 300000,
+    keepaliveTime: 900000,
     eventListeners: {},
     query: {},
     withCredentials: true
@@ -44,8 +44,10 @@ class Sse {
     console.log('install Sse')
   }
 
-  state = Sse.STATE_CLOSED
+  state = Sse.STATE_CONNECTING
   connectionName = ''
+  sendQueue = []
+  uploadQueue = []
 
   constructor(options) {
     this.options = Object.assign({}, Sse.DEFAULT_OPTIONS, options)
@@ -71,6 +73,14 @@ class Sse {
       this.reconnectDuration = this.options.reconnectTime || res.reconnectTime || Sse.DEFAULT_RECONNECT_TIME
       this.connectionTimestamp = res.serverTime
       this.connectionName = res.name
+
+      let task
+      while ((task = this.sendQueue.pop())) {
+        this.send(task.path, task.body, task.query, task.headers).then(task.resolve).catch(task.reject)
+      }
+      while ((task = this.uploadQueue.pop())) {
+        this.upload(task.path, task.formData, task.query, task.headers).then(task.resolve).catch(task.reject)
+      }
     }
 
     this.toString = () => {
@@ -174,6 +184,70 @@ class Sse {
         params.set('reason', reason)
         params.set('sseVersion', Sse.version)
         navigator.sendBeacon(`${this.options.url}/disconnect`, params)
+      }
+    }
+
+    this.isActive = () =>{
+      return this.es && this.es.readyState === Sse.STATE_OPEN
+    }
+
+    // 给后台发消息
+    this.send = (path = '', body = {}, query = {}, headers = {}) => {
+      if(!this.isActive()){
+        return new Promise((resolve, reject) => {
+          this.sendQueue.push({path, body, query, headers, resolve, reject})
+        })
+      }
+      const queryBuilder = new URLSearchParams()
+      queryBuilder.append('connectionId', this.connectionId)
+      for (let key in query) {
+        queryBuilder.append(key, query[key])
+      }
+      try{
+        return fetch(`${this.options.url}/message/${path}?${queryBuilder.toString()}`,{
+          method: 'POST',
+          body: JSON.stringify(body),
+          credentials: 'include',
+          mode: 'cors',
+          headers: {
+            'content-type': 'application/json;charset=UTF-8',
+            ...headers
+          }
+        })
+      }catch (e) {
+        return new Promise((resolve, reject) => {
+          this.sendQueue.push({path, body, query, headers, resolve, reject})
+        })
+      }
+    }
+
+    // 给后台传文件
+    this.upload = (path = '', formData, query = {}, headers = {}) => {
+      if(!(formData instanceof FormData)){
+        return Promise.reject({message: 'sse upload() error! body must is formData! example : new FormData()'})
+      }
+      if(!this.isActive()){
+        return new Promise((resolve, reject) => {
+          this.uploadQueue.push({path, formData, query, headers, resolve, reject})
+        })
+      }
+      const queryBuilder = new URLSearchParams()
+      queryBuilder.append('connectionId', this.connectionId)
+      for (let key in query) {
+        queryBuilder.append(key, query[key])
+      }
+      try{
+        return fetch(`${this.options.url}/upload/${path}?${queryBuilder.toString()}`,{
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+          mode: 'cors',
+          headers: headers
+        })
+      }catch (e) {
+        return new Promise((resolve, reject) => {
+          this.uploadQueue.push({path, formData, query, headers, resolve, reject})
+        })
       }
     }
 

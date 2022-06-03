@@ -13,7 +13,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
+import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.Part;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.util.*;
@@ -85,6 +88,14 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         return new ResponseWrap<>(result);
     }
 
+    protected Object onMessage(String path, SseEmitter<ACCESS_USER> connection, Map<String, Object> message) {
+        return path;
+    }
+
+    protected Object onUpload(String path, SseEmitter<ACCESS_USER> connection, Map<String, Object> message, Collection<Part> files) {
+        return path;
+    }
+
     protected void onConnect(SseEmitter<ACCESS_USER> conncet, Map<String, Object> query) {
 
     }
@@ -150,34 +161,49 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     }
 
     /**
-     * 推送给所有人
+     * 收到前端的消息
      *
      * @return http原生响应
      */
-    @RequestMapping("/send")
-    public ResponseEntity send(@RequestParam Map query, @RequestBody(required = false) Map body) {
+    @RequestMapping("/message/{path}")
+    public ResponseEntity message(@PathVariable String path, Long connectionId, @RequestParam Map query, @RequestBody(required = false) Map body) {
+        ACCESS_USER accessUser = getAccessUser();
+        if (accessUser == null) {
+            return buildUnauthorizedResponse();
+        }
+        SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(connectionId);
         Map message = new LinkedHashMap<>(query);
+        message.remove("connectionId");
         if (body != null) {
             message.putAll(body);
         }
-        int count = localConnectionService.sendAll(buildEvent(message));
-        return ResponseEntity.ok(wrapOkResponse((Collections.singletonMap("count", count))));
+        if (emitter != null) {
+            emitter.requestMessage();
+        }
+        return ResponseEntity.ok(wrapOkResponse(onMessage(path, emitter, message)));
     }
 
     /**
-     * 发送给单个人
+     * 收到前端上传的数据
      *
-     * @param userId 用户ID
      * @return http原生响应
      */
-    @RequestMapping("/send/{userId}")
-    public ResponseEntity sendOne(@RequestParam Map query, @RequestBody(required = false) Map body, @PathVariable Object userId) {
+    @RequestMapping("/upload/{path}")
+    public ResponseEntity upload(@PathVariable String path, HttpServletRequest request, Long connectionId, @RequestParam Map query, @RequestBody(required = false) Map body) throws IOException, ServletException {
+        ACCESS_USER accessUser = getAccessUser();
+        if (accessUser == null) {
+            return buildUnauthorizedResponse();
+        }
+        SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(connectionId);
         Map message = new LinkedHashMap<>(query);
+        message.remove("connectionId");
         if (body != null) {
             message.putAll(body);
         }
-        int count = localConnectionService.sendByUserId(userId, buildEvent(message));
-        return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", count)));
+        if (emitter != null) {
+            emitter.requestUpload();
+        }
+        return ResponseEntity.ok(wrapOkResponse(onUpload(path, emitter, message, request.getParts())));
     }
 
     /**
@@ -292,7 +318,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                                 .orElse(""))
                         .thenComparingLong(SseEmitter::getId))
                 .collect(Collectors.toList());
-        return ResponseEntity.ok(wrapOkResponse(PageInfo.of(list, pageNum, pageSize).map(e-> mapToConnectionVO((SseEmitter<ACCESS_USER>) e))));
+        return ResponseEntity.ok(wrapOkResponse(PageInfo.of(list, pageNum, pageSize).map(e -> mapToConnectionVO((SseEmitter<ACCESS_USER>) e))));
     }
 
     protected Object mapToUserVO(ACCESS_USER user) {

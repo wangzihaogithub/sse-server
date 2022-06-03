@@ -29,6 +29,10 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     private final long createTime = System.currentTimeMillis();
     private boolean connect = false;
     private int count;
+    private int requestUploadCount;
+    private int requestMessageCount;
+    private long lastRequestTimestamp;
+
     private String channel;
 
     private String requestIp;
@@ -38,6 +42,10 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     private final Map<String, Object> httpParameters = new LinkedHashMap<>();
     private Map<String, String> httpHeaders = new LinkedHashMap<>();
     private Cookie[] httpCookies;
+    /**
+     * 前端已正在监听的钩子, 值是 {@link SseEventBuilder#name(String)}
+     */
+    private List<String> listeners;
 
     /**
      * timeout = 0是永不过期
@@ -52,6 +60,28 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     public SseEmitter(Long timeout, ACCESS_USER accessUser) {
         super(timeout);
         this.accessUser = accessUser;
+    }
+
+    void requestUpload() {
+        this.requestUploadCount++;
+        this.lastRequestTimestamp = System.currentTimeMillis();
+    }
+
+    void requestMessage() {
+        this.requestMessageCount++;
+        this.lastRequestTimestamp = System.currentTimeMillis();
+    }
+
+    public int getRequestUploadCount() {
+        return requestUploadCount;
+    }
+
+    public int getRequestMessageCount() {
+        return requestMessageCount;
+    }
+
+    public long getLastRequestTimestamp() {
+        return lastRequestTimestamp;
     }
 
     private static long newId() {
@@ -134,9 +164,27 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         return accessTime != null ? new Date(accessTime) : null;
     }
 
+    /**
+     * 前端JS 已正在监听的钩子, 值是 {@link SseEventBuilder#name(String)}
+     *
+     * @return
+     */
     public List<String> getListeners() {
-        String listeners = (String) httpParameters.get("listeners");
-        return listeners != null && listeners.length() > 0 ? Arrays.asList(listeners.split(",")) : Collections.emptyList();
+        if (this.listeners == null) {
+            String listeners = (String) httpParameters.get("listeners");
+            this.listeners = listeners != null && listeners.length() > 0 ? Arrays.asList(listeners.split(",")) : Collections.emptyList();
+        }
+        return this.listeners;
+    }
+
+    /**
+     * 前端JS是否在监听这个事件, 值是 {@link SseEventBuilder#name(String)}
+     * 前端没监听就不用推消息
+     *
+     * @return true=在监听
+     */
+    public boolean existListener(String sseListenerName) {
+        return getListeners().contains(sseListenerName);
     }
 
     public String getClientId() {

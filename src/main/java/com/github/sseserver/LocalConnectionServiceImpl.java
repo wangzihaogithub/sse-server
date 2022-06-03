@@ -240,6 +240,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         }
         return idList.stream()
                 .map(this::getConnectionById)
+                .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
     }
@@ -253,6 +254,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         return accessTokenList.stream()
                 .map(this::getConnectionByAccessToken)
                 .flatMap(Collection::stream)
+                .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
     }

@@ -16,7 +16,7 @@ sse协议的后端API, 比websocket轻量的实时通信
         <dependency>
             <groupId>com.github.wangzihaogithub</groupId>
             <artifactId>sse-server</artifactId>
-            <version>1.0.5</version>
+            <version>1.0.6</version>
         </dependency>
         
 2.  配置业务逻辑 （后端）
@@ -84,8 +84,8 @@ sse协议的后端API, 比websocket轻量的实时通信
 
     前端代码 https://github.com/wangzihaogithub/sse-js.git
 
-    1. Vue示例：
-    
+
+    1. Vue示例(方式1)：
     
             import Sse from '../util/sse.js'
     
@@ -112,8 +112,29 @@ sse协议的后端API, 比websocket轻量的实时通信
               this.hrSse.destroy()
               this.hunterSse.destroy()
             }
+            
+            
+    2. 原生html示例, 或Vue (方式2)：
     
-        
+          1. 在index.html加入代码
+          
+          <script>
+                function addSseEventListener(url, eventListeners) {
+                  return import(url).then(module => new module.default({url, eventListeners}))
+                }
+          </script>
+  
+         2. 使用
+         
+            const listeners = {
+               'myHunterBell': this.onHunterBell,
+               'xxx-xx': this.xx
+             }
+            addSseEventListener('/sse/hr', listeners).then(sseConnection => {
+               this.sseConnection = sseConnection
+            })
+             
+             
 #### 使用说明
 
 1.  xxxx
