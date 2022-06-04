@@ -13,7 +13,7 @@ sse协议的后端API, 比websocket轻量的实时通信,
 3. 支持双向通信, 后端发送消息后会返回是否成功, 前端发送有可靠保证, 会自动重连, 成功后会自动将离线期间的请求继续发送.
 
 
-        // 1.后端给前端数据
+        // 1.后端给前端推数据
         const listeners = {
            'myHunterBell': (event) => {console.log(event.data)},
            'xxx-xx': this.xx
@@ -22,11 +22,11 @@ sse协议的后端API, 比websocket轻量的实时通信,
            this.sseConnection = sseConnection
         })
 
-        // 2.前端给后端数据 当前连接的json请求
+        // 2.前端给后端送数据 当前连接发json请求
         sseConnection.send(path, body, query, headers).then(response =>{
             console.log(response)
         })
-        // 3.前端给后端数据 当前连接的文件上传
+        // 3.前端给后端送文件 当前连接的文件上传
         sseConnection.upload(path, new FormData(), query, headers).then(response =>{
             console.log(response)
         })
