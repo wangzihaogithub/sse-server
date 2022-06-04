@@ -97,6 +97,10 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         return new SseEventBuilderImpl();
     }
 
+    public static SseEventBuilder event(String name, Object data) {
+        return new SseEventBuilderImpl().name(name).data(data);
+    }
+
     private static Long castLong(Object value) {
         if (value == null || "".equals(value)) {
             return null;
@@ -293,14 +297,19 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         connectListeners.clear();
     }
 
+    public void send(String name, Object data) throws IOException {
+        send(event().name(name).data(data));
+    }
+
     @Override
     public void send(SseEventBuilder builder) throws IOException {
+        count++;
         if (builder instanceof SseEventBuilderImpl) {
             String id = ((SseEventBuilderImpl) builder).id;
             String name = ((SseEventBuilderImpl) builder).name;
-            log.debug("sse connection send {} : {}, id = {}, name = {}", ++count, this, id, name);
+            log.debug("sse connection send {} : {}, id = {}, name = {}", count, this, id, name);
         } else {
-            log.debug("sse connection send {} : {}", ++count, this);
+            log.debug("sse connection send {} : {}", count, this);
         }
         super.send(builder);
     }

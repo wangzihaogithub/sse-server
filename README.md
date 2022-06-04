@@ -3,7 +3,7 @@
 #### 介绍
 sse协议的后端API, 比websocket轻量的实时通信, 
 
-实现与封装了业务LocalConnectionService (浏览器tab切换逻辑, 断线重连, 根据用户ID发送, 获取在线用户, 上线通知, 离线通知)
+在LocalConnectionService和sse.js中封装了业务 (浏览器tab切换逻辑, 断线重连, 根据用户ID发送, 获取在线用户, 上线通知, 离线通知)
 
 
 1. 只有用户当前能看到或正在使用的页签会保持链接. 如果用户不浏览会自动下线, 强实时在线.
@@ -27,7 +27,9 @@ sse协议的后端API, 比websocket轻量的实时通信,
             console.log(response)
         })
         // 3.前端给后端送文件 当前连接的文件上传
-        sseConnection.upload(path, new FormData(), query, headers).then(response =>{
+        const data = new FormData()
+        data.set(name, file)
+        sseConnection.upload(path, data, query, headers).then(response =>{
             console.log(response)
         })
 
@@ -54,14 +56,15 @@ sse协议的后端API, 比websocket轻量的实时通信,
 2.  配置业务逻辑 （后端）
 
 
-        // 实现AccessUser 可以使用sendByUserId()接口. 
-        // 实现AccessToken 可以使用sendByAccessToken()接口, (多客户端登陆系统)
-        // 实现CustomerAccessUser 可以使用sendByCustomerId()接口, (于多租户系统)
+        // 实现AccessUser 可以使用sendByUserId(). 
+        // 实现AccessToken 可以使用sendByAccessToken(), (多客户端登陆系统)
+        // 实现CustomerAccessUser 可以使用sendByCustomerId(), (多租户系统)
         @Data
         public class HrAccessUser implements AccessToken, AccessUser, CustomerAccessUser {
             private String accessToken;
             private Integer id;
             private String name;
+            private Integer customerId;
         }
 
         // 支持多系统
@@ -135,7 +138,7 @@ sse协议的后端API, 比websocket轻量的实时通信,
             int sendByAccessToken(accessToken, message)
             
             // 推送消息 (根据租户ID)
-            int sendByCustomerId(channel, message)
+            int sendByCustomerId(customerId, message)
                         
             // 推送消息 (根据自定义信道)
             int sendByChannel(channel, message)
@@ -203,7 +206,11 @@ sse协议的后端API, 比websocket轻量的实时通信,
                 eventListeners:{
                   'myHunterBell': this.onHunterBell,
                   'xxx-xx': this.xx
-                }
+                },
+                query: { arg1 : 123 }, // 非必填 - 连接时携带的参数 
+                clientId: '自定义设备ID', // 非必填
+                accessTimestamp: Date.now(), // 非必填 - 接入时间
+                reconnectTime: 5000, // 非必填 - 网络错误时的重连时间
               })
             },
             beforeDestroy() {

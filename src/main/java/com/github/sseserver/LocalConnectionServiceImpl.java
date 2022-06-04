@@ -76,8 +76,8 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
         Long id = result.getId();
         String accessToken = wrapStringKey(result.getAccessToken());
-        String userId = wrapStringKey(Objects.toString(result.getUserId(), null));
-        String customerId = wrapStringKey(Objects.toString(result.getCustomerId(), null));
+        String userId = wrapStringKey(result.getUserId());
+        String customerId = wrapStringKey(result.getCustomerId());
 
         result.addDisConnectListener(e -> {
             log.debug("sse {} connection disconnect : {}", beanName, e);
@@ -234,7 +234,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
     @Override
     public List<SseEmitter> getConnectionByCustomerId(Object customerId) {
-        Collection<Long> idList = customerId2ConnectionIdMap.get(wrapStringKey(Objects.toString(customerId, null)));
+        Collection<Long> idList = customerId2ConnectionIdMap.get(wrapStringKey(customerId));
         if (idList == null || idList.isEmpty()) {
             return Collections.emptyList();
         }
@@ -247,7 +247,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
     @Override
     public List<SseEmitter> getConnectionByUserId(Object userId) {
-        Collection<String> accessTokenList = userId2AccessTokenMap.get(wrapStringKey(Objects.toString(userId, null)));
+        Collection<String> accessTokenList = userId2AccessTokenMap.get(wrapStringKey(userId));
         if (accessTokenList == null || accessTokenList.isEmpty()) {
             return Collections.emptyList();
         }
@@ -392,7 +392,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
     @Override
     public boolean isOnline(Object userId) {
-        Set<String> tokenSet = userId2AccessTokenMap.get(wrapStringKey(Objects.toString(userId, null)));
+        Set<String> tokenSet = userId2AccessTokenMap.get(wrapStringKey(userId));
         return tokenSet != null && !tokenSet.isEmpty();
     }
 
@@ -471,40 +471,48 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
     protected Runnable completionCallBack(SseEmitter sseEmitter) {
         return () -> {
-            log.debug("sse {} completion 结束连接：{}", beanName, sseEmitter);
             sseEmitter.disconnect();
+            log.debug("sse {} completion 结束连接：{}", beanName, sseEmitter);
         };
     }
 
     protected Runnable timeoutCallBack(SseEmitter sseEmitter) {
         return () -> {
-            log.debug("sse {} timeout 超过最大连接时间：{}", beanName, sseEmitter);
             sseEmitter.disconnect();
+            log.debug("sse {} timeout 超过最大连接时间：{}", beanName, sseEmitter);
         };
     }
 
     protected Consumer<Throwable> errorCallBack(SseEmitter sseEmitter) {
         return throwable -> {
-            log.debug("sse {} {} error 发生错误：{}, {}", beanName, sseEmitter, throwable.toString(), throwable);
             sseEmitter.disconnect();
+            log.debug("sse {} {} error 发生错误：{}, {}", beanName, sseEmitter, throwable, throwable);
         };
     }
 
-    protected String wrapStringKey(String key) {
-        return key == null ? "" : key;
+    protected String wrapStringKey(Object key) {
+        return key == null ? "" : key.toString();
     }
 
     protected <ACCESS_USER extends AccessUser & AccessToken> void notifyListener(SseEmitter<ACCESS_USER> emitter,
                                                                                  List<Consumer<SseEmitter>> listeners,
                                                                                  Map<String, List<Predicate<SseEmitter>>> listenerMap) {
         for (Consumer<SseEmitter> listener : listeners) {
-            listener.accept(emitter);
+            try {
+                listener.accept(emitter);
+            } catch (Exception e) {
+                log.error("notifyListener error = {}. listener = {}, emitter = {}", e.toString(), listener, emitter, e);
+            }
         }
         List<Predicate<SseEmitter>> consumerList = listenerMap.get(wrapStringKey(emitter.getAccessToken()));
         if (consumerList != null) {
             for (Predicate<SseEmitter> listener : new ArrayList<>(consumerList)) {
-                if (listener.test(emitter)) {
-                    consumerList.remove(listener);
+                try {
+                    if (listener.test(emitter)) {
+                        consumerList.remove(listener);
+                    }
+                } catch (Exception e) {
+                    log.error("notifyListener error = {}. predicate = {}, emitter = {}", e.toString(), listener, emitter, e);
                 }
             }
         }
