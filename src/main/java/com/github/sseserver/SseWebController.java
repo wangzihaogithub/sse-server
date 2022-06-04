@@ -135,9 +135,9 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
 
         // Verify login
         ACCESS_USER accessUser = getAccessUser();
-        ResponseEntity responseEntity = buildIfConnectVerifyErrorResponse(accessUser, query, body, keepaliveTime);
-        if (responseEntity != null) {
-            return responseEntity;
+        ResponseEntity errorResponseEntity = buildIfConnectVerifyErrorResponse(accessUser, query, body, keepaliveTime);
+        if (errorResponseEntity != null) {
+            return errorResponseEntity;
         }
 
         // build connect
