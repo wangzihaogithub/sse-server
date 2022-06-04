@@ -9,17 +9,20 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.0.6</version>
+ *      <version>1.0.7</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.0.6'
+  static version = '1.0.7'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,
     eventListeners: {},
     query: {},
-    withCredentials: true
+    withCredentials: true,
+    clientId: null,
+    accessTimestamp: null,
+    reconnectTime: null
   }
   static DEFAULT_RECONNECT_TIME = 5000
   /**
