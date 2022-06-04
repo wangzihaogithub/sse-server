@@ -75,10 +75,10 @@ class Sse {
       this.connectionName = res.name
 
       let task
-      while ((task = this.sendQueue.pop())) {
+      while ((task = this.sendQueue.shift())) {
         this.send(task.path, task.body, task.query, task.headers).then(task.resolve).catch(task.reject)
       }
-      while ((task = this.uploadQueue.pop())) {
+      while ((task = this.uploadQueue.shift())) {
         this.upload(task.path, task.formData, task.query, task.headers).then(task.resolve).catch(task.reject)
       }
     }
