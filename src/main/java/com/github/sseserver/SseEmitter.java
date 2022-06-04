@@ -40,7 +40,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     private String userAgent;
 
     private final Map<String, Object> httpParameters = new LinkedHashMap<>();
-    private Map<String, String> httpHeaders = new LinkedHashMap<>();
+    private final Map<String, String> httpHeaders = new LinkedHashMap<>();
     private Cookie[] httpCookies;
     /**
      * 前端已正在监听的钩子, 值是 {@link SseEventBuilder#name(String)}
