@@ -7,9 +7,10 @@ import org.springframework.http.server.ServerHttpResponse;
 
 import javax.servlet.http.Cookie;
 import java.io.IOException;
+import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
-import java.sql.Timestamp;
 import java.util.*;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -27,25 +28,23 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     private final List<Consumer<SseEmitter<ACCESS_USER>>> disconnectListeners = new ArrayList<>();
     private final Map<String, Object> attributeMap = new LinkedHashMap<>();
     private final long createTime = System.currentTimeMillis();
+    private final Map<String, Object> httpParameters = new LinkedHashMap<>();
+    private final Map<String, String> httpHeaders = new LinkedHashMap<>();
     private boolean connect = false;
     private int count;
     private int requestUploadCount;
     private int requestMessageCount;
     private long lastRequestTimestamp;
-
     private String channel;
-
     private String requestIp;
     private String requestDomain;
     private String userAgent;
-
-    private final Map<String, Object> httpParameters = new LinkedHashMap<>();
-    private final Map<String, String> httpHeaders = new LinkedHashMap<>();
     private Cookie[] httpCookies;
     /**
      * 前端已正在监听的钩子, 值是 {@link SseEventBuilder#name(String)}
      */
     private List<String> listeners;
+    private ScheduledFuture<?> timeoutCheckFuture;
 
     /**
      * timeout = 0是永不过期
@@ -60,28 +59,6 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     public SseEmitter(Long timeout, ACCESS_USER accessUser) {
         super(timeout);
         this.accessUser = accessUser;
-    }
-
-    void requestUpload() {
-        this.requestUploadCount++;
-        this.lastRequestTimestamp = System.currentTimeMillis();
-    }
-
-    void requestMessage() {
-        this.requestMessageCount++;
-        this.lastRequestTimestamp = System.currentTimeMillis();
-    }
-
-    public int getRequestUploadCount() {
-        return requestUploadCount;
-    }
-
-    public int getRequestMessageCount() {
-        return requestMessageCount;
-    }
-
-    public long getLastRequestTimestamp() {
-        return lastRequestTimestamp;
     }
 
     private static long newId() {
@@ -111,8 +88,26 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         return Long.valueOf(value.toString());
     }
 
-    public void setHttpCookies(Cookie[] httpCookies) {
-        this.httpCookies = httpCookies;
+    void requestUpload() {
+        this.requestUploadCount++;
+        this.lastRequestTimestamp = System.currentTimeMillis();
+    }
+
+    void requestMessage() {
+        this.requestMessageCount++;
+        this.lastRequestTimestamp = System.currentTimeMillis();
+    }
+
+    public int getRequestUploadCount() {
+        return requestUploadCount;
+    }
+
+    public int getRequestMessageCount() {
+        return requestMessageCount;
+    }
+
+    public long getLastRequestTimestamp() {
+        return lastRequestTimestamp;
     }
 
     public Map<String, Object> getHttpParameters() {
@@ -121,6 +116,10 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
 
     public Cookie[] getHttpCookies() {
         return httpCookies;
+    }
+
+    public void setHttpCookies(Cookie[] httpCookies) {
+        this.httpCookies = httpCookies;
     }
 
     public Map<String, String> getHttpHeaders() {
@@ -141,6 +140,18 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
 
     public void setRequestDomain(String requestDomain) {
         this.requestDomain = requestDomain;
+    }
+
+    public boolean isTimeout() {
+        Long timeout = getTimeout();
+        if (timeout == null) {
+            // servlet 默认30秒
+            timeout = 30_000L;
+        } else if (timeout <= 0L) {
+            // 0是永不超时
+            return false;
+        }
+        return (System.currentTimeMillis() - createTime) > timeout;
     }
 
     public String getUserAgent() {
@@ -311,14 +322,63 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         } else {
             log.debug("sse connection send {} : {}", count, this);
         }
-        super.send(builder);
+        try {
+            super.send(builder);
+        } catch (IllegalStateException e) {
+            /* tomcat recycle bug.  socketWrapper is null. is read op cancel then recycle()
+             * Http11OutputBuffer: 254行，对端网络关闭， 但没触发onError或onTimeout回调， 这时不知道是否不可用了
+             *
+             * Caused by: java.lang.NullPointerException
+             * 	at org.apache.coyote.http11.Http11OutputBuffer$SocketOutputBuffer.doWrite(Http11OutputBuffer.java:530)
+             * 	at org.apache.coyote.http11.filters.ChunkedOutputFilter.doWrite(ChunkedOutputFilter.java:110)
+             * 	at org.apache.coyote.http11.Http11OutputBuffer.doWrite(Http11OutputBuffer.java:189)
+             * 	at org.apache.coyote.Response.doWrite(Response.java:599)
+             * 	at org.apache.catalina.connector.OutputBuffer.realWriteBytes(OutputBuffer.java:329)
+             * 	at org.apache.catalina.connector.OutputBuffer.flushByteBuffer(OutputBuffer.java:766)
+             * 	at org.apache.catalina.connector.OutputBuffer.doFlush(OutputBuffer.java:288)
+             * 	at org.apache.catalina.connector.OutputBuffer.flush(OutputBuffer.java:262)
+             * 	at org.apache.catalina.connector.CoyoteOutputStream.flush(CoyoteOutputStream.java:118)
+             * 	at sun.nio.cs.StreamEncoder.implFlush(StreamEncoder.java:297)
+             * 	at sun.nio.cs.StreamEncoder.flush(StreamEncoder.java:141)
+             * 	at java.io.OutputStreamWriter.flush(OutputStreamWriter.java:229)
+             * 	at org.springframework.util.StreamUtils.copy(StreamUtils.java:124)
+             * 	at org.springframework.http.converter.StringHttpMessageConverter.writeInternal(StringHttpMessageConverter.java:106)
+             * 	at org.springframework.http.converter.StringHttpMessageConverter.writeInternal(StringHttpMessageConverter.java:43)
+             * 	at org.springframework.http.converter.AbstractHttpMessageConverter.write(AbstractHttpMessageConverter.java:227)
+             * 	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitterReturnValueHandler$HttpMessageConvertingHandler.sendInternal(ResponseBodyEmitterReturnValueHandler.java:191)
+             * 	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitterReturnValueHandler$HttpMessageConvertingHandler.send(ResponseBodyEmitterReturnValueHandler.java:184)
+             * 	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.sendInternal(ResponseBodyEmitter.java:189)
+             */
+//            if (e.getCause() instanceof NullPointerException) {
+            disconnect();
+            throw new ClosedChannelException();
+//            }
+        }
     }
 
     public boolean isDisconnect() {
         return disconnect.get();
     }
 
+    private void cancelTimeoutTask() {
+        ScheduledFuture future = this.timeoutCheckFuture;
+        if (future != null) {
+            this.timeoutCheckFuture = null;
+            future.cancel(false);
+        }
+    }
+
+    void setTimeoutCheckFuture(ScheduledFuture<?> timeoutCheckFuture) {
+        this.timeoutCheckFuture = timeoutCheckFuture;
+    }
+
+    void disconnectByTimeoutCheck() {
+        this.timeoutCheckFuture = null;
+        disconnect();
+    }
+
     public boolean disconnect() {
+        cancelTimeoutTask();
         if (disconnect.compareAndSet(false, true)) {
             for (Consumer<SseEmitter<ACCESS_USER>> disconnectListener : new ArrayList<>(disconnectListeners)) {
                 try {

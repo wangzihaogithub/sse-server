@@ -3,11 +3,15 @@ package com.github.sseserver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.BeanNameAware;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
 
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -24,8 +28,9 @@ import java.util.stream.Collectors;
  *
  * @author hao 2021年12月7日19:27:41
  */
-public class LocalConnectionServiceImpl implements LocalConnectionService, BeanNameAware {
+public class LocalConnectionServiceImpl implements LocalConnectionService, BeanNameAware, DisposableBean {
     private final static Logger log = LoggerFactory.getLogger(LocalConnectionServiceImpl.class);
+    private final static AtomicInteger SCHEDULED_INDEX = new AtomicInteger();
     /**
      * 业务维度与链接ID的关系表
      */
@@ -50,7 +55,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     protected final Map<String, List<Predicate<SseEmitter>>> connectListenerMap = new ConcurrentHashMap<>();
     protected final Map<String, List<Predicate<SseEmitter>>> disconnectListenerMap = new ConcurrentHashMap<>();
     private String beanName = getClass().getSimpleName();
+    private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
     private int reconnectTime = 5000;
+    private boolean destroyFlag;
 
     /**
      * 创建用户连接并返回 SseEmitter
@@ -65,14 +72,19 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
     @Override
     public <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap) {
+        if (destroyFlag) {
+            throw new IllegalStateException("destroy");
+        }
         if (keepaliveTime == null) {
-            keepaliveTime = 300_000L;
+            keepaliveTime = 900_000L;
         }
         // 设置超时时间，0表示不过期。servlet默认30秒，超过时间未完成会抛出异常：AsyncRequestTimeoutException
         SseEmitter<ACCESS_USER> result = new SseEmitter<>(keepaliveTime, accessUser);
         result.onCompletion(completionCallBack(result));
         result.onError(errorCallBack(result));
         result.onTimeout(timeoutCallBack(result));
+        result.setTimeoutCheckFuture(scheduled.schedule(
+                result::disconnectByTimeoutCheck, keepaliveTime + 1000, TimeUnit.MILLISECONDS));
 
         Long id = result.getId();
         String accessToken = wrapStringKey(result.getAccessToken());
@@ -546,5 +558,12 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     @Override
     public void setBeanName(String beanName) {
         this.beanName = beanName;
+    }
+
+    @Override
+    public void destroy() {
+        destroyFlag = true;
+        connectionMap.values().forEach(SseEmitter::disconnect);
+        scheduled.shutdown();
     }
 }
