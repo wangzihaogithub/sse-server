@@ -30,17 +30,17 @@ class Sse {
    * 连接尚未建立，或者它已关闭并且用户代理正在重新连接
    * 创建对象时，readyState必须将其设置为CONNECTING(0)。下面给出的用于处理连接的规则定义了值何时更改。
    */
-  static STATE_CONNECTING = 0
+  static STATE_CONNECTING = EventSource.CONNECTING
   /**
    * OPEN（数值 1）
    * 用户代理有一个打开的连接，并在接收到事件时分派它们。
    */
-  static STATE_OPEN = 1
+  static STATE_OPEN = EventSource.OPEN
   /**
    * CLOSED（数值 2）
    * 连接未打开，并且用户代理未尝试重新连接。要么存在致命错误，要么close()调用了该方法。
    */
-  static STATE_CLOSED = 2
+  static STATE_CLOSED = EventSource.CLOSED
 
   static install = function (Vue, opts = {}) {
     window.Sse = Sse
