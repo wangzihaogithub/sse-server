@@ -97,37 +97,39 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             String channel = wrapStringKey(e.getChannel());
 
             notifyListener(e, disconnectListeners, disconnectListenerMap);
-            connectionMap.remove(id);
+            synchronized (this) {
+                connectionMap.remove(id);
 
-            Collection<Long> tokenEmitterList = accessToken2ConnectionIdMap.get(accessToken);
-            if (tokenEmitterList != null) {
-                tokenEmitterList.remove(id);
-                if (tokenEmitterList.isEmpty()) {
-                    accessToken2ConnectionIdMap.remove(accessToken);
+                Collection<Long> tokenEmitterList = accessToken2ConnectionIdMap.get(accessToken);
+                if (tokenEmitterList != null) {
+                    tokenEmitterList.remove(id);
+                    if (tokenEmitterList.isEmpty()) {
+                        accessToken2ConnectionIdMap.remove(accessToken);
+                    }
                 }
-            }
 
-            Collection<String> userList = userId2AccessTokenMap.get(userId);
-            if (userList != null) {
-                userList.remove(accessToken);
-                if (userList.isEmpty()) {
-                    userId2AccessTokenMap.remove(userId);
+                Collection<String> userList = userId2AccessTokenMap.get(userId);
+                if (userList != null) {
+                    userList.remove(accessToken);
+                    if (userList.isEmpty()) {
+                        userId2AccessTokenMap.remove(userId);
+                    }
                 }
-            }
 
-            Collection<Long> customerList = customerId2ConnectionIdMap.get(customerId);
-            if (customerList != null) {
-                customerList.remove(id);
-                if (customerList.isEmpty()) {
-                    customerId2ConnectionIdMap.remove(customerId);
+                Collection<Long> customerList = customerId2ConnectionIdMap.get(customerId);
+                if (customerList != null) {
+                    customerList.remove(id);
+                    if (customerList.isEmpty()) {
+                        customerId2ConnectionIdMap.remove(customerId);
+                    }
                 }
-            }
 
-            Collection<Long> channelList = channel2ConnectionIdMap.get(channel);
-            if (channelList != null) {
-                channelList.remove(id);
-                if (channelList.isEmpty()) {
-                    channel2ConnectionIdMap.remove(channel);
+                Collection<Long> channelList = channel2ConnectionIdMap.get(channel);
+                if (channelList != null) {
+                    channelList.remove(id);
+                    if (channelList.isEmpty()) {
+                        channel2ConnectionIdMap.remove(channel);
+                    }
                 }
             }
         });
