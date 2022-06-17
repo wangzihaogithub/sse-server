@@ -172,9 +172,7 @@ class Sse {
       this.newEventSource()
     }
 
-    this.connect = () => {
-      this.newEventSource()
-    }
+    this.connect = this.newEventSource
 
     this.removeEventSource = () => {
       if (!this.es) {
