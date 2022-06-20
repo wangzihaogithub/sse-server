@@ -9,20 +9,22 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.0.8</version>
+ *      <version>1.0.9</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.0.8'
+  static version = '1.0.9'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,
     eventListeners: {},
+    intercepts: [],
     query: {},
     withCredentials: true,
     clientId: null,
     accessTimestamp: null,
-    reconnectTime: null
+    reconnectTime: null,
+    useWindowEventBus: true
   }
   static DEFAULT_RECONNECT_TIME = 5000
   /**
@@ -42,12 +44,13 @@ class Sse {
    */
   static STATE_CLOSED = EventSource.CLOSED
 
-  static install = function (Vue, opts = {}) {
-    window.Sse = Sse
+  static install = function(global = window, opts = {}) {
+    global.Sse = Sse
     console.log('install Sse')
   }
 
   state = Sse.STATE_CONNECTING
+  createTime = new Date().toLocaleString()
   connectionName = ''
   sendQueue = []
   uploadQueue = []
@@ -55,9 +58,17 @@ class Sse {
   constructor(options) {
     this.options = Object.assign({}, Sse.DEFAULT_OPTIONS, options)
 
-    if(!this.options.accessTimestamp){
-      let accessTimestamp = sessionStorage.getItem('sseAccessTimestamp')
-      this.options.accessTimestamp = accessTimestamp? Number(accessTimestamp): Date.now()
+    if (this.options.eventListeners instanceof Array) {
+      const eventListeners = {}
+      this.options.eventListeners.forEach(name => {
+        eventListeners[name] = null
+      })
+      this.options.eventListeners = eventListeners
+    }
+
+    if (!this.options.accessTimestamp) {
+      const accessTimestamp = sessionStorage.getItem('sseAccessTimestamp')
+      this.options.accessTimestamp = accessTimestamp ? Number(accessTimestamp) : Date.now()
     }
     sessionStorage.setItem('sseAccessTimestamp', `${this.options.accessTimestamp}`)
 
@@ -87,7 +98,7 @@ class Sse {
     }
 
     this.toString = () => {
-      return `${this.connectionName}:${this.state}`
+      return `${this.connectionName}:${this.state}:${this.createTime}`
     }
 
     this.handleOpen = () => {
@@ -120,28 +131,50 @@ class Sse {
       query.append('screen', `${window.screen.width}x${window.screen.height}`)
       query.append('accessTime', this.options.accessTimestamp)
       query.append('listeners', Object.keys(this.options.eventListeners).join(','))
+      query.append('useWindowEventBus', this.options.useWindowEventBus)
       if (window.performance.memory) {
-        for (let key in window.performance.memory) {
+        for (const key in window.performance.memory) {
           query.append(key, window.performance.memory[key])
         }
       }
-      for (let key in this.options.query) {
+      for (const key in this.options.query) {
         query.append(key, this.options.query[key])
       }
 
-      const es = new EventSource(`${this.options.url}/connect?${query.toString()}`,  { withCredentials: this.options.withCredentials })
+      const es = new EventSource(`${this.options.url}/connect?${query.toString()}`, { withCredentials: this.options.withCredentials })
       es.addEventListener('connect-finish', this.handleConnectionFinish)
-      es.addEventListener('open', this.handleOpen)    // 连接成功
-      es.addEventListener('error', this.handleError)  // 失败
+      es.addEventListener('open', this.handleOpen) // 连接成功
+      es.addEventListener('error', this.handleError) // 失败
+
       // 用户事件
-      for (let eventName in this.options.eventListeners) {
+      for (const eventName in this.options.eventListeners) {
         try {
-          es.addEventListener(eventName, this.options.eventListeners[eventName])
+          const fn = this.options.eventListeners[eventName]
+          if (fn) {
+            es.addEventListener(eventName, fn)
+          }
+          if (this.options.useWindowEventBus) {
+            es.addEventListener(eventName, this._dispatchEvent)
+          }
         } catch (e) {
           console.error(`addEventListener(${eventName}) error`, e)
         }
       }
       this.es = es
+    }
+
+    this._dispatchEvent = (event) => {
+      event.url = this.options.url
+      for (const intercept of this.options.intercepts) {
+        try {
+          intercept.apply(this, [event])
+        } catch (e) {
+          console.warn('intercept error ', e)
+        }
+      }
+      const newEvent = new MessageEvent(event.type, event)
+      newEvent.url = this.options.url
+      window.dispatchEvent(newEvent)
     }
 
     this.clearReconnectTimer = () => {
@@ -155,6 +188,17 @@ class Sse {
       this.close('destroy')
     }
 
+    this.switchURL = (newUrl) => {
+      if (this.options.url === newUrl) {
+        return
+      }
+      this.options.url = newUrl
+      this.close('switchURL')
+      this.newEventSource()
+    }
+
+    this.connect = this.newEventSource
+
     this.removeEventSource = () => {
       if (!this.es) {
         return
@@ -163,9 +207,15 @@ class Sse {
       this.es.removeEventListener('open', this.handleOpen)
       this.es.removeEventListener('connect-finish', this.handleConnectionFinish)
       // 用户事件
-      for (let eventName in this.options.eventListeners) {
+      for (const eventName in this.options.eventListeners) {
         try {
-          this.es.removeEventListener(eventName, this.options.eventListeners[eventName])
+          const fn = this.options.eventListeners[eventName]
+          if (fn) {
+            this.es.removeEventListener(eventName, fn)
+          }
+          if (this.options.useWindowEventBus) {
+            window.removeEventListener(eventName, this._dispatchEvent)
+          }
         } catch (e) {
           console.error(`removeEventListener(${eventName}) error`, e)
         }
@@ -181,7 +231,7 @@ class Sse {
       const connectionId = this.connectionId
       if (connectionId !== undefined) {
         this.connectionId = undefined
-        let params = new URLSearchParams()
+        const params = new URLSearchParams()
         params.set('clientId', this.clientId)
         params.set('connectionId', connectionId)
         params.set('reason', reason)
@@ -190,24 +240,24 @@ class Sse {
       }
     }
 
-    this.isActive = () =>{
+    this.isActive = () => {
       return this.es && this.es.readyState === Sse.STATE_OPEN
     }
 
     // 给后台发消息
     this.send = (path = '', body = {}, query = {}, headers = {}) => {
-      if(!this.isActive()){
+      if (!this.isActive()) {
         return new Promise((resolve, reject) => {
-          this.sendQueue.push({path, body, query, headers, resolve, reject})
+          this.sendQueue.push({ path, body, query, headers, resolve, reject })
         })
       }
       const queryBuilder = new URLSearchParams()
       queryBuilder.append('connectionId', this.connectionId)
-      for (let key in query) {
+      for (const key in query) {
         queryBuilder.append(key, query[key])
       }
-      try{
-        return fetch(`${this.options.url}/message/${path}?${queryBuilder.toString()}`,{
+      try {
+        return fetch(`${this.options.url}/message/${path}?${queryBuilder.toString()}`, {
           method: 'POST',
           body: JSON.stringify(body),
           credentials: 'include',
@@ -217,39 +267,39 @@ class Sse {
             ...headers
           }
         })
-      }catch (e) {
+      } catch (e) {
         return new Promise((resolve, reject) => {
-          this.sendQueue.push({path, body, query, headers, resolve, reject})
+          this.sendQueue.push({ path, body, query, headers, resolve, reject })
         })
       }
     }
 
     // 给后台传文件
     this.upload = (path = '', formData, query = {}, headers = {}) => {
-      if(!(formData instanceof FormData)){
-        return Promise.reject({message: 'sse upload() error! body must is formData! example : new FormData()'})
+      if (!(formData instanceof FormData)) {
+        return Promise.reject({ message: 'sse upload() error! body must is formData! example : new FormData()' })
       }
-      if(!this.isActive()){
+      if (!this.isActive()) {
         return new Promise((resolve, reject) => {
-          this.uploadQueue.push({path, formData, query, headers, resolve, reject})
+          this.uploadQueue.push({ path, formData, query, headers, resolve, reject })
         })
       }
       const queryBuilder = new URLSearchParams()
       queryBuilder.append('connectionId', this.connectionId)
-      for (let key in query) {
+      for (const key in query) {
         queryBuilder.append(key, query[key])
       }
-      try{
-        return fetch(`${this.options.url}/upload/${path}?${queryBuilder.toString()}`,{
+      try {
+        return fetch(`${this.options.url}/upload/${path}?${queryBuilder.toString()}`, {
           method: 'POST',
           body: formData,
           credentials: 'include',
           mode: 'cors',
           headers: headers
         })
-      }catch (e) {
+      } catch (e) {
         return new Promise((resolve, reject) => {
-          this.uploadQueue.push({path, formData, query, headers, resolve, reject})
+          this.uploadQueue.push({ path, formData, query, headers, resolve, reject })
         })
       }
     }
@@ -276,5 +326,8 @@ class Sse {
   }
 }
 
-window.Sse = Sse
+if (window.Sse === undefined) {
+  window.Sse = Sse
+}
+
 export default Sse
