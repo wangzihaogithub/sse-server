@@ -328,7 +328,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
     @Override
     public <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByListener(String sseListenerName) {
-        return connectionMap.values().stream()
+        return (List) connectionMap.values().stream()
                 .filter(e -> e.getListeners().contains(sseListenerName))
                 .collect(Collectors.toList());
     }
