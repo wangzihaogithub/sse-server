@@ -58,6 +58,8 @@ public interface LocalConnectionService {
 
     <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> getConnectionById(Long connectionId);
 
+    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByListener(String sseListenerName);
+
     <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByChannel(String channel);
 
     <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByAccessToken(String accessToken);
@@ -73,6 +75,8 @@ public interface LocalConnectionService {
     int send(Collection<SseEmitter> sseEmitterList, SseEventBuilder message);
 
     int sendAll(SseEventBuilder message);
+
+    int sendAllByClientListener(SseEventBuilder message, String sseListenerName);
 
     int sendByConnectionId(Collection<Long> connectionIds, SseEventBuilder message);
 

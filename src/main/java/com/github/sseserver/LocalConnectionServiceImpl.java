@@ -327,6 +327,13 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
+    public <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByListener(String sseListenerName) {
+        return connectionMap.values().stream()
+                .filter(e -> e.getListeners().contains(sseListenerName))
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public int send(Collection<SseEmitter> sseEmitterList, SseEventBuilder message) {
         int count = 0;
         for (SseEmitter emitter : sseEmitterList) {
@@ -340,6 +347,17 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     @Override
     public int sendAll(SseEventBuilder message) {
         return send(getConnectionAll(), message);
+    }
+
+    @Override
+    public int sendAllByClientListener(SseEventBuilder message, String sseListenerName) {
+        int count = 0;
+        for (SseEmitter emitter : connectionMap.values()) {
+            if (emitter.getListeners().contains(sseListenerName) && send(emitter, message)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     @Override

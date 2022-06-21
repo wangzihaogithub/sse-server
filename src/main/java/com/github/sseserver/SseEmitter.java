@@ -43,7 +43,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     /**
      * 前端已正在监听的钩子, 值是 {@link SseEventBuilder#name(String)}
      */
-    private List<String> listeners;
+    private Set<String> listeners;
     private ScheduledFuture<?> timeoutCheckFuture;
 
     /**
@@ -184,10 +184,10 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
      *
      * @return
      */
-    public List<String> getListeners() {
+    public Set<String> getListeners() {
         if (this.listeners == null) {
             String listeners = (String) httpParameters.get("listeners");
-            this.listeners = listeners != null && listeners.length() > 0 ? Arrays.asList(listeners.split(",")) : Collections.emptyList();
+            this.listeners = listeners != null && listeners.length() > 0 ? new LinkedHashSet<>(Arrays.asList(listeners.split(","))) : Collections.emptySet();
         }
         return this.listeners;
     }
