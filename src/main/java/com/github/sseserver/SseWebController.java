@@ -486,7 +486,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         private Date lastRequestTime;
         private Integer requestMessageCount;
         private Integer requestUploadCount;
-        private List<String> listeners;
+        private Set<String> listeners;
 
         // user
         private Object accessUserId;
@@ -614,11 +614,11 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             this.requestUploadCount = requestUploadCount;
         }
 
-        public List<String> getListeners() {
+        public Set<String> getListeners() {
             return listeners;
         }
 
-        public void setListeners(List<String> listeners) {
+        public void setListeners(Set<String> listeners) {
             this.listeners = listeners;
         }
 
