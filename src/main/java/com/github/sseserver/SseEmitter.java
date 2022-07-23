@@ -180,6 +180,15 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     }
 
     /**
+     * 获取客户端的URL地址
+     *
+     * @return URL
+     */
+    public String getLocationHref() {
+        return (String) httpParameters.get("locationHref");
+    }
+
+    /**
      * 前端JS 已正在监听的钩子, 值是 {@link SseEventBuilder#name(String)}
      *
      * @return

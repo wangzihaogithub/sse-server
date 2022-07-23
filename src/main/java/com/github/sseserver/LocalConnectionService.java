@@ -122,6 +122,15 @@ public interface LocalConnectionService {
 
     List<String> getUserIds();
 
+    List<String> getUserIdsByListener(String sseListenerName);
+
+    default List<Integer> getUserIdsIntByListener(String sseListenerName) {
+        return getUserIdsByListener(sseListenerName).stream()
+                .filter(e -> e != null && e.length() > 0)
+                .map(Integer::valueOf)
+                .collect(Collectors.toList());
+    }
+
     default List<Integer> getUserIdsInt() {
         return getUserIds().stream()
                 .filter(e -> e != null && e.length() > 0)

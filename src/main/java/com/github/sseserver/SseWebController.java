@@ -336,6 +336,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         vo.setCreateTime(new Date(emitter.getCreateTime()));
         vo.setAccessTime(emitter.getAccessTime());
 
+        vo.setLocationHref(emitter.getLocationHref());
         vo.setListeners(emitter.getListeners());
         vo.setRequestMessageCount(emitter.getRequestMessageCount());
         vo.setRequestUploadCount(emitter.getRequestUploadCount());
@@ -487,6 +488,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         private Integer requestMessageCount;
         private Integer requestUploadCount;
         private Set<String> listeners;
+        private String locationHref;
 
         // user
         private Object accessUserId;
@@ -509,6 +511,14 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         private Long totalJSHeapSize;
         private Long usedJSHeapSize;
         private Long jsHeapSizeLimit;
+
+        public String getLocationHref() {
+            return locationHref;
+        }
+
+        public void setLocationHref(String locationHref) {
+            this.locationHref = locationHref;
+        }
 
         public String getScreen() {
             return screen;

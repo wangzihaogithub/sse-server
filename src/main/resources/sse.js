@@ -9,11 +9,11 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.0.9</version>
+ *      <version>1.1.0</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.0.9'
+  static version = '1.1.0'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,
@@ -132,6 +132,8 @@ class Sse {
       query.append('accessTime', this.options.accessTimestamp)
       query.append('listeners', Object.keys(this.options.eventListeners).join(','))
       query.append('useWindowEventBus', this.options.useWindowEventBus)
+      query.append('locationHref', location.href)
+
       if (window.performance.memory) {
         for (const key in window.performance.memory) {
           query.append(key, window.performance.memory[key])

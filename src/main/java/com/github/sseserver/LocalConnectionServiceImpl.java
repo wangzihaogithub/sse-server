@@ -329,7 +329,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     @Override
     public <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByListener(String sseListenerName) {
         return (List) connectionMap.values().stream()
-                .filter(e -> e.getListeners().contains(sseListenerName))
+                .filter(e -> e.existListener(sseListenerName))
                 .collect(Collectors.toList());
     }
 
@@ -353,7 +353,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     public int sendAllByClientListener(SseEventBuilder message, String sseListenerName) {
         int count = 0;
         for (SseEmitter emitter : connectionMap.values()) {
-            if (emitter.getListeners().contains(sseListenerName) && send(emitter, message)) {
+            if (emitter.existListener(sseListenerName) && send(emitter, message)) {
                 count++;
             }
         }
@@ -441,6 +441,18 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     @Override
     public List<String> getUserIds() {
         return connectionMap.values().stream()
+                .map(SseEmitter::getUserId)
+                .filter(Objects::nonNull)
+                .map(Object::toString)
+                .map(this::wrapStringKey)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<String> getUserIdsByListener(String sseListenerName) {
+        return connectionMap.values().stream()
+                .filter(e -> e.existListener(sseListenerName))
                 .map(SseEmitter::getUserId)
                 .filter(Objects::nonNull)
                 .map(Object::toString)
