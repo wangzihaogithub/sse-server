@@ -9,11 +9,11 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.1.0</version>
+ *      <version>1.1.1</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.1.0'
+  static version = '1.1.1'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,
@@ -26,6 +26,7 @@ class Sse {
     reconnectTime: null,
     useWindowEventBus: true
   }
+  static IMPORT_MODULE_TIMESTAMP = Date.now()
   static DEFAULT_RECONNECT_TIME = 5000
   /**
    * CONNECTING（数值 0）
@@ -50,7 +51,7 @@ class Sse {
   }
 
   state = Sse.STATE_CONNECTING
-  createTime = new Date().toLocaleString()
+  createTimestamp = Date.now()
   connectionName = ''
   sendQueue = []
   uploadQueue = []
@@ -73,12 +74,13 @@ class Sse {
     sessionStorage.setItem('sseAccessTimestamp', `${this.options.accessTimestamp}`)
 
     let clientId = this.options.clientId || localStorage.getItem('sseClientId')
+    const h = () => Math.floor(65536 * (1 + Math.random())).toString(16).substring(1)
     if (!clientId) {
-      const h = () => Math.floor(65536 * (1 + Math.random())).toString(16).substring(1)
       clientId = `${h() + h()}-${h()}-${h()}-${h()}-${h()}${h()}${h()}`
     }
     localStorage.setItem('sseClientId', clientId)
     this.clientId = clientId
+    this.instanceId = `${h() + h()}-${h()}-${h()}-${h()}-${h()}${h()}${h()}`
 
     this.handleConnectionFinish = (event) => {
       this.clearReconnectTimer()
@@ -98,7 +100,7 @@ class Sse {
     }
 
     this.toString = () => {
-      return `${this.connectionName}:${this.state}:${this.createTime}`
+      return `${this.connectionName}:${this.state}:${this.createTimestamp}`
     }
 
     this.handleOpen = () => {
@@ -125,14 +127,17 @@ class Sse {
       this.state = Sse.STATE_CONNECTING
 
       const query = new URLSearchParams()
-      query.append('keepaliveTime', this.options.keepaliveTime)
+      query.append('keepaliveTime', String(this.options.keepaliveTime))
       query.append('clientId', this.clientId)
       query.append('clientVersion', Sse.version)
       query.append('screen', `${window.screen.width}x${window.screen.height}`)
       query.append('accessTime', this.options.accessTimestamp)
       query.append('listeners', Object.keys(this.options.eventListeners).join(','))
-      query.append('useWindowEventBus', this.options.useWindowEventBus)
+      query.append('useWindowEventBus', String(this.options.useWindowEventBus))
       query.append('locationHref', location.href)
+      query.append('clientImportModuleTime', String(Sse.IMPORT_MODULE_TIMESTAMP))
+      query.append('clientInstanceTime', String(this.createTimestamp))
+      query.append('clientInstanceId', this.instanceId)
 
       if (window.performance.memory) {
         for (const key in window.performance.memory) {

@@ -1,5 +1,6 @@
 package com.github.sseserver;
 
+import com.github.sseserver.util.WebUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -209,6 +210,28 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
      */
     public boolean existListener(String sseListenerName) {
         return getListeners().contains(sseListenerName);
+    }
+
+    /**
+     * 是否是有效版本
+     *
+     * @param minVersion 要求的最小版本 (传空就是不控制,全部有效)
+     * @return true=有效,大于等于minVersion。 false=无效版本，小于minVersion
+     */
+    public boolean isInVersion(String minVersion) {
+        return WebUtil.isInVersion(getClientVersion(), minVersion);
+    }
+
+    public Long getClientImportModuleTime() {
+        return castLong(httpParameters.get("clientImportModuleTime"));
+    }
+
+    public Long getClientInstanceTime() {
+        return castLong(httpParameters.get("clientInstanceTime"));
+    }
+
+    public String getClientInstanceId() {
+        return (String) httpParameters.get("clientInstanceId");
     }
 
     public String getClientId() {

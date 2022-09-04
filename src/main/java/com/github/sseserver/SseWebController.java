@@ -44,6 +44,15 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     @Autowired
     protected HttpServletRequest request;
     protected LocalConnectionService localConnectionService;
+    protected Integer clientIdMaxConnections;
+
+    public Integer getClientIdMaxConnections() {
+        return clientIdMaxConnections;
+    }
+
+    public void setClientIdMaxConnections(Integer clientIdMaxConnections) {
+        this.clientIdMaxConnections = clientIdMaxConnections;
+    }
 
     /**
      * 前端文件
@@ -99,19 +108,25 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     }
 
     protected void onConnect(SseEmitter<ACCESS_USER> conncet, Map<String, Object> query) {
-
+        if (clientIdMaxConnections != null) {
+            disconnectClientIdMaxConnections(conncet, clientIdMaxConnections);
+        }
     }
 
     protected void onDisconnect(List<SseEmitter<ACCESS_USER>> disconnectList, ACCESS_USER accessUser, Map query) {
 
     }
 
-    protected ResponseEntity buildIfConnectVerifyErrorResponse(ACCESS_USER accessUser,
-                                                               Map query, Map body,
-                                                               Long keepaliveTime) {
+    protected ResponseEntity buildIfLoginVerifyErrorResponse(ACCESS_USER accessUser,
+                                                             Map query, Map body,
+                                                             Long keepaliveTime) {
         if (accessUser == null) {
             return buildUnauthorizedResponse();
         }
+        return null;
+    }
+
+    protected ResponseEntity buildIfConnectVerifyErrorResponse(SseEmitter<ACCESS_USER> emitter) {
         return null;
     }
 
@@ -133,9 +148,9 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             attributeMap.putAll(body);
         }
 
-        // Verify login
+        // Verify 1 login
         ACCESS_USER accessUser = getAccessUser();
-        ResponseEntity errorResponseEntity = buildIfConnectVerifyErrorResponse(accessUser, query, body, keepaliveTime);
+        ResponseEntity errorResponseEntity = buildIfLoginVerifyErrorResponse(accessUser, query, body, keepaliveTime);
         if (errorResponseEntity != null) {
             return errorResponseEntity;
         }
@@ -157,9 +172,34 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             emitter.getHttpHeaders().put(name, request.getHeader(name));
         }
 
+        // Verify 2 connect
+        errorResponseEntity = buildIfConnectVerifyErrorResponse(emitter);
+        if (errorResponseEntity != null) {
+            return errorResponseEntity;
+        }
+
         // callback
         onConnect(emitter, attributeMap);
         return emitter;
+    }
+
+    protected void disconnectClientIdMaxConnections(SseEmitter<ACCESS_USER> conncet, int clientIdMaxConnections) {
+        Object userId = conncet.getUserId();
+        String clientId = conncet.getClientId();
+
+        List<SseEmitter<? extends AccessUser>> clientConnectionList = localConnectionService.getConnectionByUserId(userId).stream()
+                .filter(e -> Objects.equals(e.getClientId(), clientId))
+                .filter(e -> e.getClientInstanceTime() != null)
+                .sorted(Comparator.comparing(SseEmitter::getClientInstanceTime))
+                .collect(Collectors.toList());
+
+        if (clientConnectionList.size() > clientIdMaxConnections) {
+            List<SseEmitter<? extends AccessUser>> sseEmitters =
+                    clientConnectionList.subList(0, clientConnectionList.size() - clientIdMaxConnections);
+            for (SseEmitter<? extends AccessUser> sseEmitter : sseEmitters) {
+                sseEmitter.disconnect();
+            }
+        }
     }
 
     /**
@@ -314,10 +354,10 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                     return eachName.toLowerCase().contains(nameTrim);
                 })
                 .sorted(Comparator.comparing((Function<SseEmitter<? extends AccessUser>, String>)
-                        emitter -> Optional.ofNullable(emitter)
-                                .map(SseEmitter::getAccessUser)
-                                .map(AccessUser::getName)
-                                .orElse(""))
+                                emitter -> Optional.ofNullable(emitter)
+                                        .map(SseEmitter::getAccessUser)
+                                        .map(AccessUser::getName)
+                                        .orElse(""))
                         .thenComparingLong(SseEmitter::getId))
                 .collect(Collectors.toList());
         return ResponseEntity.ok(wrapOkResponse(PageInfo.of(list, pageNum, pageSize).map(e -> mapToConnectionVO((SseEmitter<ACCESS_USER>) e))));
@@ -351,6 +391,9 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
 
         vo.setClientId(emitter.getClientId());
         vo.setClientVersion(emitter.getClientVersion());
+        vo.setClientImportModuleTime(emitter.getClientImportModuleTime());
+        vo.setClientInstanceId(emitter.getClientInstanceId());
+        vo.setClientInstanceTime(emitter.getClientInstanceTime());
 
         vo.setRequestIp(emitter.getRequestIp());
         vo.setRequestDomain(emitter.getRequestDomain());
@@ -498,6 +541,9 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         // client
         private String clientId;
         private String clientVersion;
+        private Long clientImportModuleTime;
+        private String clientInstanceId;
+        private Long clientInstanceTime;
 
         // http
         private String requestIp;
@@ -511,6 +557,30 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         private Long totalJSHeapSize;
         private Long usedJSHeapSize;
         private Long jsHeapSizeLimit;
+
+        public Long getClientImportModuleTime() {
+            return clientImportModuleTime;
+        }
+
+        public void setClientImportModuleTime(Long clientImportModuleTime) {
+            this.clientImportModuleTime = clientImportModuleTime;
+        }
+
+        public String getClientInstanceId() {
+            return clientInstanceId;
+        }
+
+        public void setClientInstanceId(String clientInstanceId) {
+            this.clientInstanceId = clientInstanceId;
+        }
+
+        public Long getClientInstanceTime() {
+            return clientInstanceTime;
+        }
+
+        public void setClientInstanceTime(Long clientInstanceTime) {
+            this.clientInstanceTime = clientInstanceTime;
+        }
 
         public String getLocationHref() {
             return locationHref;

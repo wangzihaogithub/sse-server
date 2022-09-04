@@ -1,12 +1,68 @@
 package com.github.sseserver.util;
 
 import javax.servlet.http.HttpServletRequest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.regex.Pattern;
 
 public class WebUtil {
     public static final String PROTOCOL_HTTPS = "https:";
     public static final String PROTOCOL_HTTP = "http:";
     public static final Pattern PATTERN_HTTP = Pattern.compile(PROTOCOL_HTTP);
+
+    /**
+     * 是否是有效版本
+     *
+     * @param requestVersion 用户用的版本号
+     * @param minVersion     要求的最小版本 (传空就是不控制,全部有效)
+     * @return true=有效,大于等于minVersion。 false=无效版本，小于minVersion
+     */
+    public static boolean isInVersion(String requestVersion, String minVersion) {
+        // 限制最低使用版本 (1.1.6)
+        Integer[] pluginVersionNumbers = WebUtil.parseNumber(requestVersion);
+        Integer[] minVersionNumbers = WebUtil.parseNumber(minVersion);
+        for (int i = 0; i < pluginVersionNumbers.length && i < minVersionNumbers.length; i++) {
+            int min = minVersionNumbers[i];
+            int curr = pluginVersionNumbers[i];
+            if (curr > min) {
+                return true;
+            } else if (curr == min) {
+                // 继续比较
+            } else {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static Integer[] parseNumber(String str) {
+        if (str == null) {
+            return new Integer[0];
+        }
+        List<Integer> result = new ArrayList<>();
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < str.length(); i++) {
+            char c = str.charAt(i);
+            if (c >= '0' && c <= '9') {
+                builder.append(c);
+            } else if (builder.length() > 0) {
+                try {
+                    result.add(Integer.valueOf(builder.toString()));
+                } catch (NumberFormatException e) {
+
+                }
+                builder.setLength(0);
+            }
+        }
+        if (builder.length() > 0) {
+            try {
+                result.add(Integer.valueOf(builder.toString()));
+            } catch (NumberFormatException e) {
+
+            }
+        }
+        return result.toArray(new Integer[0]);
+    }
 
     public static String getRequestIpAddr(HttpServletRequest request) {
         String ip = request.getHeader("x-forwarded-for");
