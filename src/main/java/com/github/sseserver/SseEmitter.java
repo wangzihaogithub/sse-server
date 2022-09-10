@@ -3,6 +3,7 @@ package com.github.sseserver;
 import com.github.sseserver.util.WebUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.ServerHttpResponse;
 
@@ -46,6 +47,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
      */
     private Set<String> listeners;
     private ScheduledFuture<?> timeoutCheckFuture;
+    private HttpHeaders responseHeaders;
 
     /**
      * timeout = 0是永不过期
@@ -97,6 +99,13 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     void requestMessage() {
         this.requestMessageCount++;
         this.lastRequestTimestamp = System.currentTimeMillis();
+    }
+
+    public HttpHeaders getResponseHeaders() {
+        if (responseHeaders == null) {
+            responseHeaders = new HttpHeaders();
+        }
+        return responseHeaders;
     }
 
     public int getRequestUploadCount() {
@@ -336,6 +345,10 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
             } catch (Exception e) {
                 log.warn("connectListener error = {} {}", e.toString(), connectListener, e);
             }
+        }
+        HttpHeaders responseHeaders = this.responseHeaders;
+        if (responseHeaders != null) {
+            outputMessage.getHeaders().putAll(responseHeaders);
         }
         connectListeners.clear();
     }

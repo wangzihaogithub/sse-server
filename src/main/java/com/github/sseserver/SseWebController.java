@@ -3,6 +3,7 @@ package com.github.sseserver;
 import com.github.sseserver.util.PageInfo;
 import com.github.sseserver.util.WebUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -44,7 +45,11 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     @Autowired
     protected HttpServletRequest request;
     protected LocalConnectionService localConnectionService;
-    protected Integer clientIdMaxConnections;
+
+    @Value("${server.port:8080}")
+    private Integer serverPort;
+    private String sseServerIdHeaderName = "Sse-Server-Id";
+    private Integer clientIdMaxConnections;
 
     public Integer getClientIdMaxConnections() {
         return clientIdMaxConnections;
@@ -52,6 +57,14 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
 
     public void setClientIdMaxConnections(Integer clientIdMaxConnections) {
         this.clientIdMaxConnections = clientIdMaxConnections;
+    }
+
+    public String getSseServerIdHeaderName() {
+        return sseServerIdHeaderName;
+    }
+
+    public void setSseServerIdHeaderName(String sseServerIdHeaderName) {
+        this.sseServerIdHeaderName = sseServerIdHeaderName;
     }
 
     /**
@@ -68,6 +81,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     @RequestMapping("/sse.js")
     public Object ssejs() {
         HttpHeaders headers = new HttpHeaders();
+        settingResponseHeader(headers);
         headers.set("Content-Type", "application/javascript;charset=utf-8");
         InputStream stream = SseWebController.class.getResourceAsStream("/sse.js");
         Resource body = new InputStreamResource(stream);
@@ -133,6 +147,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     protected ResponseEntity buildUnauthorizedResponse() {
         HttpHeaders headers = new HttpHeaders();
         headers.setConnection("close");
+        settingResponseHeader(headers);
         return new ResponseEntity<>("", headers, HttpStatus.UNAUTHORIZED);
     }
 
@@ -180,26 +195,8 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
 
         // callback
         onConnect(emitter, attributeMap);
+        settingResponseHeader(emitter.getResponseHeaders());
         return emitter;
-    }
-
-    protected void disconnectClientIdMaxConnections(SseEmitter<ACCESS_USER> conncet, int clientIdMaxConnections) {
-        Object userId = conncet.getUserId();
-        String clientId = conncet.getClientId();
-
-        List<SseEmitter<? extends AccessUser>> clientConnectionList = localConnectionService.getConnectionByUserId(userId).stream()
-                .filter(e -> Objects.equals(e.getClientId(), clientId))
-                .filter(e -> e.getClientInstanceTime() != null)
-                .sorted(Comparator.comparing(SseEmitter::getClientInstanceTime))
-                .collect(Collectors.toList());
-
-        if (clientConnectionList.size() > clientIdMaxConnections) {
-            List<SseEmitter<? extends AccessUser>> sseEmitters =
-                    clientConnectionList.subList(0, clientConnectionList.size() - clientIdMaxConnections);
-            for (SseEmitter<? extends AccessUser> sseEmitter : sseEmitters) {
-                sseEmitter.disconnect();
-            }
-        }
     }
 
     /**
@@ -222,7 +219,8 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         if (emitter != null) {
             emitter.requestMessage();
         }
-        return ResponseEntity.ok(wrapOkResponse(onMessage(path, emitter, message)));
+        Object responseBody = wrapOkResponse(onMessage(path, emitter, message));
+        return responseEntity(responseBody);
     }
 
     /**
@@ -245,7 +243,9 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         if (emitter != null) {
             emitter.requestUpload();
         }
-        return ResponseEntity.ok(wrapOkResponse(onUpload(path, emitter, message, request.getParts())));
+
+        Object responseBody = onUpload(path, emitter, message, request.getParts());
+        return responseEntity(responseBody);
     }
 
     /**
@@ -258,7 +258,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             ACCESS_USER accessUser = getAccessUser();
             onDisconnect(Collections.singletonList(disconnect), accessUser, query);
         }
-        return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", disconnect != null ? 1 : 0)));
+        return responseEntity(Collections.singletonMap("count", disconnect != null ? 1 : 0));
     }
 
     /**
@@ -272,7 +272,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                 ACCESS_USER accessUser = getAccessUser();
                 onDisconnect(Collections.singletonList(disconnect), accessUser, query);
             }
-            return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", disconnect != null ? 1 : 0)));
+            return responseEntity(Collections.singletonMap("count", disconnect != null ? 1 : 0));
         } else {
             ACCESS_USER accessUser = getAccessUser();
             if (accessUser != null) {
@@ -280,9 +280,9 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                 if (count.size() > 0) {
                     onDisconnect(count, accessUser, query);
                 }
-                return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", count.size())));
+                return responseEntity(Collections.singletonMap("count", count.size()));
             } else {
-                return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", 0)));
+                return responseEntity(Collections.singletonMap("count", 0));
             }
         }
     }
@@ -300,13 +300,13 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         if (disconnectList.size() > 0) {
             onDisconnect(disconnectList, accessUser, query);
         }
-        return ResponseEntity.ok(wrapOkResponse(Collections.singletonMap("count", disconnectList.size())));
+        return responseEntity(Collections.singletonMap("count", disconnectList.size()));
     }
 
     @RequestMapping("/users")
-    public Object users(@RequestParam(required = false, defaultValue = "1") Integer pageNum,
-                        @RequestParam(required = false, defaultValue = "100") Integer pageSize,
-                        String name) {
+    public ResponseEntity users(@RequestParam(required = false, defaultValue = "1") Integer pageNum,
+                                @RequestParam(required = false, defaultValue = "100") Integer pageSize,
+                                String name) {
         List<? extends AccessUser> list = localConnectionService.getUsers();
         String nameTrim = name != null ? name.trim().toLowerCase() : null;
         if (nameTrim != null && nameTrim.length() > 0) {
@@ -321,7 +321,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                     .collect(Collectors.toList());
         }
         PageInfo<Object> pageInfo = PageInfo.of(list, pageNum, pageSize).map(e -> mapToUserVO((ACCESS_USER) e));
-        return ResponseEntity.ok(wrapOkResponse(pageInfo));
+        return responseEntity(pageInfo);
     }
 
     @RequestMapping("/connections")
@@ -360,7 +360,45 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                                         .orElse(""))
                         .thenComparingLong(SseEmitter::getId))
                 .collect(Collectors.toList());
-        return ResponseEntity.ok(wrapOkResponse(PageInfo.of(list, pageNum, pageSize).map(e -> mapToConnectionVO((SseEmitter<ACCESS_USER>) e))));
+        PageInfo<Object> pageInfo = PageInfo.of(list, pageNum, pageSize)
+                .map(e -> mapToConnectionVO((SseEmitter<ACCESS_USER>) e));
+        return responseEntity(pageInfo);
+    }
+
+    protected ResponseEntity responseEntity(Object responseBody) {
+        HttpHeaders headers = new HttpHeaders();
+        settingResponseHeader(headers);
+        return new ResponseEntity<>(wrapOkResponse(responseBody), headers, HttpStatus.OK);
+    }
+
+    protected void settingResponseHeader(HttpHeaders responseHeaders) {
+        String sseServerIdHeaderName = this.sseServerIdHeaderName;
+        if (sseServerIdHeaderName != null && sseServerIdHeaderName.length() > 0) {
+            responseHeaders.set(sseServerIdHeaderName, getSseServerId());
+        }
+    }
+
+    protected String getSseServerId() {
+        return WebUtil.getIPAddress(serverPort);
+    }
+
+    protected void disconnectClientIdMaxConnections(SseEmitter<ACCESS_USER> conncet, int clientIdMaxConnections) {
+        Object userId = conncet.getUserId();
+        String clientId = conncet.getClientId();
+
+        List<SseEmitter<? extends AccessUser>> clientConnectionList = localConnectionService.getConnectionByUserId(userId).stream()
+                .filter(e -> Objects.equals(e.getClientId(), clientId))
+                .filter(e -> e.getClientInstanceTime() != null)
+                .sorted(Comparator.comparing(SseEmitter::getClientInstanceTime))
+                .collect(Collectors.toList());
+
+        if (clientConnectionList.size() > clientIdMaxConnections) {
+            List<SseEmitter<? extends AccessUser>> sseEmitters =
+                    clientConnectionList.subList(0, clientConnectionList.size() - clientIdMaxConnections);
+            for (SseEmitter<? extends AccessUser> sseEmitter : sseEmitters) {
+                sseEmitter.disconnect();
+            }
+        }
     }
 
     protected Object mapToUserVO(ACCESS_USER user) {

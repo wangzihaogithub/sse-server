@@ -1,14 +1,20 @@
 package com.github.sseserver.util;
 
 import javax.servlet.http.HttpServletRequest;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 public class WebUtil {
     public static final String PROTOCOL_HTTPS = "https:";
     public static final String PROTOCOL_HTTP = "http:";
     public static final Pattern PATTERN_HTTP = Pattern.compile(PROTOCOL_HTTP);
+    private static String ipAddress;
 
     /**
      * 是否是有效版本
@@ -104,6 +110,55 @@ public class WebUtil {
             }
         }
         return domain;
+    }
+
+    public static String getIPAddress(Integer port) {
+        if (port != null && port > 0) {
+            return getIPAddress() + ":" + port;
+        } else {
+            return getIPAddress();
+        }
+    }
+
+    public static String getIPAddress() {
+        if (ipAddress != null) {
+            return ipAddress;
+        } else {
+            try {
+                Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
+                String[] skipNames = {"TAP", "VPN", "UTUN"};
+                while (networkInterfaces.hasMoreElements()) {
+                    NetworkInterface networkInterface = networkInterfaces.nextElement();
+                    if (networkInterface.isVirtual() && networkInterface.isLoopback()) {
+                        continue;
+                    }
+
+                    String name = Objects.toString(networkInterface.getName(), "").trim().toUpperCase();
+                    String displayName = Objects.toString(networkInterface.getDisplayName(), "").trim().toUpperCase();
+                    String netName = name.length() > 0 ? name : displayName;
+                    boolean skip = Stream.of(skipNames).anyMatch(netName::contains);
+                    if (skip) {
+                        continue;
+                    }
+
+                    Enumeration<InetAddress> inetAddresses = networkInterface.getInetAddresses();
+                    while (inetAddresses.hasMoreElements()) {
+                        InetAddress inetAddress = inetAddresses.nextElement();
+                        if (inetAddress.isLoopbackAddress() || !inetAddress.isSiteLocalAddress()) {
+                            continue;
+                        }
+                        String hostAddress = inetAddress.getHostAddress();
+                        return ipAddress = hostAddress;
+                    }
+                }
+            } catch (Exception var6) {
+            }
+            return null;
+        }
+    }
+
+    public static void main(String[] args) {
+        getIPAddress();
     }
 
 }
