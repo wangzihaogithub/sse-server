@@ -126,7 +126,7 @@ public class WebUtil {
         } else {
             try {
                 Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
-                String[] skipNames = {"TAP", "VPN", "UTUN"};
+                String[] skipNames = {"TAP", "VPN", "UTUN", "VIRBR"};
                 while (networkInterfaces.hasMoreElements()) {
                     NetworkInterface networkInterface = networkInterfaces.nextElement();
                     if (networkInterface.isVirtual() && networkInterface.isLoopback()) {
