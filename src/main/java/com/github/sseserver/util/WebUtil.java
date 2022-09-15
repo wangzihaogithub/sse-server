@@ -151,9 +151,11 @@ public class WebUtil {
                         return ipAddress = hostAddress;
                     }
                 }
+                // 如果没有发现 non-loopback地址.只能用最次选的方案
+                return ipAddress = InetAddress.getLocalHost().getHostAddress();
             } catch (Exception var6) {
+                return null;
             }
-            return null;
         }
     }
 
