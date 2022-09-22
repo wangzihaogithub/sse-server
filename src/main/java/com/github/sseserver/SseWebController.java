@@ -172,6 +172,9 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
 
         // build connect
         SseEmitter<ACCESS_USER> emitter = localConnectionService.connect(currentUser, keepaliveTime, attributeMap);
+        if (emitter == null) {
+            return buildUnauthorizedResponse();
+        }
 
         // dump
         String channel = Objects.toString(attributeMap.get("channel"), null);
