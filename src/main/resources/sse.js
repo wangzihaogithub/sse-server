@@ -9,11 +9,11 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.1.1</version>
+ *      <version>1.1.2</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.1.1'
+  static version = '1.1.2'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,
@@ -90,6 +90,10 @@ class Sse {
       this.connectionTimestamp = res.serverTime
       this.connectionName = res.name
 
+      this.flush()
+    }
+
+    this.flush = () => {
       let task
       while ((task = this.sendQueue.shift())) {
         this.send(task.path, task.body, task.query, task.headers).then(task.resolve).catch(task.reject)
@@ -97,6 +101,17 @@ class Sse {
       while ((task = this.uploadQueue.shift())) {
         this.upload(task.path, task.formData, task.query, task.headers).then(task.resolve).catch(task.reject)
       }
+    }
+
+    this.handleConnectionClose = (event) => {
+      if(this.isActive()){
+        this.flush()
+      }
+      this.state = Sse.STATE_CLOSED
+      const res = JSON.parse(event.data)
+      this.closeResponse = res
+      this.removeEventSource()
+      this.clearReconnectTimer()
     }
 
     this.toString = () => {
@@ -150,6 +165,7 @@ class Sse {
 
       const es = new EventSource(`${this.options.url}/connect?${query.toString()}`, { withCredentials: this.options.withCredentials })
       es.addEventListener('connect-finish', this.handleConnectionFinish)
+      es.addEventListener('connect-close', this.handleConnectionClose)
       es.addEventListener('open', this.handleOpen) // 连接成功
       es.addEventListener('error', this.handleError) // 失败
 
@@ -213,6 +229,7 @@ class Sse {
       this.es.removeEventListener('error', this.handleError)
       this.es.removeEventListener('open', this.handleOpen)
       this.es.removeEventListener('connect-finish', this.handleConnectionFinish)
+      this.es.removeEventListener('connect-close', this.handleConnectionClose)
       // 用户事件
       for (const eventName in this.options.eventListeners) {
         try {
@@ -248,7 +265,7 @@ class Sse {
     }
 
     this.isActive = () => {
-      return this.es && this.es.readyState === Sse.STATE_OPEN
+      return this.es && this.es.readyState === Sse.STATE_OPEN  && this.connectionId !== undefined
     }
 
     // 给后台发消息

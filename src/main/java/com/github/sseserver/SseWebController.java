@@ -49,7 +49,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     @Value("${server.port:8080}")
     private Integer serverPort;
     private String sseServerIdHeaderName = "Sse-Server-Id";
-    private Integer clientIdMaxConnections;
+    private Integer clientIdMaxConnections = 3;
 
     public Integer getClientIdMaxConnections() {
         return clientIdMaxConnections;
@@ -164,14 +164,14 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         }
 
         // Verify 1 login
-        ACCESS_USER accessUser = getAccessUser();
-        ResponseEntity errorResponseEntity = buildIfLoginVerifyErrorResponse(accessUser, query, body, keepaliveTime);
+        ACCESS_USER currentUser = getAccessUser();
+        ResponseEntity errorResponseEntity = buildIfLoginVerifyErrorResponse(currentUser, query, body, keepaliveTime);
         if (errorResponseEntity != null) {
             return errorResponseEntity;
         }
 
         // build connect
-        SseEmitter<ACCESS_USER> emitter = localConnectionService.connect(accessUser, keepaliveTime, attributeMap);
+        SseEmitter<ACCESS_USER> emitter = localConnectionService.connect(currentUser, keepaliveTime, attributeMap);
 
         // dump
         String channel = Objects.toString(attributeMap.get("channel"), null);
@@ -206,8 +206,8 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
      */
     @RequestMapping("/message/{path}")
     public ResponseEntity message(@PathVariable String path, Long connectionId, @RequestParam Map query, @RequestBody(required = false) Map body) {
-        ACCESS_USER accessUser = getAccessUser();
-        if (accessUser == null) {
+        ACCESS_USER currentUser = getAccessUser();
+        if (currentUser == null) {
             return buildUnauthorizedResponse();
         }
         SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(connectionId);
@@ -230,8 +230,8 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
      */
     @RequestMapping("/upload/{path}")
     public ResponseEntity upload(@PathVariable String path, HttpServletRequest request, Long connectionId, @RequestParam Map query, @RequestBody(required = false) Map body) throws IOException, ServletException {
-        ACCESS_USER accessUser = getAccessUser();
-        if (accessUser == null) {
+        ACCESS_USER currentUser = getAccessUser();
+        if (currentUser == null) {
             return buildUnauthorizedResponse();
         }
         SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(connectionId);
@@ -255,8 +255,8 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     public ResponseEntity disconnect(@PathVariable Long connectionId, @RequestParam Map query) {
         SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
         if (disconnect != null) {
-            ACCESS_USER accessUser = getAccessUser();
-            onDisconnect(Collections.singletonList(disconnect), accessUser, query);
+            ACCESS_USER currentUser = getAccessUser();
+            onDisconnect(Collections.singletonList(disconnect), currentUser, query);
         }
         return responseEntity(Collections.singletonMap("count", disconnect != null ? 1 : 0));
     }
@@ -269,16 +269,16 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         if (connectionId != null) {
             SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
             if (disconnect != null) {
-                ACCESS_USER accessUser = getAccessUser();
-                onDisconnect(Collections.singletonList(disconnect), accessUser, query);
+                ACCESS_USER currentUser = getAccessUser();
+                onDisconnect(Collections.singletonList(disconnect), currentUser, query);
             }
             return responseEntity(Collections.singletonMap("count", disconnect != null ? 1 : 0));
         } else {
-            ACCESS_USER accessUser = getAccessUser();
-            if (accessUser != null) {
-                List<SseEmitter<ACCESS_USER>> count = localConnectionService.disconnectByAccessToken(accessUser.getAccessToken());
+            ACCESS_USER currentUser = getAccessUser();
+            if (currentUser != null) {
+                List<SseEmitter<ACCESS_USER>> count = localConnectionService.disconnectByAccessToken(currentUser.getAccessToken());
                 if (count.size() > 0) {
-                    onDisconnect(count, accessUser, query);
+                    onDisconnect(count, currentUser, query);
                 }
                 return responseEntity(Collections.singletonMap("count", count.size()));
             } else {
@@ -292,13 +292,13 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
      */
     @RequestMapping("/disconnectUser")
     public ResponseEntity disconnectUser(String userId, @RequestParam Map query) {
-        ACCESS_USER accessUser = getAccessUser();
-        if (accessUser == null) {
+        ACCESS_USER currentUser = getAccessUser();
+        if (currentUser == null) {
             return buildUnauthorizedResponse();
         }
         List<SseEmitter<ACCESS_USER>> disconnectList = localConnectionService.disconnectByUserId(userId);
         if (disconnectList.size() > 0) {
-            onDisconnect(disconnectList, accessUser, query);
+            onDisconnect(disconnectList, currentUser, query);
         }
         return responseEntity(Collections.singletonMap("count", disconnectList.size()));
     }
@@ -307,6 +307,10 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     public ResponseEntity users(@RequestParam(required = false, defaultValue = "1") Integer pageNum,
                                 @RequestParam(required = false, defaultValue = "100") Integer pageSize,
                                 String name) {
+        ACCESS_USER currentUser = getAccessUser();
+        if (currentUser == null) {
+            return buildUnauthorizedResponse();
+        }
         List<? extends AccessUser> list = localConnectionService.getUsers();
         String nameTrim = name != null ? name.trim().toLowerCase() : null;
         if (nameTrim != null && nameTrim.length() > 0) {
@@ -330,6 +334,11 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                               String name,
                               String clientId,
                               Long id) {
+        ACCESS_USER currentUser = getAccessUser();
+        if (currentUser == null) {
+            return buildUnauthorizedResponse();
+        }
+
         List<SseEmitter<? extends AccessUser>> list = (List) localConnectionService.getConnectionAll();
         String nameTrim = name != null ? name.trim().toLowerCase() : null;
         list = list.stream()

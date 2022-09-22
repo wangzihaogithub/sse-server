@@ -33,6 +33,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     private final Map<String, Object> httpParameters = new LinkedHashMap<>();
     private final Map<String, String> httpHeaders = new LinkedHashMap<>();
     private boolean connect = false;
+    private boolean complete = false;
     private int count;
     private int requestUploadCount;
     private int requestMessageCount;
@@ -48,6 +49,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     private Set<String> listeners;
     private ScheduledFuture<?> timeoutCheckFuture;
     private HttpHeaders responseHeaders;
+    private IllegalStateException sendError;
 
     /**
      * timeout = 0是永不过期
@@ -99,6 +101,14 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     void requestMessage() {
         this.requestMessageCount++;
         this.lastRequestTimestamp = System.currentTimeMillis();
+    }
+
+    public IllegalStateException getSendError() {
+        return sendError;
+    }
+
+    public boolean isActive() {
+        return !complete && sendError == null;
     }
 
     public HttpHeaders getResponseHeaders() {
@@ -358,6 +368,18 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     }
 
     @Override
+    public synchronized void complete() {
+        this.complete = true;
+        super.complete();
+    }
+
+    @Override
+    public synchronized void completeWithError(Throwable ex) {
+        this.complete = true;
+        super.completeWithError(ex);
+    }
+
+    @Override
     public void send(SseEventBuilder builder) throws IOException {
         count++;
         if (builder instanceof SseEventBuilderImpl) {
@@ -370,6 +392,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         try {
             super.send(builder);
         } catch (IllegalStateException e) {
+            this.sendError = e;
             /* tomcat recycle bug.  socketWrapper is null. is read op cancel then recycle()
              * Http11OutputBuffer: 254行，对端网络关闭， 但没触发onError或onTimeout回调， 这时不知道是否不可用了
              *
@@ -433,6 +456,12 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
                 }
             }
             disconnectListeners.clear();
+            if (isActive()) {
+                try {
+                    send(SseEmitter.event("connect-close", "{}"));
+                } catch (IOException ignored) {
+                }
+            }
 
             try {
                 complete();
