@@ -50,6 +50,15 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     private Integer serverPort;
     private String sseServerIdHeaderName = "Sse-Server-Id";
     private Integer clientIdMaxConnections = 3;
+    private Long keepaliveTime;
+
+    public Long getKeepaliveTime() {
+        return keepaliveTime;
+    }
+
+    public void setKeepaliveTime(Long keepaliveTime) {
+        this.keepaliveTime = keepaliveTime;
+    }
 
     public Integer getClientIdMaxConnections() {
         return clientIdMaxConnections;
@@ -151,6 +160,14 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         return new ResponseEntity<>("", headers, HttpStatus.UNAUTHORIZED);
     }
 
+    protected Long choseKeepaliveTime(Long clientKeepaliveTime, Long serverKeepaliveTime) {
+        if (serverKeepaliveTime != null) {
+            return serverKeepaliveTime;
+        } else {
+            return clientKeepaliveTime;
+        }
+    }
+
     /**
      * 创建连接
      */
@@ -162,16 +179,17 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         if (body != null) {
             attributeMap.putAll(body);
         }
+        Long choseKeepaliveTime = choseKeepaliveTime(keepaliveTime, getKeepaliveTime());
 
         // Verify 1 login
         ACCESS_USER currentUser = getAccessUser();
-        ResponseEntity errorResponseEntity = buildIfLoginVerifyErrorResponse(currentUser, query, body, keepaliveTime);
+        ResponseEntity errorResponseEntity = buildIfLoginVerifyErrorResponse(currentUser, query, body, choseKeepaliveTime);
         if (errorResponseEntity != null) {
             return errorResponseEntity;
         }
 
         // build connect
-        SseEmitter<ACCESS_USER> emitter = localConnectionService.connect(currentUser, keepaliveTime, attributeMap);
+        SseEmitter<ACCESS_USER> emitter = localConnectionService.connect(currentUser, choseKeepaliveTime, attributeMap);
         if (emitter == null) {
             return buildUnauthorizedResponse();
         }

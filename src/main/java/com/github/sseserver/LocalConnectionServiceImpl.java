@@ -83,8 +83,10 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         result.onCompletion(completionCallBack(result));
         result.onError(errorCallBack(result));
         result.onTimeout(timeoutCallBack(result));
-        result.setTimeoutCheckFuture(scheduled.schedule(
-                result::disconnectByTimeoutCheck, keepaliveTime + 1000, TimeUnit.MILLISECONDS));
+        if (keepaliveTime > 0) {
+            result.setTimeoutCheckFuture(scheduled.schedule(
+                    result::disconnectByTimeoutCheck, keepaliveTime, TimeUnit.MILLISECONDS));
+        }
 
         Long id = result.getId();
         String accessToken = wrapStringKey(result.getAccessToken());

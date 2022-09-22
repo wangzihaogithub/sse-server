@@ -441,11 +441,17 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     }
 
     void disconnectByTimeoutCheck() {
-        this.timeoutCheckFuture = null;
-        disconnect();
+        disconnect(false);
     }
 
     public boolean disconnect() {
+        return disconnect(true);
+    }
+
+    public boolean disconnect(boolean sendClose) {
+        if (!connect) {
+            return false;
+        }
         cancelTimeoutTask();
         if (disconnect.compareAndSet(false, true)) {
             for (Consumer<SseEmitter<ACCESS_USER>> disconnectListener : new ArrayList<>(disconnectListeners)) {
@@ -456,7 +462,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
                 }
             }
             disconnectListeners.clear();
-            if (isActive()) {
+            if (sendClose && isActive()) {
                 try {
                     send(SseEmitter.event("connect-close", "{}"));
                 } catch (IOException ignored) {
