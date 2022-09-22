@@ -9,6 +9,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEvent
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -58,6 +59,11 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
     private int reconnectTime = 5000;
     private boolean destroyFlag;
+
+    @Override
+    public ScheduledExecutorService getScheduled() {
+        return scheduled;
+    }
 
     /**
      * 创建用户连接并返回 SseEmitter

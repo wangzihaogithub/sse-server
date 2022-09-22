@@ -418,8 +418,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
 
         List<SseEmitter<? extends AccessUser>> clientConnectionList = localConnectionService.getConnectionByUserId(userId).stream()
                 .filter(e -> Objects.equals(e.getClientId(), clientId))
-                .filter(e -> e.getClientInstanceTime() != null)
-                .sorted(Comparator.comparing(SseEmitter::getClientInstanceTime))
+                .sorted(Comparator.comparing(SseEmitter::getId))
                 .collect(Collectors.toList());
 
         if (clientConnectionList.size() > clientIdMaxConnections) {

@@ -34,6 +34,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     private final Map<String, String> httpHeaders = new LinkedHashMap<>();
     private boolean connect = false;
     private boolean complete = false;
+    private boolean earlyDisconnect = false;
     private int count;
     private int requestUploadCount;
     private int requestMessageCount;
@@ -49,7 +50,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     private Set<String> listeners;
     private ScheduledFuture<?> timeoutCheckFuture;
     private HttpHeaders responseHeaders;
-    private IllegalStateException sendError;
+    private IOException sendError;
 
     /**
      * timeout = 0是永不过期
@@ -103,7 +104,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         this.lastRequestTimestamp = System.currentTimeMillis();
     }
 
-    public IllegalStateException getSendError() {
+    public IOException getSendError() {
         return sendError;
     }
 
@@ -361,6 +362,10 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
             outputMessage.getHeaders().putAll(responseHeaders);
         }
         connectListeners.clear();
+
+        if (earlyDisconnect) {
+            disconnect();
+        }
     }
 
     public void send(String name, Object data) throws IOException {
@@ -392,7 +397,6 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         try {
             super.send(builder);
         } catch (IllegalStateException e) {
-            this.sendError = e;
             /* tomcat recycle bug.  socketWrapper is null. is read op cancel then recycle()
              * Http11OutputBuffer: 254行，对端网络关闭， 但没触发onError或onTimeout回调， 这时不知道是否不可用了
              *
@@ -417,10 +421,13 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
              * 	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitterReturnValueHandler$HttpMessageConvertingHandler.send(ResponseBodyEmitterReturnValueHandler.java:184)
              * 	at org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter.sendInternal(ResponseBodyEmitter.java:189)
              */
-//            if (e.getCause() instanceof NullPointerException) {
+            ClosedChannelException exception = new ClosedChannelException();
+            this.sendError = exception;
             disconnect();
-            throw new ClosedChannelException();
-//            }
+            throw exception;
+        } catch (IOException e) {
+            this.sendError = e;
+            throw e;
         }
     }
 
@@ -450,6 +457,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
 
     public boolean disconnect(boolean sendClose) {
         if (!connect) {
+            this.earlyDisconnect = true;
             return false;
         }
         cancelTimeoutTask();

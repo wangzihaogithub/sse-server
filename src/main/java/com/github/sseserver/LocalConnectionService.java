@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -24,6 +25,8 @@ import java.util.stream.Collectors;
 public interface LocalConnectionService {
 
     /* connect */
+
+    ScheduledExecutorService getScheduled();
 
     /**
      * 创建用户连接并返回 SseEmitter
