@@ -240,7 +240,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         if (emitter != null) {
             emitter.requestMessage();
         }
-        Object responseBody = wrapOkResponse(onMessage(path, emitter, message));
+        Object responseBody = onMessage(path, emitter, message);
         return responseEntity(responseBody);
     }
 
