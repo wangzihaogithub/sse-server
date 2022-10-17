@@ -166,9 +166,10 @@ sse协议的后端API, 比websocket轻量的实时通信,
           1. 函数声明, 在index.html或Vue的index.html里加入代码
           
           <script>
-                function sseEventListener(url, eventListeners) {
-                  return import(url).then(module => new module.default({url, eventListeners}))
-                }
+              function sseEventListener(url, eventListeners, query) {
+                return import(url + '?' + new URLSearchParams(query))
+                  .then(module => new module.default({url,eventListeners,query}))
+              }
           </script>
   
          2. 使用

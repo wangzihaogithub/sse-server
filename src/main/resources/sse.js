@@ -85,10 +85,12 @@ class Sse {
     this.handleConnectionFinish = (event) => {
       this.clearReconnectTimer()
       const res = JSON.parse(event.data)
+      this.connectResponse = res
       this.connectionId = res.connectionId
       this.reconnectDuration = this.options.reconnectTime || res.reconnectTime || Sse.DEFAULT_RECONNECT_TIME
       this.connectionTimestamp = res.serverTime
       this.connectionName = res.name
+      this.serverVersion = res.version
 
       this.flush()
     }
