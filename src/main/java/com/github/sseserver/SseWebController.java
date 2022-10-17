@@ -406,6 +406,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         if (sseServerIdHeaderName != null && sseServerIdHeaderName.length() > 0) {
             responseHeaders.set(sseServerIdHeaderName, getSseServerId());
         }
+        responseHeaders.set("Sse-Server-Version", SseEmitter.VERSION);
     }
 
     protected String getSseServerId() {

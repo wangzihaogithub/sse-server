@@ -168,10 +168,11 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                             + ",\"serverTime\":" + System.currentTimeMillis()
                             + ",\"reconnectTime\":" + reconnectTime
                             + ",\"name\":\"" + beanName + "\""
+                            + ",\"version\":\"" + SseEmitter.VERSION + "\""
                             + "}"));
             return result;
         } catch (IOException e) {
-            log.error("sse {} send {} IOException:{}", beanName, result, e.toString(), e);
+            log.error("sse {} send {} IOException:{}", beanName, result, e, e);
             return null;
         }
     }
