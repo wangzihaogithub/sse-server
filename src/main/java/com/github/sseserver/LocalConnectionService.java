@@ -81,6 +81,10 @@ public interface LocalConnectionService {
 
     int sendAllByClientListener(SseEventBuilder message, String sseListenerName);
 
+    default int sendAllByClientListener(Object data, String sseListenerName) {
+        return sendAllByClientListener(SseEmitter.event(sseListenerName, data), sseListenerName);
+    }
+
     int sendByConnectionId(Collection<Long> connectionIds, SseEventBuilder message);
 
     default int sendByConnectionId(Long connectionId, SseEventBuilder message) {
