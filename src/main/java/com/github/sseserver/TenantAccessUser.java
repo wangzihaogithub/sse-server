@@ -5,8 +5,8 @@ package com.github.sseserver;
  *
  * @author hao 2021年12月13日13:48:58
  */
-public interface CustomerAccessUser extends AccessUser {
+public interface TenantAccessUser extends AccessUser {
 
-    Object getCustomerId();
+    Object getTenantId();
 
 }

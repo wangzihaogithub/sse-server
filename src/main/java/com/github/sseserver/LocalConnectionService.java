@@ -69,7 +69,7 @@ public interface LocalConnectionService {
 
     <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByUserId(Object userId);
 
-    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByCustomerId(Object userId);
+    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByTenantId(Object tenantId);
 
     <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionAll();
 
@@ -109,11 +109,13 @@ public interface LocalConnectionService {
         return sendByUserId(Collections.singletonList(userId), message);
     }
 
-    int sendByCustomerId(Collection<?> customerIds, SseEventBuilder message);
+    int sendByTenantId(Collection<?> tenantIds, SseEventBuilder message);
 
-    default int sendByCustomerId(Object customerId, SseEventBuilder message) {
-        return sendByCustomerId(Collections.singletonList(customerId), message);
+    default int sendByTenantId(Object tenantId, SseEventBuilder message) {
+        return sendByTenantId(Collections.singletonList(tenantId), message);
     }
+
+    int sendByTenantIdClientListener(Object tenantId, SseEventBuilder message, String sseListenerName);
 
     /* getUser */
 
@@ -145,7 +147,14 @@ public interface LocalConnectionService {
                 .collect(Collectors.toList());
     }
 
-    List<String> getCustomerIds();
+    List<String> getTenantIds();
+
+    default List<Integer> getTenantIdsInt() {
+        return getTenantIds().stream()
+                .filter(e -> e != null && e.length() > 0)
+                .map(Integer::valueOf)
+                .collect(Collectors.toList());
+    }
 
     List<String> getChannels();
 

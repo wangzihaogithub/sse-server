@@ -218,7 +218,7 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     public Set<String> getListeners() {
         if (this.listeners == null) {
             String listeners = (String) httpParameters.get("listeners");
-            this.listeners = listeners != null && listeners.length() > 0 ? new LinkedHashSet<>(Arrays.asList(listeners.split(","))) : Collections.emptySet();
+            this.listeners = listeners != null && listeners.length() > 0 ? new LinkedHashSet<>(Arrays.asList(listeners.split(","))) : new LinkedHashSet<>();
         }
         return this.listeners;
     }
@@ -287,8 +287,8 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         return accessUser != null && accessUser instanceof AccessToken ? ((AccessToken) accessUser).getAccessToken() : null;
     }
 
-    public Object getCustomerId() {
-        return accessUser != null && accessUser instanceof CustomerAccessUser ? ((CustomerAccessUser) accessUser).getCustomerId() : null;
+    public Object getTenantId() {
+        return accessUser != null && accessUser instanceof TenantAccessUser ? ((TenantAccessUser) accessUser).getTenantId() : null;
     }
 
     public ACCESS_USER getAccessUser() {

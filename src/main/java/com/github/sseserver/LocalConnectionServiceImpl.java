@@ -37,7 +37,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
      */
     protected final Map<String, Set<Long>> accessToken2ConnectionIdMap = new ConcurrentHashMap<>();
     protected final Map<String, Set<Long>> channel2ConnectionIdMap = new ConcurrentHashMap<>();
-    protected final Map<String, Set<Long>> customerId2ConnectionIdMap = new ConcurrentHashMap<>();
+    protected final Map<String, Set<Long>> tenantId2ConnectionIdMap = new ConcurrentHashMap<>();
     protected final Map<String, Set<String>> userId2AccessTokenMap = new ConcurrentHashMap<>();
     /**
      * 链接
@@ -97,7 +97,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         Long id = result.getId();
         String accessToken = wrapStringKey(result.getAccessToken());
         String userId = wrapStringKey(result.getUserId());
-        String customerId = wrapStringKey(result.getCustomerId());
+        String tenantId = wrapStringKey(result.getTenantId());
 
         result.addDisConnectListener(e -> {
             log.debug("sse {} connection disconnect : {}", beanName, e);
@@ -124,11 +124,11 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                     }
                 }
 
-                Collection<Long> customerList = customerId2ConnectionIdMap.get(customerId);
-                if (customerList != null) {
-                    customerList.remove(id);
-                    if (customerList.isEmpty()) {
-                        customerId2ConnectionIdMap.remove(customerId);
+                Collection<Long> tenantList = tenantId2ConnectionIdMap.get(tenantId);
+                if (tenantList != null) {
+                    tenantList.remove(id);
+                    if (tenantList.isEmpty()) {
+                        tenantId2ConnectionIdMap.remove(tenantId);
                     }
                 }
 
@@ -152,7 +152,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         connectionMap.put(id, result);
         accessToken2ConnectionIdMap.computeIfAbsent(accessToken, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
                 .add(id);
-        customerId2ConnectionIdMap.computeIfAbsent(customerId, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
+        tenantId2ConnectionIdMap.computeIfAbsent(tenantId, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
                 .add(id);
         userId2AccessTokenMap.computeIfAbsent(userId, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
                 .add(accessToken);
@@ -256,8 +256,8 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public List<SseEmitter> getConnectionByCustomerId(Object customerId) {
-        Collection<Long> idList = customerId2ConnectionIdMap.get(wrapStringKey(customerId));
+    public List<SseEmitter> getConnectionByTenantId(Object tenantId) {
+        Collection<Long> idList = tenantId2ConnectionIdMap.get(wrapStringKey(tenantId));
         if (idList == null || idList.isEmpty()) {
             return Collections.emptyList();
         }
@@ -408,10 +408,22 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public int sendByCustomerId(Collection<?> customerIds, SseEventBuilder message) {
+    public int sendByTenantId(Collection<?> tenantIds, SseEventBuilder message) {
         int count = 0;
-        for (Object customerId : customerIds) {
-            count += send(getConnectionByCustomerId(customerId), message);
+        for (Object tenantId : tenantIds) {
+            count += send(getConnectionByTenantId(tenantId), message);
+        }
+        return count;
+    }
+
+    @Override
+    public int sendByTenantIdClientListener(Object tenantId, SseEventBuilder message, String sseListenerName) {
+        List<SseEmitter> list = getConnectionByTenantId(tenantId);
+        int count = 0;
+        for (SseEmitter emitter : list) {
+            if(emitter.existListener(sseListenerName) && send(emitter, message)){
+                count ++;
+            }
         }
         return count;
     }
@@ -471,9 +483,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public List<String> getCustomerIds() {
+    public List<String> getTenantIds() {
         return connectionMap.values().stream()
-                .map(SseEmitter::getCustomerId)
+                .map(SseEmitter::getTenantId)
                 .filter(Objects::nonNull)
                 .map(Object::toString)
                 .map(this::wrapStringKey)

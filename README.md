@@ -58,13 +58,13 @@ sse协议的后端API, 比websocket轻量的实时通信,
 
         // 实现AccessUser 可以使用sendByUserId(). 
         // 实现AccessToken 可以使用sendByAccessToken(), (多客户端登陆系统)
-        // 实现CustomerAccessUser 可以使用sendByCustomerId(), (多租户系统)
+        // 实现TenantAccessUser 可以使用sendByTenantId(), (多租户系统)
         @Data
-        public class HrAccessUser implements AccessToken, AccessUser, CustomerAccessUser {
+        public class HrAccessUser implements AccessToken, AccessUser, TenantAccessUser {
             private String accessToken;
             private Integer id;
             private String name;
-            private Integer customerId;
+            private Integer tenantId;
         }
 
         // 支持多系统
@@ -138,7 +138,7 @@ sse协议的后端API, 比websocket轻量的实时通信,
             int sendByAccessToken(accessToken, message)
             
             // 推送消息 (根据租户ID)
-            int sendByCustomerId(customerId, message)
+            int sendByTenantId(tenantId, message)
                         
             // 推送消息 (根据自定义信道)
             int sendByChannel(channel, message)
