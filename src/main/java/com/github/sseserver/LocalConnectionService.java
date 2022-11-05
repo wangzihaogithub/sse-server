@@ -117,6 +117,10 @@ public interface LocalConnectionService {
 
     int sendByTenantIdClientListener(Object tenantId, SseEventBuilder message, String sseListenerName);
 
+    default int sendByTenantIdClientListener(Object tenantId, Object message, String sseListenerName) {
+        return sendByTenantIdClientListener(tenantId, SseEmitter.event(sseListenerName, message), sseListenerName);
+    }
+
     /* getUser */
 
     <ACCESS_USER extends AccessUser & AccessToken> List<ACCESS_USER> getUsers();
