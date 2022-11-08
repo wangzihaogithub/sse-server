@@ -2,10 +2,7 @@ package com.github.sseserver;
 
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -125,6 +122,24 @@ public interface LocalConnectionService {
 
     <ACCESS_USER extends AccessUser & AccessToken> List<ACCESS_USER> getUsers();
 
+    default <ACCESS_USER extends AccessUser & AccessToken> List<ACCESS_USER> getUsersByListener(String sseListenerName) {
+        return getConnectionAll().stream()
+                .filter(e -> e.existListener(sseListenerName))
+                .map(e -> (ACCESS_USER) e.getAccessUser())
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    default <ACCESS_USER extends AccessUser & AccessToken> List<ACCESS_USER> getUsersByTenantIdListener(Object tenantId, String sseListenerName) {
+        return getConnectionByTenantId(tenantId).stream()
+                .filter(e -> e.existListener(sseListenerName))
+                .map(e -> (ACCESS_USER) e.getAccessUser())
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
     <ACCESS_USER extends AccessUser & AccessToken> ACCESS_USER getUser(Object userId);
 
     boolean isOnline(Object userId);
@@ -136,6 +151,14 @@ public interface LocalConnectionService {
     List<String> getUserIds();
 
     List<String> getUserIdsByListener(String sseListenerName);
+
+    default List<Integer> getUserIdsIntByTenantIdListener(Object tenantId, String sseListenerName) {
+        return getUsersByTenantIdListener(tenantId, sseListenerName).stream()
+                .map(e -> Objects.toString(e.getId(), null))
+                .filter(e -> e != null && e.length() > 0)
+                .map(Integer::valueOf)
+                .collect(Collectors.toList());
+    }
 
     default List<Integer> getUserIdsIntByListener(String sseListenerName) {
         return getUserIdsByListener(sseListenerName).stream()

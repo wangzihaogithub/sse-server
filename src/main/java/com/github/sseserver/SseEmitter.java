@@ -20,7 +20,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends org.springframework.web.servlet.mvc.method.annotation.SseEmitter {
-    public static final String VERSION = "1.1.3";
+    public static final String VERSION = "1.1.4";
     private final static Logger log = LoggerFactory.getLogger(SseEmitter.class);
     private static final AtomicLong ID_INCR = new AtomicLong();
     private static final MediaType TEXT_PLAIN = new MediaType("text", "plain", StandardCharsets.UTF_8);

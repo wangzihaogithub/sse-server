@@ -9,11 +9,11 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.1.3</version>
+ *      <version>1.1.4</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.1.3'
+  static version = '1.1.4'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,
@@ -53,8 +53,7 @@ class Sse {
   state = Sse.STATE_CONNECTING
   createTimestamp = Date.now()
   connectionName = ''
-  sendQueue = []
-  uploadQueue = []
+  retryQueue = []
 
   constructor(options) {
     this.options = Object.assign({}, Sse.DEFAULT_OPTIONS, options)
@@ -97,11 +96,28 @@ class Sse {
 
     this.flush = () => {
       let task
-      while ((task = this.sendQueue.shift())) {
-        this.send(task.path, task.body, task.query, task.headers).then(task.resolve).catch(task.reject)
-      }
-      while ((task = this.uploadQueue.shift())) {
-        this.upload(task.path, task.formData, task.query, task.headers).then(task.resolve).catch(task.reject)
+      while ((task = this.retryQueue.shift())) {
+        switch (task.type){
+          case 'addListener':{
+            this.addListener(task.eventListeners).then(task.resolve).catch(task.reject)
+            break
+          }
+          case 'removeListener':{
+            this.removeListener(task.eventListeners).then(task.resolve).catch(task.reject)
+            break
+          }
+          case 'send':{
+            this.send(task.path, task.body, task.query, task.headers).then(task.resolve).catch(task.reject)
+            break
+          }
+          case 'upload':{
+            this.upload(task.path, task.formData, task.query, task.headers).then(task.resolve).catch(task.reject)
+            break
+          }
+          default:{
+            break
+          }
+        }
       }
     }
 
@@ -173,19 +189,52 @@ class Sse {
 
       // 用户事件
       for (const eventName in this.options.eventListeners) {
-        try {
           const fn = this.options.eventListeners[eventName]
-          if (fn) {
-            es.addEventListener(eventName, fn)
-          }
-          if (this.options.useWindowEventBus) {
-            es.addEventListener(eventName, this._dispatchEvent)
-          }
-        } catch (e) {
-          console.error(`addEventListener(${eventName}) error`, e)
-        }
+          this._addEventListener(es,eventName,fn)
       }
       this.es = es
+    }
+
+    this.getEventListeners = () => {
+      return Object.assign({}, this.options.eventListeners)
+    }
+
+    this._addEventListener = (es, eventName, fn)=>{
+      if(!es){
+        return false
+      }
+      try {
+        if (fn) {
+          es.addEventListener(eventName, fn)
+        }
+        if (this.options.useWindowEventBus) {
+          es.addEventListener(eventName, this._dispatchEvent)
+        }
+        return true
+      } catch (e) {
+        console.error(`addEventListener(${eventName}) error`, e)
+        return false
+      }
+    }
+
+    this._removeEventListener = (es, eventName, fn)=>{
+      if(!es){
+        return false
+      }
+      try {
+        try{
+          es.removeEventListener(eventName, fn)
+        } catch (e){
+          console.warn(`removeEventListener(${eventName}) error`, e)
+        }
+        if (this.options.useWindowEventBus) {
+          es.removeEventListener(eventName, this._dispatchEvent)
+        }
+        return true
+      } catch (e) {
+        console.error(`addEventListener(${eventName}) error`, e)
+        return false
+      }
     }
 
     this._dispatchEvent = (event) => {
@@ -200,6 +249,99 @@ class Sse {
       const newEvent = new MessageEvent(event.type, event)
       newEvent.url = this.options.url
       window.dispatchEvent(newEvent)
+    }
+
+    this.addListener = (eventListeners) => {
+      if (!this.isActive()) {
+        return new Promise((resolve, reject) => {
+          this.retryQueue.push({ type: 'addListener', eventListeners, resolve, reject })
+        })
+      }
+
+      let eventListenersMap = {}
+      if(eventListeners instanceof Array){
+        eventListeners.forEach(name => {
+          eventListenersMap[name] = null
+        })
+      }else {
+        eventListenersMap = eventListeners
+      }
+      const body = {
+        connectionId: this.connectionId,
+        listener: Object.keys(eventListenersMap)
+      }
+
+      const query = new URLSearchParams()
+      for (const key in this.options.query) {
+        query.append(key, this.options.query[key])
+      }
+      try {
+        const responsePromise = fetch(`${this.options.url}/addListener?${query.toString()}`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+          credentials: 'include',
+          mode: 'cors',
+          headers: {
+            'content-type': 'application/json;charset=UTF-8'
+          }
+        })
+        for(let eventName in eventListenersMap){
+          const fn = eventListenersMap[eventName]
+          this.options.eventListeners[eventName] = fn
+          this._addEventListener(this.es,eventName,fn)
+        }
+        return responsePromise
+      } catch (e) {
+        return new Promise((resolve, reject) => {
+          this.retryQueue.push({ type: 'addListener', eventListeners, resolve, reject })
+        })
+      }
+    }
+
+    this.removeListener = (eventListeners) => {
+      if (!this.isActive()) {
+        return new Promise((resolve, reject) => {
+          this.retryQueue.push({ type: 'removeListener',eventListeners, resolve, reject })
+        })
+      }
+
+      let eventListenersMap = {}
+      if(eventListeners instanceof Array){
+        eventListeners.forEach(name => {
+          eventListenersMap[name] = null
+        })
+      }else {
+        eventListenersMap = eventListeners
+      }
+      const body = {
+        connectionId: this.connectionId,
+        listener: Object.keys(eventListenersMap)
+      }
+      const query = new URLSearchParams()
+      for (const key in this.options.query) {
+        query.append(key, this.options.query[key])
+      }
+      try {
+        const responsePromise = fetch(`${this.options.url}/removeListener?${query.toString()}`, {
+          method: 'POST',
+          body: JSON.stringify(body),
+          credentials: 'include',
+          mode: 'cors',
+          headers: {
+            'content-type': 'application/json;charset=UTF-8'
+          }
+        })
+        for(let eventName in eventListenersMap){
+          const fn = eventListenersMap[eventName]
+          this.options.eventListeners[eventName] = fn
+          this._removeEventListener(this.es,eventName,fn)
+        }
+        return responsePromise
+      } catch (e) {
+        return new Promise((resolve, reject) => {
+          this.retryQueue.push({ type: 'removeListener', eventListeners, resolve, reject })
+        })
+      }
     }
 
     this.clearReconnectTimer = () => {
@@ -274,7 +416,7 @@ class Sse {
     this.send = (path = '', body = {}, query = {}, headers = {}) => {
       if (!this.isActive()) {
         return new Promise((resolve, reject) => {
-          this.sendQueue.push({ path, body, query, headers, resolve, reject })
+          this.retryQueue.push({ path, body, query, headers, resolve, reject })
         })
       }
       const queryBuilder = new URLSearchParams()
@@ -295,7 +437,7 @@ class Sse {
         })
       } catch (e) {
         return new Promise((resolve, reject) => {
-          this.sendQueue.push({ path, body, query, headers, resolve, reject })
+          this.retryQueue.push({ path, body, query, headers, resolve, reject })
         })
       }
     }
@@ -307,7 +449,7 @@ class Sse {
       }
       if (!this.isActive()) {
         return new Promise((resolve, reject) => {
-          this.uploadQueue.push({ path, formData, query, headers, resolve, reject })
+          this.retryQueue.push({ path, formData, query, headers, resolve, reject })
         })
       }
       const queryBuilder = new URLSearchParams()
@@ -325,7 +467,7 @@ class Sse {
         })
       } catch (e) {
         return new Promise((resolve, reject) => {
-          this.uploadQueue.push({ path, formData, query, headers, resolve, reject })
+          this.retryQueue.push({ path, formData, query, headers, resolve, reject })
         })
       }
     }

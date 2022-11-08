@@ -221,6 +221,46 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     }
 
     /**
+     * 新增监听
+     *
+     * @return http原生响应
+     */
+    @RequestMapping("/addListener")
+    public ResponseEntity addListener(@RequestBody ListenerReq req) {
+        if (req == null || req.isInvalid()) {
+            return responseEntity(Collections.singletonMap("listener", null));
+        }
+        ACCESS_USER currentUser = getAccessUser();
+        if (currentUser == null) {
+            return buildUnauthorizedResponse();
+        }
+        SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(req.getConnectionId());
+        emitter.getListeners().addAll(req.getListener());
+        return responseEntity(Collections.singletonMap("listener", emitter.getListeners()));
+    }
+
+    /**
+     * 移除监听
+     *
+     * @return http原生响应
+     */
+    @RequestMapping("/removeListener")
+    public ResponseEntity removeListener(@RequestBody ListenerReq req) {
+        if (req == null || req.isInvalid()) {
+            return responseEntity(Collections.singletonMap("listener", null));
+        }
+        ACCESS_USER currentUser = getAccessUser();
+        if (currentUser == null) {
+            return buildUnauthorizedResponse();
+        }
+        SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(req.getConnectionId());
+        for (String s : req.getListener()) {
+            emitter.getListeners().remove(s);
+        }
+        return responseEntity(Collections.singletonMap("listener", emitter.getListeners()));
+    }
+
+    /**
      * 收到前端的消息
      *
      * @return http原生响应
@@ -512,6 +552,31 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             }
         }
         return true;
+    }
+
+    public static class ListenerReq {
+        private List<String> listener;
+        private Long connectionId;
+
+        public boolean isInvalid() {
+            return listener == null || listener.isEmpty() || connectionId == null;
+        }
+
+        public List<String> getListener() {
+            return listener;
+        }
+
+        public Long getConnectionId() {
+            return connectionId;
+        }
+
+        public void setConnectionId(Long connectionId) {
+            this.connectionId = connectionId;
+        }
+
+        public void setListener(List<String> listener) {
+            this.listener = listener;
+        }
     }
 
     public static class ResponseWrap<T> implements Serializable {
