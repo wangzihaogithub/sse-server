@@ -93,6 +93,12 @@ public class WebUtil {
         if (appendContextPath) {
             sb.append(request.getServletContext().getContextPath());
         }
+        if (sb.toString().startsWith("http://localhost")) {
+            String host = request.getHeader("host");
+            if (host != null && host.length() > 0) {
+                sb = new StringBuffer("http://" + host);
+            }
+        }
         return rewriteHttpToHttpsIfSecure(sb.toString(), request.isSecure());
     }
 
