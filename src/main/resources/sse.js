@@ -199,7 +199,7 @@ class Sse {
       return Object.assign({}, this.options.eventListeners)
     }
 
-    this._addEventListener = (es, eventName, fn)=>{
+    this._addEventListener = (es, eventName, fn) => {
       if(!es){
         return false
       }
@@ -217,7 +217,7 @@ class Sse {
       }
     }
 
-    this._removeEventListener = (es, eventName, fn)=>{
+    this._removeEventListener = (es, eventName, fn) => {
       if(!es){
         return false
       }
