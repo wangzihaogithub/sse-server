@@ -13,6 +13,7 @@ import java.io.Serializable;
 import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -35,6 +36,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     private final long id = newId();
     private final ACCESS_USER accessUser;
     private final AtomicBoolean disconnect = new AtomicBoolean();
+    private final Queue<SseEventBuilder> earlySendQueue = new LinkedList<>();
     private final List<Consumer<SseEmitter<ACCESS_USER>>> connectListeners = new ArrayList<>(2);
     private final List<Consumer<SseEmitter<ACCESS_USER>>> disconnectListeners = new ArrayList<>(2);
     private final List<Consumer<ChangeEvent<ACCESS_USER, Set<String>>>> listenersWatchList = new ArrayList<>(2);
@@ -44,6 +46,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     private final Map<String, String> httpHeaders = new LinkedHashMap<>(6);
     private boolean connect = false;
     private boolean complete = false;
+    private boolean writeable = false;
     private boolean earlyDisconnect = false;
     private int count;
     private int requestUploadCount;
@@ -86,12 +89,12 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
         return id;
     }
 
-    public static SseEventBuilder event() {
-        return new SseEventBuilderImpl();
+    public static SseEventBuilderFuture<SseEmitter> event() {
+        return new SseEventBuilderFuture<>();
     }
 
-    public static SseEventBuilder event(String name, Object data) {
-        return new SseEventBuilderImpl().name(name).data(data);
+    public static <ACCESS_USER> SseEventBuilderFuture<SseEmitter<ACCESS_USER>> event(String name, Object data) {
+        return new SseEventBuilderFuture<SseEmitter<ACCESS_USER>>().name(name).data(data);
     }
 
     private static Long castLong(Object value) {
@@ -124,6 +127,10 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
 
     public boolean isActive() {
         return !complete && sendError == null;
+    }
+
+    public boolean isWriteable() {
+        return writeable;
     }
 
     public HttpHeaders getResponseHeaders() {
@@ -363,27 +370,45 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     @Override
     protected void extendResponse(ServerHttpResponse outputMessage) {
         super.extendResponse(outputMessage);
-        connect = true;
-        for (Consumer<SseEmitter<ACCESS_USER>> connectListener : new ArrayList<>(connectListeners)) {
-            try {
-                connectListener.accept(this);
-            } catch (Exception e) {
-                log.warn("connectListener error = {} {}", e.toString(), connectListener, e);
-            }
-        }
         HttpHeaders responseHeaders = this.responseHeaders;
         if (responseHeaders != null) {
             outputMessage.getHeaders().putAll(responseHeaders);
         }
-        connectListeners.clear();
 
         if (earlyDisconnect) {
             disconnect();
         }
+        connect = true;
     }
 
-    public void send(String name, Object data) throws IOException {
-        send(event().name(name).data(data));
+    /**
+     * override for spring
+     */
+    public void writeableReady() {
+        this.writeable = true;
+        SseEventBuilder builder;
+        while ((builder = earlySendQueue.poll()) != null) {
+            try {
+                send(builder);
+            } catch (IOException ignored) {
+
+            }
+        }
+
+        for (Consumer<SseEmitter<ACCESS_USER>> connectListener : new ArrayList<>(connectListeners)) {
+            try {
+                connectListener.accept(this);
+            } catch (Exception e) {
+                log.warn("connectListener error = {} {}", e, connectListener, e);
+            }
+        }
+        connectListeners.clear();
+    }
+
+    public SseEventBuilderFuture<SseEmitter> send(String name, Object data) throws IOException {
+        SseEventBuilderFuture<SseEmitter> event = event();
+        send(event.name(name).data(data));
+        return event;
     }
 
     @Override
@@ -400,24 +425,42 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
 
     @Override
     public void send(SseEventBuilder builder) throws IOException {
-        count++;
         boolean active = isActive();
-        if (builder instanceof SseEventBuilderImpl) {
-            String id = ((SseEventBuilderImpl) builder).id;
-            String name = ((SseEventBuilderImpl) builder).name;
-            log.debug("sse connection send {} : {}, id = {}, name = {}, active = {}", count, this, id, name, active);
+        if (!writeable && active) {
+            earlySendQueue.add(builder);
+            return;
+        }
+        count++;
+        CompletableFuture<SseEmitter<ACCESS_USER>> future;
+        if (builder instanceof CompletableFuture) {
+            future = (CompletableFuture) builder;
+        } else {
+            future = null;
+        }
+        if (builder instanceof SseEmitter.SseEventBuilderFuture) {
+            log.debug("sse connection send {} : {}, id = {}, name = {}, active = {}",
+                    count, this, ((SseEventBuilderFuture) builder).id, ((SseEventBuilderFuture) builder).name, active);
         } else {
             log.debug("sse connection send {} : {}, active = {}", count, this, active);
         }
         if (sendError != null) {
+            if (future != null) {
+                future.completeExceptionally(sendError);
+            }
             throw sendError;
         }
         if (!active) {
             sendError = new ClosedChannelException();
+            if (future != null) {
+                future.completeExceptionally(sendError);
+            }
             throw sendError;
         }
         try {
             super.send(builder);
+            if (future != null) {
+                future.complete(this);
+            }
         } catch (IllegalStateException e) {
             /* tomcat recycle bug.  socketWrapper is null. is read op cancel then recycle()
              * Http11OutputBuffer: 254行，对端网络关闭， 但没触发onError或onTimeout回调， 这时不知道是否不可用了
@@ -445,10 +488,16 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
              */
             ClosedChannelException exception = new ClosedChannelException();
             this.sendError = exception;
+            if (future != null) {
+                future.completeExceptionally(sendError);
+            }
             disconnect();
             throw exception;
         } catch (IOException e) {
             this.sendError = e;
+            if (future != null) {
+                future.completeExceptionally(sendError);
+            }
             throw e;
         }
     }
@@ -482,6 +531,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
             this.earlyDisconnect = true;
             return false;
         }
+        this.writeable = false;
         cancelTimeoutTask();
         if (disconnect.compareAndSet(false, true)) {
             for (Consumer<SseEmitter<ACCESS_USER>> disconnectListener : new ArrayList<>(disconnectListeners)) {
@@ -558,7 +608,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
         Set<String> afterCopy = new LinkedHashSet<>(listeners);
 
         ChangeEvent<ACCESS_USER, Set<String>> event = new ChangeEvent<>(this, EVENT_ADD_LISTENER, beforeCopy, afterCopy);
-        for (Consumer<ChangeEvent<ACCESS_USER, Set<String>>> changeEventConsumer : listenersWatchList) {
+        for (Consumer<ChangeEvent<ACCESS_USER, Set<String>>> changeEventConsumer : new ArrayList<>(listenersWatchList)) {
             changeEventConsumer.accept(event);
         }
     }
@@ -570,7 +620,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
         Set<String> afterCopy = new LinkedHashSet<>(listeners);
 
         ChangeEvent<ACCESS_USER, Set<String>> event = new ChangeEvent<>(this, EVENT_REMOVE_LISTENER, beforeCopy, afterCopy);
-        for (Consumer<ChangeEvent<ACCESS_USER, Set<String>>> changeEventConsumer : listenersWatchList) {
+        for (Consumer<ChangeEvent<ACCESS_USER, Set<String>>> changeEventConsumer : new ArrayList<>(listenersWatchList)) {
             changeEventConsumer.accept(event);
         }
     }
@@ -578,45 +628,56 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     /**
      * Default implementation of SseEventBuilder.
      */
-    private static class SseEventBuilderImpl implements SseEventBuilder {
-        private final Set<DataWithMediaType> dataToSend = new LinkedHashSet<>(4);
+    public static class SseEventBuilderFuture<ACCESS_USER> extends CompletableFuture<SseEmitter<ACCESS_USER>> implements SseEventBuilder {
+        private final Set<DataWithMediaType> dataToSend = new LinkedHashSet<>(3);
         private String id;
         private String name;
         private StringBuilder sb;
 
+        public SseEventBuilderFuture() {
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public String getName() {
+            return name;
+        }
+
         @Override
-        public SseEventBuilder id(String id) {
+        public SseEventBuilderFuture<ACCESS_USER> id(String id) {
             this.id = id;
             append("id:").append(id).append("\n");
             return this;
         }
 
         @Override
-        public SseEventBuilder name(String name) {
+        public SseEventBuilderFuture<ACCESS_USER> name(String name) {
             this.name = name;
             append("event:").append(name).append("\n");
             return this;
         }
 
         @Override
-        public SseEventBuilder reconnectTime(long reconnectTimeMillis) {
+        public SseEventBuilderFuture<ACCESS_USER> reconnectTime(long reconnectTimeMillis) {
             append("retry:").append(String.valueOf(reconnectTimeMillis)).append("\n");
             return this;
         }
 
         @Override
-        public SseEventBuilder comment(String comment) {
+        public SseEventBuilderFuture<ACCESS_USER> comment(String comment) {
             append(":").append(comment).append("\n");
             return this;
         }
 
         @Override
-        public SseEventBuilder data(Object object) {
+        public SseEventBuilderFuture<ACCESS_USER> data(Object object) {
             return data(object, null);
         }
 
         @Override
-        public SseEventBuilder data(Object object, MediaType mediaType) {
+        public SseEventBuilderFuture<ACCESS_USER> data(Object object, MediaType mediaType) {
             append("data:");
             saveAppendedText();
             this.dataToSend.add(new DataWithMediaType(object, mediaType));
@@ -624,7 +685,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
             return this;
         }
 
-        SseEventBuilderImpl append(String text) {
+        SseEventBuilderFuture<ACCESS_USER> append(String text) {
             if (this.sb == null) {
                 this.sb = new StringBuilder();
             }

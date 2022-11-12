@@ -1,0 +1,6 @@
+server:
+  port: 80
+spring:
+  servlet:
+    multipart:
+      location: ${user.dir}/src/test/resources/html

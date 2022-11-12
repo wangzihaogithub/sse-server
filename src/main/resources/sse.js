@@ -491,6 +491,7 @@ class Sse {
     })
 
     this.newEventSource()
+    window.sse = this
   }
 }
 

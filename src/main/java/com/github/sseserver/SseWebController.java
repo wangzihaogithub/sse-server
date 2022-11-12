@@ -235,8 +235,12 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             return buildUnauthorizedResponse();
         }
         SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(req.getConnectionId());
-        emitter.addListener(req.getListener());
-        return responseEntity(Collections.singletonMap("listener", emitter.getListeners()));
+        if (emitter == null) {
+            return responseEntity(Collections.singletonMap("error", "connectionId not exist"));
+        } else {
+            emitter.addListener(req.getListener());
+            return responseEntity(Collections.singletonMap("listener", emitter.getListeners()));
+        }
     }
 
     /**
@@ -254,8 +258,12 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             return buildUnauthorizedResponse();
         }
         SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(req.getConnectionId());
-        emitter.removeListener(req.getListener());
-        return responseEntity(Collections.singletonMap("listener", emitter.getListeners()));
+        if (emitter == null) {
+            return responseEntity(Collections.singletonMap("error", "connectionId not exist"));
+        } else {
+            emitter.removeListener(req.getListener());
+            return responseEntity(Collections.singletonMap("listener", emitter.getListeners()));
+        }
     }
 
     /**
@@ -512,31 +520,6 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         vo.setTotalJSHeapSize(emitter.getTotalJSHeapSize());
         vo.setUsedJSHeapSize(emitter.getUsedJSHeapSize());
         return vo;
-    }
-
-    protected SseEmitter.SseEventBuilder buildEvent(Map rawMessage) {
-        Map message = new LinkedHashMap(rawMessage);
-        SseEmitter.SseEventBuilder event = SseEmitter.event();
-        Object id = message.remove("id");
-        if (id != null) {
-            event.id(id.toString());
-        }
-        Object name = message.remove("name");
-        if (name != null) {
-            event.name(name.toString());
-        }
-        Object comment = message.remove("comment");
-        if (comment != null) {
-            event.comment(comment.toString());
-        }
-        Object reconnectTime = message.remove("reconnectTime");
-        if (reconnectTime != null) {
-            event.reconnectTime(Long.parseLong(reconnectTime.toString()));
-        }
-        if (!message.isEmpty()) {
-            event.data(message);
-        }
-        return event;
     }
 
     public boolean isBlank(CharSequence str) {

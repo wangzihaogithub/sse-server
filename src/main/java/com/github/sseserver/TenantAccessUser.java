@@ -7,7 +7,7 @@ import java.io.Serializable;
  *
  * @author hao 2021年12月13日13:48:58
  */
-public interface TenantAccessUser extends AccessUser {
+public interface TenantAccessUser {
 
     Serializable getTenantId();
 

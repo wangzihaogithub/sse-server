@@ -1,12 +1,17 @@
 package com.github.sseserver;
 
+import com.github.netty.springboot.EnableNettyEmbedded;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
-import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.concurrent.TimeUnit;
+
+@EnableScheduling
+@EnableNettyEmbedded
 @SpringBootApplication
 public class SseServerApplicationTests {
 
@@ -16,7 +21,17 @@ public class SseServerApplicationTests {
 
     @Bean
     public LocalConnectionService localConnectionService() {
-        return new LocalConnectionServiceImpl();
+        LocalConnectionServiceImpl service = new LocalConnectionServiceImpl();
+
+//        service.addListeningChangeWatch(event -> {
+//            service.getScheduled().schedule(() -> {
+//                event.getAfter().removeAll(event.getBefore());
+//                for (String s : event.getAfter()) {
+//                    service.atLeastOnce().sendAllListening(s, event.getEventName());
+//                }
+//            }, 3000, TimeUnit.MILLISECONDS);
+//        });
+        return service;
     }
 
     /**

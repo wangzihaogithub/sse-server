@@ -70,6 +70,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     private AtLeastOnceSender atLeastOnceSender;
     private MessageRepository messageRepository;
 
+    @Override
     public ScheduledExecutorService getScheduled() {
         return scheduled;
     }
@@ -179,7 +180,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             notifyListener(e, connectListenerList, connectListenerMap);
         });
         result.addListeningWatch(e -> {
-            for (Consumer<ChangeEvent<?, Set<String>>> changeEventConsumer : listeningChangeWatchList) {
+            for (Consumer<ChangeEvent<?, Set<String>>> changeEventConsumer : new ArrayList<>(listeningChangeWatchList)) {
                 changeEventConsumer.accept(e);
             }
         });

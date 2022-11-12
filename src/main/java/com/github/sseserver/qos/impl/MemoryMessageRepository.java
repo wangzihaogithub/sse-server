@@ -19,7 +19,7 @@ public class MemoryMessageRepository implements MessageRepository {
     }
 
     @Override
-    public <ACCESS_USER> List<Message> poll(SseEmitter<ACCESS_USER> query) {
+    public <ACCESS_USER> List<Message> select(SseEmitter<ACCESS_USER> query) {
         if (messageMap.isEmpty()) {
             return Collections.emptyList();
         }
@@ -29,10 +29,14 @@ public class MemoryMessageRepository implements MessageRepository {
                 list.add(message);
             }
         }
-        for (Message message : list) {
-            messageMap.remove(message.getId());
-        }
         return list;
+    }
+
+    @Override
+    public void delete(String id) {
+        if (id != null) {
+            messageMap.remove(id);
+        }
     }
 
     @Override

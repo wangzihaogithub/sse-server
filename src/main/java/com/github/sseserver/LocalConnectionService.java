@@ -6,6 +6,7 @@ import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * 单机长连接(非分布式)
@@ -20,6 +21,8 @@ import java.util.Map;
  * @author hao 2021年12月7日19:27:41
  */
 public interface LocalConnectionService extends Sender<Integer>, EventBus {
+
+    ScheduledExecutorService getScheduled();
 
     /* QOS */
 

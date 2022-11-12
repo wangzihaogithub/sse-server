@@ -7,7 +7,9 @@ import java.util.List;
 public interface MessageRepository extends AutoCloseable {
     String insert(Message message);
 
-    <ACCESS_USER> List<Message> poll(SseEmitter<ACCESS_USER> query);
+    <ACCESS_USER> List<Message> select(SseEmitter<ACCESS_USER> query);
+
+    void delete(String id);
 
     default void close() {
 

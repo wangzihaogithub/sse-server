@@ -38,6 +38,27 @@ public class AtLeastOnceMessage implements Message {
     }
 
     @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (!(o instanceof Message)) {
+            return false;
+        }
+        Message that = (Message) o;
+        if (id == null) {
+            return false;
+        } else {
+            return id.equals(that.getId());
+        }
+    }
+
+    @Override
+    public int hashCode() {
+        return id == null ? super.hashCode() : id.hashCode();
+    }
+
+    @Override
     public String getId() {
         return id;
     }
