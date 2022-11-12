@@ -8,11 +8,11 @@ import java.io.Serializable;
 import java.util.*;
 
 public class MemoryMessageRepository implements MessageRepository {
-    private final Map<String, Message> messageMap = Collections.synchronizedMap(new LinkedHashMap<>(6));
+    protected final Map<String, Message> messageMap = Collections.synchronizedMap(new LinkedHashMap<>(6));
 
     @Override
     public String insert(Message message) {
-        String id = Message.newId();
+        String id = newId();
         messageMap.put(id, message);
         message.setId(id);
         return id;
@@ -33,9 +33,11 @@ public class MemoryMessageRepository implements MessageRepository {
     }
 
     @Override
-    public void delete(String id) {
+    public boolean delete(String id) {
         if (id != null) {
-            messageMap.remove(id);
+            return messageMap.remove(id) != null;
+        } else {
+            return false;
         }
     }
 
@@ -44,7 +46,7 @@ public class MemoryMessageRepository implements MessageRepository {
         messageMap.clear();
     }
 
-    private <ACCESS_USER> boolean match(SseEmitter<ACCESS_USER> query, Message message) {
+    protected <ACCESS_USER> boolean match(SseEmitter<ACCESS_USER> query, Message message) {
         if (message.isFilter(Message.FILTER_TENANT_ID)
                 && !exist(query.getTenantId(), message.getTenantIdList())) {
             return false;
@@ -68,7 +70,11 @@ public class MemoryMessageRepository implements MessageRepository {
         return true;
     }
 
-    private static boolean exist(Serializable v1, Collection<? extends Serializable> v2) {
+    protected String newId() {
+        return Message.newId();
+    }
+
+    protected boolean exist(Serializable v1, Collection<? extends Serializable> v2) {
         for (Serializable v : v2) {
             if (equals(v1, v)) {
                 return true;
@@ -77,7 +83,7 @@ public class MemoryMessageRepository implements MessageRepository {
         return false;
     }
 
-    private static boolean equals(Serializable v1, Serializable v2) {
+    protected boolean equals(Serializable v1, Serializable v2) {
         if (v1 == v2) {
             return true;
         }

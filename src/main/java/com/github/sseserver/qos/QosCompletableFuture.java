@@ -7,7 +7,7 @@ public class QosCompletableFuture<ACCESS_USER> extends CompletableFuture<Deliver
      * 消息ID
      * {@link Message#newId()}
      */
-    private String id;
+    private String messageId;
     private final Delivered<ACCESS_USER> delivered;
 
     public QosCompletableFuture() {
@@ -16,11 +16,11 @@ public class QosCompletableFuture<ACCESS_USER> extends CompletableFuture<Deliver
     }
 
     public String getMessageId() {
-        return id;
+        return messageId;
     }
 
-    public void setMessageId(String id) {
-        this.id = id;
+    public void setMessageId(String messageId) {
+        this.messageId = messageId;
     }
 
     public Delivered<ACCESS_USER> getDelivered() {

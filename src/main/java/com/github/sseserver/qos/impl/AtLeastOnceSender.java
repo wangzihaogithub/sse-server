@@ -343,6 +343,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
         markSending(messageList);
 
         List<SseEmitter<ACCESS_USER>> succeedList = Collections.singletonList(connection);
+        IOException error = null;
         for (Message message : messageList) {
             if (message == null) {
                 // other sending
@@ -350,19 +351,20 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
             }
             String id = message.getId();
             try {
-                connection.send(SseEmitter.event()
-                        .id(id)
-                        .name(message.getEventName())
-                        .comment("resend")
-                        .data(message.getBody()));
-                messageRepository.delete(id);
-                QosCompletableFuture<ACCESS_USER> future = futureMap.remove(id);
-                if (future != null) {
-                    complete(future, succeedList);
+                if (connection.isActive() && connection.isWriteable() && error == null) {
+                    connection.send(SseEmitter.event()
+                            .id(id)
+                            .name(message.getEventName())
+                            .comment("resend")
+                            .data(message.getBody()));
+                    messageRepository.delete(id);
+                    QosCompletableFuture<ACCESS_USER> future = futureMap.remove(id);
+                    if (future != null) {
+                        complete(future, succeedList);
+                    }
                 }
-            } catch (IOException ignored) {
-                // break. next resend
-                break;
+            } catch (IOException e) {
+                error = e;
             } finally {
                 sendingSet.remove(id);
             }
