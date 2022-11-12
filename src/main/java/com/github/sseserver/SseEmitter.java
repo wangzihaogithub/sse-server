@@ -125,10 +125,25 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
         return sendError;
     }
 
+    /**
+     * 是否可用
+     *
+     * @return true=可用
+     */
     public boolean isActive() {
         return !complete && sendError == null;
     }
 
+    /**
+     * 是否可写入数据
+     * 如果可写则立即同步发送.
+     * 否则放入等待队列{@link #earlySendQueue}, 等到写就绪后{@link #writeableReady()}发送
+     *
+     * @return true=可写
+     * @see #earlySendQueue 过早写入的等待队列
+     * @see #writeableReady() 写就绪事件
+     * @see SseEventBuilderFuture 写结束的异步回调
+     */
     public boolean isWriteable() {
         return writeable;
     }
@@ -405,12 +420,6 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
         connectListeners.clear();
     }
 
-    public SseEventBuilderFuture<SseEmitter> send(String name, Object data) throws IOException {
-        SseEventBuilderFuture<SseEmitter> event = event();
-        send(event.name(name).data(data));
-        return event;
-    }
-
     @Override
     public synchronized void complete() {
         this.complete = true;
@@ -423,6 +432,28 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
         super.completeWithError(ex);
     }
 
+    /**
+     * 发送消息
+     *
+     * @param name
+     * @param data
+     * @return SseEventBuilderFuture 完成后的回调
+     * @throws IOException 如果当前处于写就绪 {@link #isWriteable()}, 异常在当前线程会生效.
+     *                     如果尚未写就绪, 异常会在异步回调里通知{@link SseEventBuilderFuture}
+     */
+    public SseEventBuilderFuture<SseEmitter<ACCESS_USER>> send(String name, Object data) throws IOException {
+        SseEventBuilderFuture event = event();
+        send(event.name(name).data(data));
+        return event;
+    }
+
+    /**
+     * 发送消息
+     *
+     * @param builder
+     * @throws IOException 如果当前处于写就绪 {@link #isWriteable()}, 异常在当前线程会生效.
+     *                     如果尚未写就绪, 异常会在异步回调里通知{@link SseEventBuilderFuture}
+     */
     @Override
     public void send(SseEventBuilder builder) throws IOException {
         boolean active = isActive();
@@ -544,7 +575,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
             disconnectListeners.clear();
             if (sendClose && isActive()) {
                 try {
-                    send(SseEmitter.event("connect-close", "{}"));
+                    send("connect-close", "{}");
                 } catch (IOException ignored) {
                 }
             }
@@ -626,7 +657,13 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     }
 
     /**
-     * Default implementation of SseEventBuilder.
+     * Sse事件对象, 写给前端后的Future
+     *
+     * @see SseEventBuilder
+     * @see #send(String, Object)
+     * @see #send(SseEventBuilder)
+     * @see #isWriteable()
+     * @see #writeableReady()
      */
     public static class SseEventBuilderFuture<ACCESS_USER> extends CompletableFuture<SseEmitter<ACCESS_USER>> implements SseEventBuilder {
         private final Set<DataWithMediaType> dataToSend = new LinkedHashSet<>(3);

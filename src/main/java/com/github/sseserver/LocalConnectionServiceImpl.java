@@ -9,7 +9,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.DisposableBean;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -565,13 +564,13 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         }
     }
 
-    public <ACCESS_USER> boolean send(SseEmitter<ACCESS_USER> sseEmitter, SseEventBuilder message) {
-        if (sseEmitter != null && sseEmitter.isActive()) {
+    public <ACCESS_USER> boolean send(SseEmitter<ACCESS_USER> emitter, String name, Object body) {
+        if (emitter != null && emitter.isActive()) {
             try {
-                sseEmitter.send(message);
+                emitter.send(name, body);
                 return true;
             } catch (IOException e) {
-                sseEmitter.disconnect();
+                emitter.disconnect();
             }
         }
         return false;
@@ -609,7 +608,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     public Integer sendAll(String eventName, Serializable body) {
         int count = 0;
         for (SseEmitter value : connectionMap.values()) {
-            if (send(value, SseEmitter.event(eventName, body))) {
+            if (send(value, eventName, body)) {
                 count++;
             }
         }
@@ -620,7 +619,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     public Integer sendAllListening(String eventName, Serializable body) {
         int count = 0;
         for (SseEmitter value : connectionMap.values()) {
-            if (value.existListener(eventName) && send(value, SseEmitter.event(eventName, body))) {
+            if (value.existListener(eventName) && send(value, eventName, body)) {
                 count++;
             }
         }
@@ -632,7 +631,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         int count = 0;
         for (String channel : channels) {
             for (SseEmitter value : getConnectionByChannel(channel)) {
-                if (send(value, SseEmitter.event(eventName, body))) {
+                if (send(value, eventName, body)) {
                     count++;
                 }
             }
@@ -645,7 +644,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         int count = 0;
         for (String channel : channels) {
             for (SseEmitter value : getConnectionByChannel(channel)) {
-                if (value.existListener(eventName) && send(value, SseEmitter.event(eventName, body))) {
+                if (value.existListener(eventName) && send(value, eventName, body)) {
                     count++;
                 }
             }
@@ -658,7 +657,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         int count = 0;
         for (String accessToken : accessTokens) {
             for (SseEmitter value : getConnectionByAccessToken(accessToken)) {
-                if (send(value, SseEmitter.event(eventName, body))) {
+                if (send(value, eventName, body)) {
                     count++;
                 }
             }
@@ -671,7 +670,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         int count = 0;
         for (String accessToken : accessTokens) {
             for (SseEmitter value : getConnectionByAccessToken(accessToken)) {
-                if (value.existListener(eventName) && send(value, SseEmitter.event(eventName, body))) {
+                if (value.existListener(eventName) && send(value, eventName, body)) {
                     count++;
                 }
             }
@@ -684,7 +683,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         int count = 0;
         for (Serializable userId : userIds) {
             for (SseEmitter value : getConnectionByUserId(userId)) {
-                if (send(value, SseEmitter.event(eventName, body))) {
+                if (send(value, eventName, body)) {
                     count++;
                 }
             }
@@ -697,7 +696,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         int count = 0;
         for (Serializable userId : userIds) {
             for (SseEmitter value : getConnectionByUserId(userId)) {
-                if (value.existListener(eventName) && send(value, SseEmitter.event(eventName, body))) {
+                if (value.existListener(eventName) && send(value, eventName, body)) {
                     count++;
                 }
             }
@@ -710,7 +709,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         int count = 0;
         for (Serializable tenantId : tenantIds) {
             for (SseEmitter value : getConnectionByTenantId(tenantId)) {
-                if (send(value, SseEmitter.event(eventName, body))) {
+                if (send(value, eventName, body)) {
                     count++;
                 }
             }
@@ -723,7 +722,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         int count = 0;
         for (Serializable tenantId : tenantIds) {
             for (SseEmitter value : getConnectionByTenantId(tenantId)) {
-                if (value.existListener(eventName) && send(value, SseEmitter.event(eventName, body))) {
+                if (value.existListener(eventName) && send(value, eventName, body)) {
                     count++;
                 }
             }
