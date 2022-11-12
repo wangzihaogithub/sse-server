@@ -1,5 +1,7 @@
 package com.github.sseserver;
 
+import java.io.Serializable;
+
 /**
  * 客户作为租户数据隔离的用户
  *
@@ -7,6 +9,6 @@ package com.github.sseserver;
  */
 public interface TenantAccessUser extends AccessUser {
 
-    Object getTenantId();
+    Serializable getTenantId();
 
 }

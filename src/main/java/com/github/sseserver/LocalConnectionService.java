@@ -1,11 +1,11 @@
 package com.github.sseserver;
 
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
+import com.github.sseserver.qos.QosCompletableFuture;
 
-import java.util.*;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.function.Consumer;
-import java.util.stream.Collectors;
+import java.io.Serializable;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 单机长连接(非分布式)
@@ -19,11 +19,13 @@ import java.util.stream.Collectors;
  *
  * @author hao 2021年12月7日19:27:41
  */
-public interface LocalConnectionService {
+public interface LocalConnectionService extends Sender<Integer>, EventBus {
+
+    /* QOS */
+
+    <ACCESS_USER> Sender<QosCompletableFuture<ACCESS_USER>> atLeastOnce();
 
     /* connect */
-
-    ScheduledExecutorService getScheduled();
 
     /**
      * 创建用户连接并返回 SseEmitter
@@ -32,156 +34,68 @@ public interface LocalConnectionService {
      * @param keepaliveTime 链接最大保持时间 ，0表示不过期。默认30秒，超过时间未完成会抛出异常：AsyncRequestTimeoutException
      * @return SseEmitter
      */
-    <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime);
+    <ACCESS_USER> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime);
 
-    <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap);
+    <ACCESS_USER> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap);
 
-    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> disconnectByUserId(Object userId);
+    /* disconnect */
 
-    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> disconnectByAccessToken(String accessToken);
+    <ACCESS_USER> List<SseEmitter<ACCESS_USER>> disconnectByUserId(Serializable userId);
 
-    <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> disconnectByConnectionId(Long connectionId);
+    <ACCESS_USER> List<SseEmitter<ACCESS_USER>> disconnectByAccessToken(String accessToken);
 
-    /* listener*/
+    <ACCESS_USER> SseEmitter<ACCESS_USER> disconnectByConnectionId(Long connectionId);
 
-    <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(String accessToken, String channel, Consumer<SseEmitter<ACCESS_USER>> consumer);
-
-    <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer);
-
-    <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer);
-
-    <ACCESS_USER extends AccessUser & AccessToken> void addDisConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer);
-
-    <ACCESS_USER extends AccessUser & AccessToken> void addDisConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer);
 
     /* getConnection */
 
-    <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> getConnectionById(Long connectionId);
+    <ACCESS_USER> Collection<SseEmitter<ACCESS_USER>> getConnectionAll();
 
-    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByListener(String sseListenerName);
+    <ACCESS_USER> SseEmitter<ACCESS_USER> getConnectionById(Long connectionId);
 
-    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByChannel(String channel);
+    <ACCESS_USER> List<SseEmitter<ACCESS_USER>> getConnectionByListening(String sseListenerName);
 
-    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByAccessToken(String accessToken);
+    <ACCESS_USER> List<SseEmitter<ACCESS_USER>> getConnectionByChannel(String channel);
 
-    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByUserId(Object userId);
+    <ACCESS_USER> List<SseEmitter<ACCESS_USER>> getConnectionByAccessToken(String accessToken);
 
-    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByTenantId(Object tenantId);
+    <ACCESS_USER> List<SseEmitter<ACCESS_USER>> getConnectionByUserId(Serializable userId);
 
-    <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionAll();
-
-    /* send */
-
-    int send(Collection<SseEmitter> sseEmitterList, SseEventBuilder message);
-
-    int sendAll(SseEventBuilder message);
-
-    int sendAllByClientListener(SseEventBuilder message, String sseListenerName);
-
-    default int sendAllByClientListener(Object data, String sseListenerName) {
-        return sendAllByClientListener(SseEmitter.event(sseListenerName, data), sseListenerName);
-    }
-
-    int sendByConnectionId(Collection<Long> connectionIds, SseEventBuilder message);
-
-    default int sendByConnectionId(Long connectionId, SseEventBuilder message) {
-        return sendByConnectionId(Collections.singletonList(connectionId), message);
-    }
-
-    int sendByChannel(Collection<String> channels, SseEventBuilder message);
-
-    default int sendByChannel(String channel, SseEventBuilder message) {
-        return sendByChannel(Collections.singletonList(channel), message);
-    }
-
-    int sendByAccessToken(Collection<String> accessTokens, SseEventBuilder message);
-
-    default int sendByAccessToken(String accessToken, SseEventBuilder message) {
-        return sendByAccessToken(Collections.singletonList(accessToken), message);
-    }
-
-    int sendByUserId(Collection<?> userIds, SseEventBuilder message);
-
-    default int sendByUserId(Object userId, SseEventBuilder message) {
-        return sendByUserId(Collections.singletonList(userId), message);
-    }
-
-    int sendByTenantId(Collection<?> tenantIds, SseEventBuilder message);
-
-    default int sendByTenantId(Object tenantId, SseEventBuilder message) {
-        return sendByTenantId(Collections.singletonList(tenantId), message);
-    }
-
-    int sendByTenantIdClientListener(Object tenantId, SseEventBuilder message, String sseListenerName);
-
-    default int sendByTenantIdClientListener(Object tenantId, Object message, String sseListenerName) {
-        return sendByTenantIdClientListener(tenantId, SseEmitter.event(sseListenerName, message), sseListenerName);
-    }
+    <ACCESS_USER> List<SseEmitter<ACCESS_USER>> getConnectionByTenantId(Serializable tenantId);
 
     /* getUser */
 
-    <ACCESS_USER extends AccessUser & AccessToken> List<ACCESS_USER> getUsers();
+    boolean isOnline(Serializable userId);
 
-    default <ACCESS_USER extends AccessUser & AccessToken> List<ACCESS_USER> getUsersByListener(String sseListenerName) {
-        return getConnectionAll().stream()
-                .filter(e -> e.existListener(sseListenerName))
-                .map(e -> (ACCESS_USER) e.getAccessUser())
-                .filter(Objects::nonNull)
-                .distinct()
-                .collect(Collectors.toList());
-    }
+    <ACCESS_USER> ACCESS_USER getUser(Serializable userId);
 
-    default <ACCESS_USER extends AccessUser & AccessToken> List<ACCESS_USER> getUsersByTenantIdListener(Object tenantId, String sseListenerName) {
-        return getConnectionByTenantId(tenantId).stream()
-                .filter(e -> e.existListener(sseListenerName))
-                .map(e -> (ACCESS_USER) e.getAccessUser())
-                .filter(Objects::nonNull)
-                .distinct()
-                .collect(Collectors.toList());
-    }
+    <ACCESS_USER> List<ACCESS_USER> getUsers();
 
-    <ACCESS_USER extends AccessUser & AccessToken> ACCESS_USER getUser(Object userId);
+    <ACCESS_USER> List<ACCESS_USER> getUsersByListening(String sseListenerName);
 
-    boolean isOnline(Object userId);
+    <ACCESS_USER> List<ACCESS_USER> getUsersByTenantIdListening(Serializable tenantId, String sseListenerName);
 
-    List<Long> getConnectionIds();
+    /* getUserIds */
 
-    List<String> getAccessTokens();
+    <T> Collection<T> getUserIds(Class<T> type);
 
-    List<String> getUserIds();
+    <T> List<T> getUserIdsByListening(String sseListenerName, Class<T> type);
 
-    List<String> getUserIdsByListener(String sseListenerName);
+    <T> List<T> getUserIdsByTenantIdListening(Serializable tenantId, String sseListenerName, Class<T> type);
 
-    default List<Integer> getUserIdsIntByTenantIdListener(Object tenantId, String sseListenerName) {
-        return getUsersByTenantIdListener(tenantId, sseListenerName).stream()
-                .map(e -> Objects.toString(e.getId(), null))
-                .filter(e -> e != null && e.length() > 0)
-                .map(Integer::valueOf)
-                .collect(Collectors.toList());
-    }
+    /* getConnectionId */
 
-    default List<Integer> getUserIdsIntByListener(String sseListenerName) {
-        return getUserIdsByListener(sseListenerName).stream()
-                .filter(e -> e != null && e.length() > 0)
-                .map(Integer::valueOf)
-                .collect(Collectors.toList());
-    }
+    Collection<Long> getConnectionIds();
 
-    default List<Integer> getUserIdsInt() {
-        return getUserIds().stream()
-                .filter(e -> e != null && e.length() > 0)
-                .map(Integer::valueOf)
-                .collect(Collectors.toList());
-    }
+    /* getAccessToken */
 
-    List<String> getTenantIds();
+    Collection<String> getAccessTokens();
 
-    default List<Integer> getTenantIdsInt() {
-        return getTenantIds().stream()
-                .filter(e -> e != null && e.length() > 0)
-                .map(Integer::valueOf)
-                .collect(Collectors.toList());
-    }
+    /* getTenantId */
+
+    <T> List<T> getTenantIds(Class<T> type);
+
+    /* getChannels */
 
     List<String> getChannels();
 

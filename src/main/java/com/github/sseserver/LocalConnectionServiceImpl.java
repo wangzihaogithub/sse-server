@@ -1,5 +1,10 @@
 package com.github.sseserver;
 
+import com.github.sseserver.qos.MessageRepository;
+import com.github.sseserver.qos.QosCompletableFuture;
+import com.github.sseserver.qos.impl.AtLeastOnceSender;
+import com.github.sseserver.qos.impl.MemoryMessageRepository;
+import com.github.sseserver.util.TypeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.BeanNameAware;
@@ -7,6 +12,7 @@ import org.springframework.beans.factory.DisposableBean;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
@@ -35,20 +41,22 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     /**
      * 业务维度与链接ID的关系表
      */
+    protected final Object mutex = new Object();
     protected final Map<String, Set<Long>> accessToken2ConnectionIdMap = new ConcurrentHashMap<>();
     protected final Map<String, Set<Long>> channel2ConnectionIdMap = new ConcurrentHashMap<>();
     protected final Map<String, Set<Long>> tenantId2ConnectionIdMap = new ConcurrentHashMap<>();
-    protected final Map<String, Set<String>> userId2AccessTokenMap = new ConcurrentHashMap<>();
+    protected final Map<String, Set<Long>> userId2ConnectionIdMap = new ConcurrentHashMap<>();
     /**
      * 链接
      */
     protected final Map<Long, SseEmitter> connectionMap = new ConcurrentHashMap<>();
     /**
      * 永久事件监听。
-     * {@link #connectListeners,#disconnectListeners}
+     * {@link #connectListenerList ,#disconnectListeners}
      */
-    protected final List<Consumer<SseEmitter>> connectListeners = new ArrayList<>();
-    protected final List<Consumer<SseEmitter>> disconnectListeners = new ArrayList<>();
+    protected final List<Consumer<SseEmitter>> connectListenerList = new ArrayList<>();
+    protected final List<Consumer<SseEmitter>> disconnectListenerList = new ArrayList<>();
+    protected final List<Consumer<ChangeEvent<?, Set<String>>>> listeningChangeWatchList = new ArrayList<>();
     /**
      * 如果 {@link Predicate#test(Object)} 返回true，则是只监听一次事件的一次性listener。 否则永久事件监听。
      * {@link #connectListenerMap,#disconnectListenerMap}
@@ -59,10 +67,30 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
     private int reconnectTime = 5000;
     private boolean destroyFlag;
+    private AtLeastOnceSender atLeastOnceSender;
+    private MessageRepository messageRepository;
 
-    @Override
     public ScheduledExecutorService getScheduled() {
         return scheduled;
+    }
+
+    @Override
+    public <ACCESS_USER> Sender<QosCompletableFuture<ACCESS_USER>> atLeastOnce() {
+        if (atLeastOnceSender == null) {
+            if (messageRepository == null) {
+                messageRepository = new MemoryMessageRepository();
+            }
+            atLeastOnceSender = new AtLeastOnceSender(this, messageRepository);
+        }
+        return atLeastOnceSender;
+    }
+
+    public MessageRepository getMessageRepository() {
+        return messageRepository;
+    }
+
+    public void setMessageRepository(MessageRepository messageRepository) {
+        this.messageRepository = messageRepository;
     }
 
     /**
@@ -72,12 +100,12 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
      * @return SseEmitter
      */
     @Override
-    public <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime) {
+    public <ACCESS_USER> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime) {
         return connect(accessUser, keepaliveTime, null);
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser & AccessToken> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap) {
+    public <ACCESS_USER> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap) {
         if (destroyFlag) {
             throw new IllegalStateException("destroy");
         }
@@ -104,8 +132,8 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
             String channel = wrapStringKey(e.getChannel());
 
-            notifyListener(e, disconnectListeners, disconnectListenerMap);
-            synchronized (this) {
+            notifyListener(e, disconnectListenerList, disconnectListenerMap);
+            synchronized (mutex) {
                 connectionMap.remove(id);
 
                 Collection<Long> tokenEmitterList = accessToken2ConnectionIdMap.get(accessToken);
@@ -116,11 +144,11 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                     }
                 }
 
-                Collection<String> userList = userId2AccessTokenMap.get(userId);
+                Collection<Long> userList = userId2ConnectionIdMap.get(userId);
                 if (userList != null) {
-                    userList.remove(accessToken);
+                    userList.remove(id);
                     if (userList.isEmpty()) {
-                        userId2AccessTokenMap.remove(userId);
+                        userId2ConnectionIdMap.remove(userId);
                     }
                 }
 
@@ -143,19 +171,28 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         });
         result.addConnectListener(e -> {
             String channel = wrapStringKey(e.getChannel());
-            channel2ConnectionIdMap.computeIfAbsent(channel, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
-                    .add(e.getId());
+            synchronized (mutex) {
+                channel2ConnectionIdMap.computeIfAbsent(channel, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
+                        .add(e.getId());
+            }
             log.debug("sse {} connection create : {}", beanName, e);
-            notifyListener(e, connectListeners, connectListenerMap);
+            notifyListener(e, connectListenerList, connectListenerMap);
+        });
+        result.addListeningWatch(e -> {
+            for (Consumer<ChangeEvent<?, Set<String>>> changeEventConsumer : listeningChangeWatchList) {
+                changeEventConsumer.accept(e);
+            }
         });
 
-        connectionMap.put(id, result);
-        accessToken2ConnectionIdMap.computeIfAbsent(accessToken, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
-                .add(id);
-        tenantId2ConnectionIdMap.computeIfAbsent(tenantId, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
-                .add(id);
-        userId2AccessTokenMap.computeIfAbsent(userId, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
-                .add(accessToken);
+        synchronized (mutex) {
+            connectionMap.put(id, result);
+            accessToken2ConnectionIdMap.computeIfAbsent(accessToken, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
+                    .add(id);
+            tenantId2ConnectionIdMap.computeIfAbsent(tenantId, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
+                    .add(id);
+            userId2ConnectionIdMap.computeIfAbsent(userId, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
+                    .add(id);
+        }
 
         if (attributeMap != null) {
             result.getAttributeMap().putAll(attributeMap);
@@ -178,8 +215,8 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public SseEmitter disconnectByConnectionId(Long connectionId) {
-        SseEmitter sseEmitter = getConnectionById(connectionId);
+    public <ACCESS_USER> SseEmitter<ACCESS_USER> disconnectByConnectionId(Long connectionId) {
+        SseEmitter<ACCESS_USER> sseEmitter = getConnectionById(connectionId);
         if (sseEmitter != null && sseEmitter.disconnect()) {
             return sseEmitter;
         } else {
@@ -188,11 +225,11 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public List<SseEmitter> disconnectByAccessToken(String accessToken) {
-        List<SseEmitter> sseEmitters = getConnectionByAccessToken(accessToken);
-        List<SseEmitter> result = new ArrayList<>();
+    public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> disconnectByAccessToken(String accessToken) {
+        List<SseEmitter<ACCESS_USER>> sseEmitters = getConnectionByAccessToken(accessToken);
+        List<SseEmitter<ACCESS_USER>> result = new ArrayList<>();
         if (sseEmitters != null) {
-            for (SseEmitter next : sseEmitters) {
+            for (SseEmitter<ACCESS_USER> next : sseEmitters) {
                 if (next.disconnect()) {
                     result.add(next);
                 }
@@ -202,11 +239,11 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public List<SseEmitter> disconnectByUserId(Object userId) {
-        List<SseEmitter> sseEmitters = getConnectionByUserId(userId);
-        List<SseEmitter> result = new ArrayList<>();
+    public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> disconnectByUserId(Serializable userId) {
+        List<SseEmitter<ACCESS_USER>> sseEmitters = getConnectionByUserId(userId);
+        List<SseEmitter<ACCESS_USER>> result = new ArrayList<>();
         if (sseEmitters != null) {
-            for (SseEmitter next : sseEmitters) {
+            for (SseEmitter<ACCESS_USER> next : sseEmitters) {
                 if (next.disconnect()) {
                     result.add(next);
                 }
@@ -216,12 +253,12 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public List<SseEmitter> getConnectionAll() {
-        return new ArrayList<>(connectionMap.values());
+    public <ACCESS_USER> Collection<SseEmitter<ACCESS_USER>> getConnectionAll() {
+        return (Collection) connectionMap.values();
     }
 
     @Override
-    public SseEmitter getConnectionById(Long connectionId) {
+    public <ACCESS_USER> SseEmitter<ACCESS_USER> getConnectionById(Long connectionId) {
         if (connectionId == null) {
             return null;
         } else {
@@ -230,63 +267,62 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public List<SseEmitter> getConnectionByChannel(String channel) {
+    public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> getConnectionByChannel(String channel) {
         Collection<Long> idList = channel2ConnectionIdMap.get(wrapStringKey(channel));
         if (idList == null || idList.isEmpty()) {
             return Collections.emptyList();
         }
         return idList.stream()
-                .map(this::getConnectionById)
+                .map(this::<ACCESS_USER>getConnectionById)
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
     }
 
     @Override
-    public List<SseEmitter> getConnectionByAccessToken(String accessToken) {
+    public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> getConnectionByAccessToken(String accessToken) {
         Collection<Long> idList = accessToken2ConnectionIdMap.get(wrapStringKey(accessToken));
         if (idList == null || idList.isEmpty()) {
             return Collections.emptyList();
         }
         return idList.stream()
-                .map(this::getConnectionById)
+                .map(this::<ACCESS_USER>getConnectionById)
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
     }
 
     @Override
-    public List<SseEmitter> getConnectionByTenantId(Object tenantId) {
+    public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> getConnectionByTenantId(Serializable tenantId) {
         Collection<Long> idList = tenantId2ConnectionIdMap.get(wrapStringKey(tenantId));
         if (idList == null || idList.isEmpty()) {
             return Collections.emptyList();
         }
         return idList.stream()
-                .map(this::getConnectionById)
+                .map(this::<ACCESS_USER>getConnectionById)
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
     }
 
     @Override
-    public List<SseEmitter> getConnectionByUserId(Object userId) {
-        Collection<String> accessTokenList = userId2AccessTokenMap.get(wrapStringKey(userId));
-        if (accessTokenList == null || accessTokenList.isEmpty()) {
+    public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> getConnectionByUserId(Serializable userId) {
+        Collection<Long> idList = userId2ConnectionIdMap.get(wrapStringKey(userId));
+        if (idList == null || idList.isEmpty()) {
             return Collections.emptyList();
         }
-        return accessTokenList.stream()
-                .map(this::getConnectionByAccessToken)
-                .flatMap(Collection::stream)
+        return idList.stream()
+                .map(this::<ACCESS_USER>getConnectionById)
                 .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(String accessToken, String channel, Consumer<SseEmitter<ACCESS_USER>> consumer) {
-        List<SseEmitter> sseEmitters = getConnectionByAccessToken(accessToken);
+    public <ACCESS_USER> void addConnectListener(String accessToken, String channel, Consumer<SseEmitter<ACCESS_USER>> consumer) {
+        List<SseEmitter<ACCESS_USER>> sseEmitters = getConnectionByAccessToken(accessToken);
         if (sseEmitters != null) {
-            for (SseEmitter emitter : sseEmitters) {
+            for (SseEmitter<ACCESS_USER> emitter : sseEmitters) {
                 if (emitter.isConnect() && Objects.equals(channel, emitter.getChannel())) {
                     consumer.accept(emitter);
                 }
@@ -302,10 +338,10 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer) {
-        List<SseEmitter> sseEmitters = getConnectionByAccessToken(accessToken);
+    public <ACCESS_USER> void addConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer) {
+        List<SseEmitter<ACCESS_USER>> sseEmitters = getConnectionByAccessToken(accessToken);
         if (sseEmitters != null) {
-            for (SseEmitter emitter : sseEmitters) {
+            for (SseEmitter<ACCESS_USER> emitter : sseEmitters) {
                 if (emitter.isConnect()) {
                     consumer.accept(emitter);
                 }
@@ -318,17 +354,17 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser & AccessToken> void addConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer) {
-        connectListeners.add((Consumer) consumer);
+    public <ACCESS_USER> void addConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer) {
+        connectListenerList.add((Consumer) consumer);
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser & AccessToken> void addDisConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer) {
-        disconnectListeners.add((Consumer) consumer);
+    public <ACCESS_USER> void addDisConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer) {
+        disconnectListenerList.add((Consumer) consumer);
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser & AccessToken> void addDisConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer) {
+    public <ACCESS_USER> void addDisConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer) {
         disconnectListenerMap.computeIfAbsent(accessToken, e -> new ArrayList<>()).add(e -> {
             consumer.accept(e);
             return true;
@@ -336,101 +372,26 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser & AccessToken> List<SseEmitter<ACCESS_USER>> getConnectionByListener(String sseListenerName) {
+    public <ACCESS_USER> void addListeningChangeWatch(Consumer<ChangeEvent<ACCESS_USER, Set<String>>> watch) {
+        listeningChangeWatchList.add((Consumer) watch);
+    }
+
+    @Override
+    public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> getConnectionByListening(String sseListenerName) {
         return (List) connectionMap.values().stream()
                 .filter(e -> e.existListener(sseListenerName))
                 .collect(Collectors.toList());
     }
 
     @Override
-    public int send(Collection<SseEmitter> sseEmitterList, SseEventBuilder message) {
-        int count = 0;
-        for (SseEmitter emitter : sseEmitterList) {
-            if (send(emitter, message)) {
-                count++;
-            }
-        }
-        return count;
+    public boolean isOnline(Serializable userId) {
+        Set<Long> idList = userId2ConnectionIdMap.get(wrapStringKey(userId));
+        return idList != null && !idList.isEmpty();
     }
 
     @Override
-    public int sendAll(SseEventBuilder message) {
-        return send(getConnectionAll(), message);
-    }
-
-    @Override
-    public int sendAllByClientListener(SseEventBuilder message, String sseListenerName) {
-        int count = 0;
-        for (SseEmitter emitter : connectionMap.values()) {
-            if (emitter.existListener(sseListenerName) && send(emitter, message)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    @Override
-    public int sendByConnectionId(Collection<Long> connectionIds, SseEventBuilder message) {
-        int count = 0;
-        for (Long connectionId : connectionIds) {
-            if (send(getConnectionById(connectionId), message)) {
-                count++;
-            }
-        }
-        return count;
-    }
-
-    @Override
-    public int sendByChannel(Collection<String> channels, SseEventBuilder message) {
-        int count = 0;
-        for (String channel : channels) {
-            count += send(getConnectionByChannel(channel), message);
-        }
-        return count;
-    }
-
-    @Override
-    public int sendByAccessToken(Collection<String> accessTokens, SseEventBuilder message) {
-        int count = 0;
-        for (String accessToken : accessTokens) {
-            count += send(getConnectionByAccessToken(accessToken), message);
-        }
-        return count;
-    }
-
-    @Override
-    public int sendByUserId(Collection<?> userIds, SseEventBuilder message) {
-        int count = 0;
-        for (Object userId : userIds) {
-            count += send(getConnectionByUserId(userId), message);
-        }
-        return count;
-    }
-
-    @Override
-    public int sendByTenantId(Collection<?> tenantIds, SseEventBuilder message) {
-        int count = 0;
-        for (Object tenantId : tenantIds) {
-            count += send(getConnectionByTenantId(tenantId), message);
-        }
-        return count;
-    }
-
-    @Override
-    public int sendByTenantIdClientListener(Object tenantId, SseEventBuilder message, String sseListenerName) {
-        List<SseEmitter> list = getConnectionByTenantId(tenantId);
-        int count = 0;
-        for (SseEmitter emitter : list) {
-            if(emitter.existListener(sseListenerName) && send(emitter, message)){
-                count ++;
-            }
-        }
-        return count;
-    }
-
-    @Override
-    public <ACCESS_USER extends AccessUser & AccessToken> List<ACCESS_USER> getUsers() {
-        return connectionMap.values().stream()
+    public <ACCESS_USER> List<ACCESS_USER> getUsers() {
+        return getConnectionAll().stream()
                 .map(e -> (ACCESS_USER) e.getAccessUser())
                 .filter(Objects::nonNull)
                 .distinct()
@@ -438,68 +399,94 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public <ACCESS_USER extends AccessUser & AccessToken> ACCESS_USER getUser(Object userId) {
-        List<SseEmitter> list = getConnectionByUserId(userId);
-        return list.isEmpty() ? null : (ACCESS_USER) list.get(0).getAccessUser();
-    }
-
-    @Override
-    public boolean isOnline(Object userId) {
-        Set<String> tokenSet = userId2AccessTokenMap.get(wrapStringKey(userId));
-        return tokenSet != null && !tokenSet.isEmpty();
-    }
-
-    @Override
-    public List<Long> getConnectionIds() {
-        return new ArrayList<>(connectionMap.keySet());
-    }
-
-    @Override
-    public List<String> getAccessTokens() {
-        return new ArrayList<>(accessToken2ConnectionIdMap.keySet());
-    }
-
-    @Override
-    public List<String> getUserIds() {
-        return connectionMap.values().stream()
-                .map(SseEmitter::getUserId)
-                .filter(Objects::nonNull)
-                .map(Object::toString)
-                .map(this::wrapStringKey)
-                .distinct()
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public List<String> getUserIdsByListener(String sseListenerName) {
-        return connectionMap.values().stream()
+    public <ACCESS_USER> List<ACCESS_USER> getUsersByListening(String sseListenerName) {
+        return getConnectionAll().stream()
                 .filter(e -> e.existListener(sseListenerName))
-                .map(SseEmitter::getUserId)
+                .map(e -> (ACCESS_USER) e.getAccessUser())
                 .filter(Objects::nonNull)
-                .map(Object::toString)
-                .map(this::wrapStringKey)
                 .distinct()
                 .collect(Collectors.toList());
     }
 
     @Override
-    public List<String> getTenantIds() {
-        return connectionMap.values().stream()
+    public <ACCESS_USER> List<ACCESS_USER> getUsersByTenantIdListening(Serializable tenantId, String sseListenerName) {
+        return getConnectionByTenantId(tenantId).stream()
+                .filter(e -> e.existListener(sseListenerName))
+                .map(e -> (ACCESS_USER) e.getAccessUser())
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public Collection<Long> getConnectionIds() {
+        return Collections.unmodifiableCollection(connectionMap.keySet());
+    }
+
+    @Override
+    public Collection<String> getAccessTokens() {
+        return Collections.unmodifiableCollection(accessToken2ConnectionIdMap.keySet());
+    }
+
+    @Override
+    public <T> List<T> getTenantIds(Class<T> type) {
+        return getConnectionAll().stream()
                 .map(SseEmitter::getTenantId)
                 .filter(Objects::nonNull)
-                .map(Object::toString)
-                .map(this::wrapStringKey)
+                .map(e -> TypeUtil.cast(e, type))
                 .distinct()
                 .collect(Collectors.toList());
     }
+
+    /* getChannels */
 
     @Override
     public List<String> getChannels() {
-        return connectionMap.values().stream()
+        return getConnectionAll().stream()
                 .map(SseEmitter::getChannel)
                 .filter(Objects::nonNull)
-                .map(Object::toString)
-                .map(this::wrapStringKey)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public <ACCESS_USER> ACCESS_USER getUser(Serializable userId) {
+        List<SseEmitter<ACCESS_USER>> list = getConnectionByUserId(userId);
+        return list.isEmpty() ? null : list.get(0).getAccessUser();
+    }
+
+    @Override
+    public <T> Collection<T> getUserIds(Class<T> type) {
+        if (type == String.class) {
+            return (Collection<T>) Collections.unmodifiableCollection(userId2ConnectionIdMap.keySet());
+        } else {
+            return userId2ConnectionIdMap.keySet().stream()
+                    .map(e -> TypeUtil.cast(e, type))
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @Override
+    public <T> List<T> getUserIdsByListening(String sseListenerName, Class<T> type) {
+        return getConnectionAll().stream()
+                .filter(e -> e.existListener(sseListenerName))
+                .map(SseEmitter::getUserId)
+                .filter(Objects::nonNull)
+                .map(e -> TypeUtil.cast(e, type))
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public <T> List<T> getUserIdsByTenantIdListening(Serializable tenantId, String sseListenerName, Class<T> type) {
+        return getConnectionByTenantId(tenantId).stream()
+                .filter(e -> e.existListener(sseListenerName))
+                .map(SseEmitter::getUserId)
+                .filter(Objects::nonNull)
+                .map(e -> TypeUtil.cast(e, type))
+                .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
     }
@@ -517,13 +504,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
      */
     @Override
     public int getUserCount() {
-        return (int) connectionMap.values().stream()
-                .map(SseEmitter::getChannel)
-                .filter(Objects::nonNull)
-                .map(Object::toString)
-                .map(this::wrapStringKey)
-                .distinct()
-                .count();
+        return userId2ConnectionIdMap.size();
     }
 
     /**
@@ -559,9 +540,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         return key == null ? "" : key.toString();
     }
 
-    protected <ACCESS_USER extends AccessUser & AccessToken> void notifyListener(SseEmitter<ACCESS_USER> emitter,
-                                                                                 List<Consumer<SseEmitter>> listeners,
-                                                                                 Map<String, List<Predicate<SseEmitter>>> listenerMap) {
+    protected <ACCESS_USER> void notifyListener(SseEmitter<ACCESS_USER> emitter,
+                                                List<Consumer<SseEmitter>> listeners,
+                                                Map<String, List<Predicate<SseEmitter>>> listenerMap) {
         for (Consumer<SseEmitter> listener : listeners) {
             try {
                 listener.accept(emitter);
@@ -583,8 +564,8 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         }
     }
 
-    public <ACCESS_USER extends AccessUser & AccessToken> boolean send(SseEmitter<ACCESS_USER> sseEmitter, SseEventBuilder message) {
-        if (sseEmitter != null && !sseEmitter.isDisconnect()) {
+    public <ACCESS_USER> boolean send(SseEmitter<ACCESS_USER> sseEmitter, SseEventBuilder message) {
+        if (sseEmitter != null && sseEmitter.isActive()) {
             try {
                 sseEmitter.send(message);
                 return true;
@@ -618,5 +599,134 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         destroyFlag = true;
         connectionMap.values().forEach(SseEmitter::disconnect);
         scheduled.shutdown();
+        if (messageRepository != null) {
+            messageRepository.close();
+        }
+    }
+
+    @Override
+    public Integer sendAll(String eventName, Serializable body) {
+        int count = 0;
+        for (SseEmitter value : connectionMap.values()) {
+            if (send(value, SseEmitter.event(eventName, body))) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public Integer sendAllListening(String eventName, Serializable body) {
+        int count = 0;
+        for (SseEmitter value : connectionMap.values()) {
+            if (value.existListener(eventName) && send(value, SseEmitter.event(eventName, body))) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public Integer sendByChannel(Collection<String> channels, String eventName, Serializable body) {
+        int count = 0;
+        for (String channel : channels) {
+            for (SseEmitter value : getConnectionByChannel(channel)) {
+                if (send(value, SseEmitter.event(eventName, body))) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public Integer sendByChannelListening(Collection<String> channels, String eventName, Serializable body) {
+        int count = 0;
+        for (String channel : channels) {
+            for (SseEmitter value : getConnectionByChannel(channel)) {
+                if (value.existListener(eventName) && send(value, SseEmitter.event(eventName, body))) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public Integer sendByAccessToken(Collection<String> accessTokens, String eventName, Serializable body) {
+        int count = 0;
+        for (String accessToken : accessTokens) {
+            for (SseEmitter value : getConnectionByAccessToken(accessToken)) {
+                if (send(value, SseEmitter.event(eventName, body))) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public Integer sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Serializable body) {
+        int count = 0;
+        for (String accessToken : accessTokens) {
+            for (SseEmitter value : getConnectionByAccessToken(accessToken)) {
+                if (value.existListener(eventName) && send(value, SseEmitter.event(eventName, body))) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public Integer sendByUserId(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+        int count = 0;
+        for (Serializable userId : userIds) {
+            for (SseEmitter value : getConnectionByUserId(userId)) {
+                if (send(value, SseEmitter.event(eventName, body))) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public Integer sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+        int count = 0;
+        for (Serializable userId : userIds) {
+            for (SseEmitter value : getConnectionByUserId(userId)) {
+                if (value.existListener(eventName) && send(value, SseEmitter.event(eventName, body))) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public Integer sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+        int count = 0;
+        for (Serializable tenantId : tenantIds) {
+            for (SseEmitter value : getConnectionByTenantId(tenantId)) {
+                if (send(value, SseEmitter.event(eventName, body))) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    @Override
+    public Integer sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+        int count = 0;
+        for (Serializable tenantId : tenantIds) {
+            for (SseEmitter value : getConnectionByTenantId(tenantId)) {
+                if (value.existListener(eventName) && send(value, SseEmitter.event(eventName, body))) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 }

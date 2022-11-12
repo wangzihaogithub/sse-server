@@ -1,5 +1,7 @@
 package com.github.sseserver;
 
+import java.io.Serializable;
+
 /**
  * 当前登录用户
  *
@@ -10,6 +12,6 @@ public interface AccessUser {
         return null;
     }
 
-    Object getId();
+    Serializable getId();
 
 }

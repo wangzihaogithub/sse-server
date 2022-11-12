@@ -9,6 +9,7 @@ import org.springframework.http.server.ServerHttpResponse;
 
 import javax.servlet.http.Cookie;
 import java.io.IOException;
+import java.io.Serializable;
 import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -19,20 +20,28 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends org.springframework.web.servlet.mvc.method.annotation.SseEmitter {
-    public static final String VERSION = "1.1.4";
+/**
+ * 事件推送
+ *
+ * @author wangzihaogithub 2022-11-12
+ */
+public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc.method.annotation.SseEmitter {
+    public static final String VERSION = "1.1.5";
+    public static final String EVENT_ADD_LISTENER = "addListener";
+    public static final String EVENT_REMOVE_LISTENER = "removeListener";
     private final static Logger log = LoggerFactory.getLogger(SseEmitter.class);
     private static final AtomicLong ID_INCR = new AtomicLong();
     private static final MediaType TEXT_PLAIN = new MediaType("text", "plain", StandardCharsets.UTF_8);
     private final long id = newId();
     private final ACCESS_USER accessUser;
     private final AtomicBoolean disconnect = new AtomicBoolean();
-    private final List<Consumer<SseEmitter<ACCESS_USER>>> connectListeners = new ArrayList<>();
-    private final List<Consumer<SseEmitter<ACCESS_USER>>> disconnectListeners = new ArrayList<>();
-    private final Map<String, Object> attributeMap = new LinkedHashMap<>();
+    private final List<Consumer<SseEmitter<ACCESS_USER>>> connectListeners = new ArrayList<>(2);
+    private final List<Consumer<SseEmitter<ACCESS_USER>>> disconnectListeners = new ArrayList<>(2);
+    private final List<Consumer<ChangeEvent<ACCESS_USER, Set<String>>>> listenersWatchList = new ArrayList<>(2);
+    private final Map<String, Object> attributeMap = new LinkedHashMap<>(3);
     private final long createTime = System.currentTimeMillis();
-    private final Map<String, Object> httpParameters = new LinkedHashMap<>();
-    private final Map<String, String> httpHeaders = new LinkedHashMap<>();
+    private final Map<String, Object> httpParameters = new LinkedHashMap<>(6);
+    private final Map<String, String> httpHeaders = new LinkedHashMap<>(6);
     private boolean connect = false;
     private boolean complete = false;
     private boolean earlyDisconnect = false;
@@ -103,6 +112,10 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     void requestMessage() {
         this.requestMessageCount++;
         this.lastRequestTimestamp = System.currentTimeMillis();
+    }
+
+    public void addListeningWatch(Consumer<ChangeEvent<ACCESS_USER, Set<String>>> watch) {
+        listenersWatchList.add(watch);
     }
 
     public IOException getSendError() {
@@ -279,16 +292,16 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         return (String) httpParameters.get("clientVersion");
     }
 
-    public Object getUserId() {
-        return accessUser != null && accessUser instanceof AccessUser ? ((AccessUser) accessUser).getId() : null;
+    public Serializable getUserId() {
+        return accessUser instanceof AccessUser ? ((AccessUser) accessUser).getId() : null;
     }
 
     public String getAccessToken() {
-        return accessUser != null && accessUser instanceof AccessToken ? ((AccessToken) accessUser).getAccessToken() : null;
+        return accessUser instanceof AccessToken ? ((AccessToken) accessUser).getAccessToken() : null;
     }
 
-    public Object getTenantId() {
-        return accessUser != null && accessUser instanceof TenantAccessUser ? ((TenantAccessUser) accessUser).getTenantId() : null;
+    public Serializable getTenantId() {
+        return accessUser instanceof TenantAccessUser ? ((TenantAccessUser) accessUser).getTenantId() : null;
     }
 
     public ACCESS_USER getAccessUser() {
@@ -388,12 +401,20 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
     @Override
     public void send(SseEventBuilder builder) throws IOException {
         count++;
+        boolean active = isActive();
         if (builder instanceof SseEventBuilderImpl) {
             String id = ((SseEventBuilderImpl) builder).id;
             String name = ((SseEventBuilderImpl) builder).name;
-            log.debug("sse connection send {} : {}, id = {}, name = {}", count, this, id, name);
+            log.debug("sse connection send {} : {}, id = {}, name = {}, active = {}", count, this, id, name, active);
         } else {
-            log.debug("sse connection send {} : {}", count, this);
+            log.debug("sse connection send {} : {}, active = {}", count, this, active);
+        }
+        if (sendError != null) {
+            throw sendError;
+        }
+        if (!active) {
+            sendError = new ClosedChannelException();
+            throw sendError;
         }
         try {
             super.send(builder);
@@ -530,6 +551,30 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
         return Long.hashCode(this.id);
     }
 
+    public void addListener(Collection<String> addListener) {
+        Set<String> listeners = getListeners();
+        Set<String> beforeCopy = new LinkedHashSet<>(listeners);
+        listeners.addAll(addListener);
+        Set<String> afterCopy = new LinkedHashSet<>(listeners);
+
+        ChangeEvent<ACCESS_USER, Set<String>> event = new ChangeEvent<>(this, EVENT_ADD_LISTENER, beforeCopy, afterCopy);
+        for (Consumer<ChangeEvent<ACCESS_USER, Set<String>>> changeEventConsumer : listenersWatchList) {
+            changeEventConsumer.accept(event);
+        }
+    }
+
+    public void removeListener(Collection<String> removeListener) {
+        Set<String> listeners = getListeners();
+        Set<String> beforeCopy = new LinkedHashSet<>(listeners);
+        listeners.removeAll(removeListener);
+        Set<String> afterCopy = new LinkedHashSet<>(listeners);
+
+        ChangeEvent<ACCESS_USER, Set<String>> event = new ChangeEvent<>(this, EVENT_REMOVE_LISTENER, beforeCopy, afterCopy);
+        for (Consumer<ChangeEvent<ACCESS_USER, Set<String>>> changeEventConsumer : listenersWatchList) {
+            changeEventConsumer.accept(event);
+        }
+    }
+
     /**
      * Default implementation of SseEventBuilder.
      */
@@ -604,4 +649,5 @@ public class SseEmitter<ACCESS_USER extends AccessUser & AccessToken> extends or
             }
         }
     }
+
 }

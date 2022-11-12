@@ -235,7 +235,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             return buildUnauthorizedResponse();
         }
         SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(req.getConnectionId());
-        emitter.getListeners().addAll(req.getListener());
+        emitter.addListener(req.getListener());
         return responseEntity(Collections.singletonMap("listener", emitter.getListeners()));
     }
 
@@ -254,9 +254,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             return buildUnauthorizedResponse();
         }
         SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(req.getConnectionId());
-        for (String s : req.getListener()) {
-            emitter.getListeners().remove(s);
-        }
+        emitter.removeListener(req.getListener());
         return responseEntity(Collections.singletonMap("listener", emitter.getListeners()));
     }
 
@@ -454,18 +452,18 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     }
 
     protected void disconnectClientIdMaxConnections(SseEmitter<ACCESS_USER> conncet, int clientIdMaxConnections) {
-        Object userId = conncet.getUserId();
+        Serializable userId = conncet.getUserId();
         String clientId = conncet.getClientId();
 
-        List<SseEmitter<? extends AccessUser>> clientConnectionList = localConnectionService.getConnectionByUserId(userId).stream()
+        List<SseEmitter> clientConnectionList = localConnectionService.getConnectionByUserId(userId).stream()
                 .filter(e -> Objects.equals(e.getClientId(), clientId))
                 .sorted(Comparator.comparing(SseEmitter::getId))
                 .collect(Collectors.toList());
 
         if (clientConnectionList.size() > clientIdMaxConnections) {
-            List<SseEmitter<? extends AccessUser>> sseEmitters =
+            List<SseEmitter> sseEmitters =
                     clientConnectionList.subList(0, clientConnectionList.size() - clientIdMaxConnections);
-            for (SseEmitter<? extends AccessUser> sseEmitter : sseEmitters) {
+            for (SseEmitter sseEmitter : sseEmitters) {
                 sseEmitter.disconnect();
             }
         }
