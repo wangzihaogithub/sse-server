@@ -434,6 +434,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                 .map(SseEmitter::getTenantId)
                 .filter(Objects::nonNull)
                 .map(e -> TypeUtil.cast(e, type))
+                .filter(Objects::nonNull)
                 .distinct()
                 .collect(Collectors.toList());
     }
