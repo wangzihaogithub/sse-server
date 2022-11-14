@@ -62,11 +62,12 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
      */
     protected final Map<String, List<Predicate<SseEmitter>>> connectListenerMap = new ConcurrentHashMap<>();
     protected final Map<String, List<Predicate<SseEmitter>>> disconnectListenerMap = new ConcurrentHashMap<>();
-    private String beanName = getClass().getSimpleName();
+
     private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
+    private String beanName = getClass().getSimpleName();
     private int reconnectTime = 5000;
     private boolean destroyFlag;
-    private AtLeastOnceSender atLeastOnceSender;
+    private volatile AtLeastOnceSender atLeastOnceSender;
     private MessageRepository messageRepository;
 
     @Override
@@ -77,10 +78,14 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     @Override
     public <ACCESS_USER> Sender<QosCompletableFuture<ACCESS_USER>> atLeastOnce() {
         if (atLeastOnceSender == null) {
-            if (messageRepository == null) {
-                messageRepository = new MemoryMessageRepository();
+            synchronized (this) {
+                if (atLeastOnceSender == null) {
+                    if (messageRepository == null) {
+                        messageRepository = new MemoryMessageRepository();
+                    }
+                    atLeastOnceSender = new AtLeastOnceSender(this, messageRepository);
+                }
             }
-            atLeastOnceSender = new AtLeastOnceSender(this, messageRepository);
         }
         return atLeastOnceSender;
     }

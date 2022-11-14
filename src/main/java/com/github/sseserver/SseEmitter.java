@@ -27,12 +27,14 @@ import java.util.stream.Collectors;
  * @author wangzihaogithub 2022-11-12
  */
 public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc.method.annotation.SseEmitter {
-    public static final String VERSION = "1.1.5";
+    public static final String VERSION = "1.1.6";
     public static final String EVENT_ADD_LISTENER = "addListener";
     public static final String EVENT_REMOVE_LISTENER = "removeListener";
+
     private final static Logger log = LoggerFactory.getLogger(SseEmitter.class);
     private static final AtomicLong ID_INCR = new AtomicLong();
     private static final MediaType TEXT_PLAIN = new MediaType("text", "plain", StandardCharsets.UTF_8);
+
     private final long id = newId();
     private final ACCESS_USER accessUser;
     private final AtomicBoolean disconnect = new AtomicBoolean();
