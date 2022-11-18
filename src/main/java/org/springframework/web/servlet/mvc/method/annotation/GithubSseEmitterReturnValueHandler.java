@@ -1,14 +1,13 @@
 package org.springframework.web.servlet.mvc.method.annotation;
 
-import com.github.sseserver.SseEmitter;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.ResolvableType;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.StringHttpMessageConverter;
-import org.springframework.http.server.DelegatingServerHttpResponse;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.util.Assert;
@@ -22,6 +21,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 import javax.servlet.ServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -30,24 +30,23 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnValueHandler {
-    private final Supplier<Collection<HttpMessageConverter>> messageConverters;
+    private final Supplier<Collection<HttpMessageConverter<?>>> messageConverters;
 
-    public GithubSseEmitterReturnValueHandler(Supplier<Collection<HttpMessageConverter>> messageConverters) {
+    public GithubSseEmitterReturnValueHandler(Supplier<Collection<HttpMessageConverter<?>>> messageConverters) {
         this.messageConverters = new Lazy(() -> initSseConverters(messageConverters.get()));
     }
 
-    private static Collection<HttpMessageConverter> initSseConverters(Collection<HttpMessageConverter> converters) {
-        for (HttpMessageConverter converter : converters) {
+    private static Collection<HttpMessageConverter<?>> initSseConverters(Collection<HttpMessageConverter<?>> converters) {
+        for (HttpMessageConverter<?> converter : converters) {
             if (converter.canWrite(String.class, MediaType.TEXT_PLAIN)) {
                 return new ArrayList<>(converters);
             }
         }
-        List<HttpMessageConverter> result = new ArrayList<>(converters.size() + 1);
+        List<HttpMessageConverter<?>> result = new ArrayList<>(converters.size() + 1);
         result.add(new StringHttpMessageConverter(StandardCharsets.UTF_8));
         result.addAll(converters);
         return result;
     }
-
 
     @Override
     public boolean supportsReturnType(MethodParameter returnType) {
@@ -107,8 +106,8 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
         emitter.initialize(handler);
 
         // writeableReady
-        if (!handler.isComplete() && emitter instanceof SseEmitter) {
-            ((SseEmitter) emitter).writeableReady();
+        if (!handler.isComplete() && emitter instanceof com.github.sseserver.SseEmitter) {
+            ((com.github.sseserver.SseEmitter) emitter).writeableReady();
         }
     }
 
@@ -134,7 +133,7 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
 
         @SuppressWarnings("unchecked")
         private <T> void sendInternal(T data, MediaType mediaType) throws IOException {
-            for (HttpMessageConverter converter : messageConverters.get()) {
+            for (HttpMessageConverter<?> converter : messageConverters.get()) {
                 if (converter.canWrite(data.getClass(), mediaType)) {
                     ((HttpMessageConverter<T>) converter).write(data, mediaType, this.outputMessage);
                     this.outputMessage.flush();
@@ -202,16 +201,16 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
 
     }
 
-    public static class Lazy implements Supplier<Collection<HttpMessageConverter>> {
-        private Supplier<Collection<HttpMessageConverter>> supplier;
-        private Collection<HttpMessageConverter> value;
+    public static class Lazy implements Supplier<Collection<HttpMessageConverter<?>>> {
+        private Supplier<Collection<HttpMessageConverter<?>>> supplier;
+        private Collection<HttpMessageConverter<?>> value;
         private volatile boolean resolved = false;
 
-        public Lazy(Supplier<Collection<HttpMessageConverter>> supplier) {
+        public Lazy(Supplier<Collection<HttpMessageConverter<?>>> supplier) {
             this.supplier = supplier;
         }
 
-        public Collection<HttpMessageConverter> get() {
+        public Collection<HttpMessageConverter<?>> get() {
             if (resolved) {
                 return value;
             }
@@ -220,6 +219,63 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
             this.resolved = true;
             return value;
         }
+    }
+
+    /**
+     * Implementation of {@code ServerHttpResponse} that delegates all calls to a
+     * given target {@code ServerHttpResponse}.
+     *
+     * @author Arjen Poutsma
+     * @since 5.3.2
+     */
+    public static class DelegatingServerHttpResponse implements ServerHttpResponse {
+
+        private final ServerHttpResponse delegate;
+
+        /**
+         * Create a new {@code DelegatingServerHttpResponse}.
+         *
+         * @param delegate the response to delegate to
+         */
+        public DelegatingServerHttpResponse(ServerHttpResponse delegate) {
+            Assert.notNull(delegate, "Delegate must not be null");
+            this.delegate = delegate;
+        }
+
+        /**
+         * Returns the target response that this response delegates to.
+         *
+         * @return the delegate
+         */
+        public ServerHttpResponse getDelegate() {
+            return this.delegate;
+        }
+
+        @Override
+        public void setStatusCode(HttpStatus status) {
+            this.delegate.setStatusCode(status);
+        }
+
+        @Override
+        public void flush() throws IOException {
+            this.delegate.flush();
+        }
+
+        @Override
+        public void close() {
+            this.delegate.close();
+        }
+
+        @Override
+        public OutputStream getBody() throws IOException {
+            return this.delegate.getBody();
+        }
+
+        @Override
+        public HttpHeaders getHeaders() {
+            return this.delegate.getHeaders();
+        }
+
     }
 
 }
