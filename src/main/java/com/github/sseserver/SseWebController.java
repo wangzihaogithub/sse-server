@@ -41,7 +41,7 @@ import java.util.stream.Collectors;
 //@RestController
 //@RequestMapping("/a/sse")
 //@RequestMapping("/b/sse")
-public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
+public class SseWebController<ACCESS_USER> {
     @Autowired
     protected HttpServletRequest request;
     protected LocalConnectionService localConnectionService;
@@ -342,8 +342,14 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             return responseEntity(Collections.singletonMap("count", disconnect != null ? 1 : 0));
         } else {
             ACCESS_USER currentUser = getAccessUser();
-            if (currentUser != null) {
-                List<SseEmitter<ACCESS_USER>> count = localConnectionService.disconnectByAccessToken(currentUser.getAccessToken());
+            if (currentUser instanceof AccessToken) {
+                List<SseEmitter<ACCESS_USER>> count = localConnectionService.disconnectByAccessToken(((AccessToken) currentUser).getAccessToken());
+                if (count.size() > 0) {
+                    onDisconnect(count, currentUser, query);
+                }
+                return responseEntity(Collections.singletonMap("count", count.size()));
+            } else if (currentUser instanceof AccessUser) {
+                List<SseEmitter<ACCESS_USER>> count = localConnectionService.disconnectByUserId(((AccessUser) currentUser).getId());
                 if (count.size() > 0) {
                     onDisconnect(count, currentUser, query);
                 }
@@ -378,18 +384,23 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         if (currentUser == null) {
             return buildUnauthorizedResponse();
         }
-        List<? extends AccessUser> list = localConnectionService.getUsers();
+        List list;
         String nameTrim = name != null ? name.trim().toLowerCase() : null;
         if (nameTrim != null && nameTrim.length() > 0) {
-            list = list.stream()
+            list = localConnectionService.getUsers().stream()
                     .filter(e -> {
-                        String eachName = e.getName();
-                        if (eachName == null) {
-                            return false;
+                        if (e instanceof AccessUser) {
+                            String eachName = ((AccessUser) e).getName();
+                            if (eachName == null) {
+                                return false;
+                            }
+                            return eachName.toLowerCase().contains(nameTrim);
                         }
-                        return eachName.toLowerCase().contains(nameTrim);
+                        return false;
                     })
                     .collect(Collectors.toList());
+        } else {
+            list = localConnectionService.getUsers();
         }
         PageInfo<Object> pageInfo = PageInfo.of(list, pageNum, pageSize).map(e -> mapToUserVO((ACCESS_USER) e));
         return responseEntity(pageInfo);
@@ -406,9 +417,8 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             return buildUnauthorizedResponse();
         }
 
-        List<SseEmitter<? extends AccessUser>> list = (List) localConnectionService.getConnectionAll();
         String nameTrim = name != null ? name.trim().toLowerCase() : null;
-        list = list.stream()
+        List<SseEmitter> list = localConnectionService.getConnectionAll().stream()
                 .filter(e -> {
                     if (id != null) {
                         return e.getId() == id;
@@ -419,19 +429,21 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
                     if (nameTrim == null || nameTrim.isEmpty()) {
                         return true;
                     }
-                    AccessUser accessUser = e.getAccessUser();
-                    if (accessUser == null) {
-                        return false;
+                    Object accessUser = e.getAccessUser();
+                    if (accessUser instanceof AccessUser) {
+                        String eachName = ((AccessUser) accessUser).getName();
+                        if (eachName == null) {
+                            return false;
+                        }
+                        return eachName.toLowerCase().contains(nameTrim);
                     }
-                    String eachName = accessUser.getName();
-                    if (eachName == null) {
-                        return false;
-                    }
-                    return eachName.toLowerCase().contains(nameTrim);
+                    return false;
                 })
-                .sorted(Comparator.comparing((Function<SseEmitter<? extends AccessUser>, String>)
+                .sorted(Comparator.comparing((Function<SseEmitter, String>)
                                 emitter -> Optional.ofNullable(emitter)
                                         .map(SseEmitter::getAccessUser)
+                                        .filter(e -> e instanceof AccessUser)
+                                        .map(e -> (AccessUser) e)
                                         .map(AccessUser::getName)
                                         .orElse(""))
                         .thenComparingLong(SseEmitter::getId))
@@ -482,7 +494,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
     }
 
     protected Object mapToConnectionVO(SseEmitter<ACCESS_USER> emitter) {
-        ConnectionVO vo = new ConnectionVO();
+        ConnectionVO<ACCESS_USER> vo = new ConnectionVO<>();
         vo.setId(emitter.getId());
         vo.setMessageCount(emitter.getCount());
         vo.setTimeout(emitter.getTimeout());
@@ -631,7 +643,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         }
     }
 
-    public static class ConnectionVO {
+    public static class ConnectionVO<ACCESS_USER> {
         // connection
         private Long id;
         private Date createTime;
@@ -650,7 +662,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         // user
         private Object accessUserId;
         private String accessToken;
-        private AccessUser accessUser;
+        private ACCESS_USER accessUser;
 
         // client
         private String clientId;
@@ -880,7 +892,7 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
         }
 
         public String getAccessUserName() {
-            return accessUser != null ? accessUser.getName() : null;
+            return accessUser instanceof AccessUser ? ((AccessUser) accessUser).getName() : null;
         }
 
         public Object getAccessUserId() {
@@ -899,11 +911,11 @@ public class SseWebController<ACCESS_USER extends AccessUser & AccessToken> {
             this.accessToken = accessToken;
         }
 
-        public AccessUser getAccessUser() {
+        public ACCESS_USER getAccessUser() {
             return accessUser;
         }
 
-        public void setAccessUser(AccessUser accessUser) {
+        public void setAccessUser(ACCESS_USER accessUser) {
             this.accessUser = accessUser;
         }
     }
