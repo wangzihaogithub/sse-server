@@ -1,6 +1,6 @@
 package com.github.sseserver.qos;
 
-import com.github.sseserver.SseEmitter;
+import com.github.sseserver.local.SseEmitter;
 
 import java.util.List;
 

@@ -1,14 +1,15 @@
 package com.github.sseserver;
 
 import com.github.netty.springboot.EnableNettyEmbedded;
+import com.github.sseserver.local.LocalConnectionService;
+import com.github.sseserver.local.LocalConnectionServiceImpl;
+import com.github.sseserver.local.SseWebController;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.concurrent.TimeUnit;
 
 @EnableScheduling
 @EnableNettyEmbedded

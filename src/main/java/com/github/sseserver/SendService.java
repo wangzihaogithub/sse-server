@@ -9,7 +9,7 @@ import java.util.Collections;
  *
  * @author wangzihaogithub 2022-11-12
  */
-public interface Sender<RESPONSE> {
+public interface SendService<RESPONSE> {
 
     /* All */
 

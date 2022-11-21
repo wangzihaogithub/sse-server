@@ -1,4 +1,4 @@
-package com.github.sseserver;
+package com.github.sseserver.local;
 
 /**
  * 变化事件

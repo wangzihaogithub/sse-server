@@ -1,6 +1,6 @@
 package com.github.sseserver.qos.impl;
 
-import com.github.sseserver.SseEmitter;
+import com.github.sseserver.local.SseEmitter;
 import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
 

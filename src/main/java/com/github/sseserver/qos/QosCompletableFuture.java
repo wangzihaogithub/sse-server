@@ -2,18 +2,14 @@ package com.github.sseserver.qos;
 
 import java.util.concurrent.CompletableFuture;
 
-public class QosCompletableFuture<ACCESS_USER> extends CompletableFuture<Delivered<ACCESS_USER>> {
+public class QosCompletableFuture<T> extends CompletableFuture<T> {
     /**
      * 消息ID
      * {@link Message#newId()}
      */
     private String messageId;
-    private final Delivered<ACCESS_USER> delivered;
-
-    public QosCompletableFuture() {
-        delivered = new Delivered<>();
-        delivered.setStartTimestamp(System.currentTimeMillis());
-    }
+    private long startTimestamp = System.currentTimeMillis();
+    private long endTimestamp;
 
     public String getMessageId() {
         return messageId;
@@ -23,8 +19,23 @@ public class QosCompletableFuture<ACCESS_USER> extends CompletableFuture<Deliver
         this.messageId = messageId;
     }
 
-    public Delivered<ACCESS_USER> getDelivered() {
-        return delivered;
+    public long getCostMs() {
+        return endTimestamp - startTimestamp;
     }
 
+    public long getEndTimestamp() {
+        return endTimestamp;
+    }
+
+    public void setEndTimestamp(long endTimestamp) {
+        this.endTimestamp = endTimestamp;
+    }
+
+    public long getStartTimestamp() {
+        return startTimestamp;
+    }
+
+    public void setStartTimestamp(long startTimestamp) {
+        this.startTimestamp = startTimestamp;
+    }
 }

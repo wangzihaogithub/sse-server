@@ -1,5 +1,8 @@
-package com.github.sseserver;
+package com.github.sseserver.local;
 
+import com.github.sseserver.AccessToken;
+import com.github.sseserver.AccessUser;
+import com.github.sseserver.TenantAccessUser;
 import com.github.sseserver.util.WebUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

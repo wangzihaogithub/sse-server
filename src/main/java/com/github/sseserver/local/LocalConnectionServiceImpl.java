@@ -1,8 +1,9 @@
-package com.github.sseserver;
+package com.github.sseserver.local;
 
+import com.github.sseserver.SendService;
 import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.qos.QosCompletableFuture;
-import com.github.sseserver.qos.impl.AtLeastOnceSender;
+import com.github.sseserver.qos.impl.AtLeastOnceSendService;
 import com.github.sseserver.qos.impl.MemoryMessageRepository;
 import com.github.sseserver.util.TypeUtil;
 import org.slf4j.Logger;
@@ -67,7 +68,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     private String beanName = getClass().getSimpleName();
     private int reconnectTime = 5000;
     private boolean destroyFlag;
-    private volatile AtLeastOnceSender atLeastOnceSender;
+    private volatile AtLeastOnceSendService atLeastOnceSender;
     private MessageRepository messageRepository;
 
     @Override
@@ -76,14 +77,14 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public <ACCESS_USER> Sender<QosCompletableFuture<ACCESS_USER>> atLeastOnce() {
+    public <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> atLeastOnce() {
         if (atLeastOnceSender == null) {
             synchronized (this) {
                 if (atLeastOnceSender == null) {
                     if (messageRepository == null) {
                         messageRepository = new MemoryMessageRepository();
                     }
-                    atLeastOnceSender = new AtLeastOnceSender(this, messageRepository);
+                    atLeastOnceSender = new AtLeastOnceSendService(this, messageRepository);
                 }
             }
         }
@@ -96,17 +97,6 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
     public void setMessageRepository(MessageRepository messageRepository) {
         this.messageRepository = messageRepository;
-    }
-
-    /**
-     * 创建用户连接并返回 SseEmitter
-     *
-     * @param accessUser 用户accessToken
-     * @return SseEmitter
-     */
-    @Override
-    public <ACCESS_USER> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime) {
-        return connect(accessUser, keepaliveTime, null);
     }
 
     @Override

@@ -1,5 +1,6 @@
 package org.springframework.web.servlet.mvc.method.annotation;
 
+import com.github.sseserver.local.SseEmitter;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.ResolvableType;
 import org.springframework.http.HttpHeaders;
@@ -53,7 +54,7 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
         Class bodyType = ResponseEntity.class.isAssignableFrom(returnType.getParameterType()) ?
                 ResolvableType.forMethodParameter(returnType).getGeneric().resolve() :
                 returnType.getParameterType();
-        return (bodyType != null && (com.github.sseserver.SseEmitter.class.isAssignableFrom(bodyType)));
+        return (bodyType != null && (SseEmitter.class.isAssignableFrom(bodyType)));
     }
 
     @Override
@@ -106,8 +107,8 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
         emitter.initialize(handler);
 
         // writeableReady
-        if (!handler.isComplete() && emitter instanceof com.github.sseserver.SseEmitter) {
-            ((com.github.sseserver.SseEmitter) emitter).writeableReady();
+        if (!handler.isComplete() && emitter instanceof SseEmitter) {
+            ((SseEmitter) emitter).writeableReady();
         }
     }
 

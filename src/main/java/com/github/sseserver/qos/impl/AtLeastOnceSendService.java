@@ -1,10 +1,9 @@
 package com.github.sseserver.qos.impl;
 
-import com.github.sseserver.ChangeEvent;
-import com.github.sseserver.LocalConnectionService;
-import com.github.sseserver.Sender;
-import com.github.sseserver.SseEmitter;
-import com.github.sseserver.qos.Delivered;
+import com.github.sseserver.local.ChangeEvent;
+import com.github.sseserver.local.LocalConnectionService;
+import com.github.sseserver.SendService;
+import com.github.sseserver.local.SseEmitter;
 import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.qos.QosCompletableFuture;
@@ -22,13 +21,13 @@ import java.util.function.Consumer;
  * @param <ACCESS_USER>
  * @author wangzihaogithub 2022-11-12
  */
-public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFuture<ACCESS_USER>> {
+public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompletableFuture<List<SseEmitter<ACCESS_USER>>>> {
     protected final LocalConnectionService localConnectionService;
     protected final MessageRepository messageRepository;
-    protected final Map<String, QosCompletableFuture<ACCESS_USER>> futureMap = new ConcurrentHashMap<>(32);
+    protected final Map<String, QosCompletableFuture<List<SseEmitter<ACCESS_USER>>>> futureMap = new ConcurrentHashMap<>(32);
     protected final Set<String> sendingSet = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
-    public AtLeastOnceSender(LocalConnectionService localConnectionService, MessageRepository messageRepository) {
+    public AtLeastOnceSendService(LocalConnectionService localConnectionService, MessageRepository messageRepository) {
         this.localConnectionService = localConnectionService;
         this.messageRepository = messageRepository;
         localConnectionService.addConnectListener(this::resend);
@@ -41,7 +40,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
     }
 
     @Override
-    public QosCompletableFuture<ACCESS_USER> sendAll(String eventName, Serializable body) {
+    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendAll(String eventName, Serializable body) {
         List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
         for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionAll()) {
             if (connection.isActive() && connection.isWriteable()) {
@@ -53,7 +52,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
             }
         }
 
-        QosCompletableFuture<ACCESS_USER> future = new QosCompletableFuture<>();
+        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
         if (succeedList.isEmpty()) {
             AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
                     0);
@@ -65,7 +64,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
     }
 
     @Override
-    public QosCompletableFuture<ACCESS_USER> sendAllListening(String eventName, Serializable body) {
+    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendAllListening(String eventName, Serializable body) {
         List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
         for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionAll()) {
             if (connection.isActive() && connection.isWriteable() && connection.existListener(eventName)) {
@@ -77,7 +76,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
             }
         }
 
-        QosCompletableFuture<ACCESS_USER> future = new QosCompletableFuture<>();
+        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
         if (succeedList.isEmpty()) {
             AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
                     Message.FILTER_LISTENER_NAME);
@@ -90,7 +89,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
     }
 
     @Override
-    public QosCompletableFuture<ACCESS_USER> sendByChannel(Collection<String> channels, String eventName, Serializable body) {
+    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByChannel(Collection<String> channels, String eventName, Serializable body) {
         List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
         for (String channel : channels) {
             for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByChannel(channel)) {
@@ -104,7 +103,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
             }
         }
 
-        QosCompletableFuture<ACCESS_USER> future = new QosCompletableFuture<>();
+        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
         if (succeedList.isEmpty()) {
             AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
                     Message.FILTER_CHANNEL);
@@ -117,7 +116,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
     }
 
     @Override
-    public QosCompletableFuture<ACCESS_USER> sendByChannelListening(Collection<String> channels, String eventName, Serializable body) {
+    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByChannelListening(Collection<String> channels, String eventName, Serializable body) {
         List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
         for (String channel : channels) {
             for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByChannel(channel)) {
@@ -131,7 +130,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
             }
         }
 
-        QosCompletableFuture<ACCESS_USER> future = new QosCompletableFuture<>();
+        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
         if (succeedList.isEmpty()) {
             AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
                     Message.FILTER_CHANNEL | Message.FILTER_LISTENER_NAME);
@@ -144,7 +143,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
     }
 
     @Override
-    public QosCompletableFuture<ACCESS_USER> sendByAccessToken(Collection<String> accessTokens, String eventName, Serializable body) {
+    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByAccessToken(Collection<String> accessTokens, String eventName, Serializable body) {
         List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
         for (String accessToken : accessTokens) {
             for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByAccessToken(accessToken)) {
@@ -158,7 +157,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
             }
         }
 
-        QosCompletableFuture<ACCESS_USER> future = new QosCompletableFuture<>();
+        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
         if (succeedList.isEmpty()) {
             AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
                     Message.FILTER_ACCESS_TOKEN);
@@ -171,7 +170,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
     }
 
     @Override
-    public QosCompletableFuture<ACCESS_USER> sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Serializable body) {
+    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Serializable body) {
         List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
         for (String accessToken : accessTokens) {
             for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByAccessToken(accessToken)) {
@@ -185,7 +184,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
             }
         }
 
-        QosCompletableFuture<ACCESS_USER> future = new QosCompletableFuture<>();
+        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
         if (succeedList.isEmpty()) {
             AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
                     Message.FILTER_ACCESS_TOKEN | Message.FILTER_LISTENER_NAME);
@@ -199,7 +198,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
     }
 
     @Override
-    public QosCompletableFuture<ACCESS_USER> sendByUserId(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByUserId(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
         List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
         for (Serializable userId : userIds) {
             for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByUserId(userId)) {
@@ -213,7 +212,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
             }
         }
 
-        QosCompletableFuture<ACCESS_USER> future = new QosCompletableFuture<>();
+        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
         if (succeedList.isEmpty()) {
             AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
                     Message.FILTER_USER_ID);
@@ -226,7 +225,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
     }
 
     @Override
-    public QosCompletableFuture<ACCESS_USER> sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
         List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
         for (Serializable userId : userIds) {
             for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByUserId(userId)) {
@@ -240,7 +239,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
             }
         }
 
-        QosCompletableFuture<ACCESS_USER> future = new QosCompletableFuture<>();
+        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
         if (succeedList.isEmpty()) {
             AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
                     Message.FILTER_USER_ID | Message.FILTER_LISTENER_NAME);
@@ -254,7 +253,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
     }
 
     @Override
-    public QosCompletableFuture<ACCESS_USER> sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
         List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(10);
         for (Serializable tenantId : tenantIds) {
             for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByTenantId(tenantId)) {
@@ -268,7 +267,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
             }
         }
 
-        QosCompletableFuture<ACCESS_USER> future = new QosCompletableFuture<>();
+        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
         if (succeedList.isEmpty()) {
             AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
                     Message.FILTER_TENANT_ID);
@@ -281,7 +280,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
     }
 
     @Override
-    public QosCompletableFuture<ACCESS_USER> sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
         List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(10);
         for (Serializable tenantId : tenantIds) {
             for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByTenantId(tenantId)) {
@@ -295,7 +294,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
             }
         }
 
-        QosCompletableFuture<ACCESS_USER> future = new QosCompletableFuture<>();
+        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
         if (succeedList.isEmpty()) {
             AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
                     Message.FILTER_TENANT_ID | Message.FILTER_LISTENER_NAME);
@@ -308,18 +307,15 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
         return future;
     }
 
-    protected void complete(QosCompletableFuture<ACCESS_USER> future, List<SseEmitter<ACCESS_USER>> succeedList) {
-        Delivered<ACCESS_USER> delivered = future.getDelivered();
-        delivered.setEndTimestamp(System.currentTimeMillis());
-        delivered.setSucceedList(succeedList);
-
+    protected void complete(QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future, List<SseEmitter<ACCESS_USER>> succeedList) {
+        future.setEndTimestamp(System.currentTimeMillis());
         if (future.getMessageId() == null) {
             future.setMessageId(Message.newId());
         }
-        future.complete(delivered);
+        future.complete(succeedList);
     }
 
-    protected void enqueue(Message message, QosCompletableFuture<ACCESS_USER> future) {
+    protected void enqueue(Message message, QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future) {
         String id = messageRepository.insert(message);
         future.setMessageId(id);
         futureMap.put(id, future);
@@ -358,7 +354,7 @@ public class AtLeastOnceSender<ACCESS_USER> implements Sender<QosCompletableFutu
                             .comment("resend")
                             .data(message.getBody()));
                     messageRepository.delete(id);
-                    QosCompletableFuture<ACCESS_USER> future = futureMap.remove(id);
+                    QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = futureMap.remove(id);
                     if (future != null) {
                         complete(future, succeedList);
                     }

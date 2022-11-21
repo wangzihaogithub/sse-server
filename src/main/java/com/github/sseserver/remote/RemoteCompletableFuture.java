@@ -1,24 +1,14 @@
-package com.github.sseserver.qos;
+package com.github.sseserver.remote;
 
-import com.github.sseserver.SseEmitter;
+import java.util.concurrent.CompletableFuture;
 
-import java.util.List;
-
-public class Delivered<ACCESS_USER> {
-    private long startTimestamp;
+public class RemoteCompletableFuture<T> extends CompletableFuture<T> {
+    private RemoteConnectionService service;
+    private long startTimestamp = System.currentTimeMillis();
     private long endTimestamp;
-    private List<SseEmitter<ACCESS_USER>> succeedList;
 
     public long getCostMs() {
         return endTimestamp - startTimestamp;
-    }
-
-    public List<SseEmitter<ACCESS_USER>> getSucceedList() {
-        return succeedList;
-    }
-
-    public void setSucceedList(List<SseEmitter<ACCESS_USER>> succeedList) {
-        this.succeedList = succeedList;
     }
 
     public long getEndTimestamp() {
@@ -35,5 +25,13 @@ public class Delivered<ACCESS_USER> {
 
     public void setStartTimestamp(long startTimestamp) {
         this.startTimestamp = startTimestamp;
+    }
+
+    public RemoteConnectionService getService() {
+        return service;
+    }
+
+    public void setService(RemoteConnectionService service) {
+        this.service = service;
     }
 }

@@ -1,5 +1,7 @@
-package com.github.sseserver;
+package com.github.sseserver.local;
 
+import com.github.sseserver.AccessToken;
+import com.github.sseserver.AccessUser;
 import com.github.sseserver.util.PageInfo;
 import com.github.sseserver.util.WebUtil;
 import org.springframework.beans.factory.annotation.Autowired;
