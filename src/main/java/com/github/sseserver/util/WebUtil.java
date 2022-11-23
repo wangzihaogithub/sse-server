@@ -150,7 +150,7 @@ public class WebUtil {
                     Enumeration<InetAddress> inetAddresses = networkInterface.getInetAddresses();
                     while (inetAddresses.hasMoreElements()) {
                         InetAddress inetAddress = inetAddresses.nextElement();
-                        if (!inetAddress.isReachable(100) || inetAddress.isLoopbackAddress() || !inetAddress.isSiteLocalAddress()) {
+                        if (inetAddress.isLoopbackAddress() || !inetAddress.isSiteLocalAddress() || !inetAddress.isReachable(100)) {
                             continue;
                         }
                         String hostAddress = inetAddress.getHostAddress();
