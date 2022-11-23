@@ -3,6 +3,7 @@ package com.github.sseserver.local;
 import com.github.sseserver.AccessToken;
 import com.github.sseserver.AccessUser;
 import com.github.sseserver.TenantAccessUser;
+import com.github.sseserver.util.SnowflakeIdWorker;
 import com.github.sseserver.util.WebUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,10 +36,9 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     public static final String EVENT_REMOVE_LISTENER = "removeListener";
 
     private final static Logger log = LoggerFactory.getLogger(SseEmitter.class);
-    private static final AtomicLong ID_INCR = new AtomicLong();
     private static final MediaType TEXT_PLAIN = new MediaType("text", "plain", StandardCharsets.UTF_8);
 
-    private final long id = newId();
+    private final long id = SnowflakeIdWorker.INSTANCE.nextId();
     private final ACCESS_USER accessUser;
     private final AtomicBoolean disconnect = new AtomicBoolean();
     private final Queue<SseEventBuilder> earlySendQueue = new LinkedList<>();
@@ -83,15 +83,6 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     public SseEmitter(Long timeout, ACCESS_USER accessUser) {
         super(timeout);
         this.accessUser = accessUser;
-    }
-
-    private static long newId() {
-        long id = ID_INCR.getAndIncrement();
-        if (id == Integer.MAX_VALUE) {
-            id = 0;
-            ID_INCR.set(1);
-        }
-        return id;
     }
 
     public static SseEventBuilderFuture<SseEmitter> event() {

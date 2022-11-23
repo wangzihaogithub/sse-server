@@ -11,6 +11,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.concurrent.TimeUnit;
+
 @EnableScheduling
 @EnableNettyEmbedded
 @SpringBootApplication
@@ -24,14 +26,14 @@ public class SseServerApplicationTests {
     public LocalConnectionService localConnectionService() {
         LocalConnectionServiceImpl service = new LocalConnectionServiceImpl();
 
-//        service.addListeningChangeWatch(event -> {
-//            service.getScheduled().schedule(() -> {
-//                event.getAfter().removeAll(event.getBefore());
-//                for (String s : event.getAfter()) {
-//                    service.atLeastOnce().sendAllListening(s, event.getEventName());
-//                }
-//            }, 3000, TimeUnit.MILLISECONDS);
-//        });
+        service.addListeningChangeWatch(event -> {
+            service.getScheduled().schedule(() -> {
+                event.getAfter().removeAll(event.getBefore());
+                for (String s : event.getAfter()) {
+                    service.atLeastOnce().sendAllListening(s, event.getEventName());
+                }
+            }, 3000, TimeUnit.MILLISECONDS);
+        });
         return service;
     }
 

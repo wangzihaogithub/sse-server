@@ -196,7 +196,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             result.send(SseEmitter.event()
                     .reconnectTime(reconnectTime)
                     .name("connect-finish")
-                    .data("{\"connectionId\":" + id
+                    .data("{\"connectionId\":\"" + id + "\""
                             + ",\"serverTime\":" + System.currentTimeMillis()
                             + ",\"reconnectTime\":" + reconnectTime
                             + ",\"name\":\"" + beanName + "\""
