@@ -78,10 +78,6 @@ public class LocalConnectionController implements Closeable {
         configFilters(contextList);
     }
 
-    public static String getMethodName(HttpExchange request) {
-        return request.getRequestURI().getPath().substring(request.getHttpContext().getPath().length());
-    }
-
     public InetSocketAddress getAddress() {
         return httpServer.getAddress();
     }
@@ -94,20 +90,19 @@ public class LocalConnectionController implements Closeable {
         }
 
         @Override
-        public void handle(HttpExchange request) throws IOException {
-            String methodName = getMethodName(request);
-            String query = request.getRequestURI().getQuery();
+        public void handle0(HttpExchange request) throws IOException {
+            String rpcMethodName = getRpcMethodName();
             ConnectionQueryService service = supplier.get();
-            switch (methodName) {
+            switch (rpcMethodName) {
                 case "isOnline": {
                     writeResponse(request, service.isOnline(
-                            WebUtil.getQueryParam(query, "userId")
+                            arg("userId")
                     ));
                     break;
                 }
                 case "getUser": {
                     writeResponse(request, service.getUser(
-                            WebUtil.getQueryParam(query, "userId")
+                            arg("userId")
                     ));
                     break;
                 }
@@ -117,14 +112,14 @@ public class LocalConnectionController implements Closeable {
                 }
                 case "getUsersByListening": {
                     writeResponse(request, service.getUsersByListening(
-                            WebUtil.getQueryParam(query, "sseListenerName")
+                            arg("sseListenerName")
                     ));
                     break;
                 }
                 case "getUsersByTenantIdListening": {
                     writeResponse(request, service.getUsersByTenantIdListening(
-                            WebUtil.getQueryParam(query, "tenantId"),
-                            WebUtil.getQueryParam(query, "sseListenerName")
+                            arg("tenantId"),
+                            arg("sseListenerName")
                     ));
                     break;
                 }
@@ -178,6 +173,30 @@ public class LocalConnectionController implements Closeable {
 
     public static abstract class AbstractHttpHandler implements HttpHandler {
         private final ObjectMapper objectMapper = new ObjectMapper();
+        private final ThreadLocal<HttpExchange> REQUEST_THREAD_LOCAL = new ThreadLocal<>();
+
+        protected String arg(String name) {
+            return WebUtil.getQueryParam(REQUEST_THREAD_LOCAL.get().getRequestURI().getQuery(), name);
+        }
+
+        public String getRpcMethodName() {
+            HttpExchange request = REQUEST_THREAD_LOCAL.get();
+            return request.getRequestURI().getPath().substring(request.getHttpContext().getPath().length());
+        }
+
+        @Override
+        public final void handle(HttpExchange request) throws IOException {
+            try {
+                REQUEST_THREAD_LOCAL.set(request);
+                handle0(request);
+            } finally {
+                REQUEST_THREAD_LOCAL.remove();
+            }
+        }
+
+        public void handle0(HttpExchange httpExchange) throws IOException {
+
+        }
 
         protected void writeResponse(HttpExchange request, Object data) throws IOException {
             request.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
