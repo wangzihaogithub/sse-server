@@ -1,5 +1,5 @@
 server:
-  port: 83
+  port: 81
 spring:
   servlet:
     multipart:
@@ -8,7 +8,7 @@ spring:
     remote:
       enabled: true
       nacos:
-        server-addr: '192.168.25.179:8849'
+        server-addr: '192.168.25.179:8848'
         namespace: hao
   application:
     name: 'xx-123'

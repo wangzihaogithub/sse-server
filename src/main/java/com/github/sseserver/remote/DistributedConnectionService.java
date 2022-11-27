@@ -3,20 +3,16 @@ package com.github.sseserver.remote;
 import com.github.sseserver.ConnectionQueryService;
 import com.github.sseserver.SendService;
 import com.github.sseserver.local.LocalConnectionService;
-import org.springframework.beans.factory.BeanFactory;
-import org.springframework.core.env.Environment;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.function.Supplier;
 
 public interface DistributedConnectionService extends ConnectionQueryService, SendService<DistributedCompletableFuture<Integer>> {
 
-    static DistributedConnectionService newInstance(String localConnectionServiceBeanName,
-                                                    BeanFactory beanFactory, Environment environment) {
-        ServiceDiscoveryService discoveryService = ServiceDiscoveryService.newInstance(localConnectionServiceBeanName, beanFactory, environment);
-        return new DistributedConnectionServiceImpl(
-                () -> beanFactory.getBean(localConnectionServiceBeanName, LocalConnectionService.class),
-                discoveryService);
+    static DistributedConnectionService newInstance(Supplier<ServiceDiscoveryService> discoverySupplier,
+                                                    Supplier<LocalConnectionService> provider) {
+        return new DistributedConnectionServiceImpl(provider, discoverySupplier);
     }
 
     /* disconnect */

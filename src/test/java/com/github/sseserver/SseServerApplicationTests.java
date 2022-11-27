@@ -4,8 +4,10 @@ import com.github.netty.springboot.EnableNettyEmbedded;
 import com.github.sseserver.local.LocalConnectionService;
 import com.github.sseserver.local.LocalConnectionServiceImpl;
 import com.github.sseserver.local.SseWebController;
+import com.github.sseserver.remote.DistributedConnectionService;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,7 +21,22 @@ import java.util.concurrent.TimeUnit;
 public class SseServerApplicationTests {
 
     public static void main(String[] args) {
-        SpringApplication.run(SseServerApplicationTests.class, args);
+        ConfigurableApplicationContext context = SpringApplication.run(SseServerApplicationTests.class, args);
+        new Thread(() -> {
+            while (true) {
+
+                try {
+                    Thread.sleep(1000);
+                    DistributedConnectionService service = context.getBean(DistributedConnectionService.class);
+                    boolean online = service.isOnline(1);
+                    System.out.println("online = " + online);
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    ;
+                }
+            }
+        }).start();
     }
 
     @Bean

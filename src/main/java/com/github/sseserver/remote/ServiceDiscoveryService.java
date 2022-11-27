@@ -1,25 +1,27 @@
 package com.github.sseserver.remote;
 
 import com.github.sseserver.springboot.SseServerProperties;
-import org.springframework.beans.factory.BeanFactory;
-import org.springframework.core.env.Environment;
+import com.sun.net.httpserver.HttpPrincipal;
 
 import java.util.List;
 
 public interface ServiceDiscoveryService {
 
-    static NacosServiceDiscoveryService newInstance(String localConnectionServiceBeanName,
-                                                    BeanFactory beanFactory, Environment environment) {
-        SseServerProperties properties = beanFactory.getBean(SseServerProperties.class);
-        SseServerProperties.Remote.Nacos nacos = properties.getRemote().getNacos();
+    static NacosServiceDiscoveryService newInstance(String groupName,
+                                                    SseServerProperties.Remote remote) {
+        SseServerProperties.Remote.Nacos nacos = remote.getNacos();
         if (nacos != null) {
-            return new NacosServiceDiscoveryService(localConnectionServiceBeanName, nacos, environment);
+            return new NacosServiceDiscoveryService(groupName, nacos);
         } else {
             return null;
         }
     }
 
     List<RemoteConnectionService> rebuild();
+
+    void registerInstance(String ip, int port) ;
+
+    HttpPrincipal login(String authorization);
 
     List<RemoteConnectionService> getServiceList();
 }

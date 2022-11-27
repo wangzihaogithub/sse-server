@@ -3,10 +3,7 @@ package com.github.sseserver.util;
 import javax.servlet.http.HttpServletRequest;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
-import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -163,6 +160,28 @@ public class WebUtil {
                 return null;
             }
         }
+    }
+
+    public static String getQueryParam(String query, String name) {
+        Map<String, String> map = new LinkedHashMap<>(1);
+        String[] params = query.split("&");
+        for (String param : params) {
+            String[] keyValue = param.split("=",2);
+            if (keyValue[0].equals(name)) {
+                return keyValue[1];
+            }
+        }
+        return null;
+    }
+
+    public static Map<String, String> decodeQueryParams(String query, int len) {
+        Map<String, String> map = new LinkedHashMap<>(len);
+        String[] params = query.split("&");
+        for (String param : params) {
+            String[] keyValue = param.split("=",2);
+            map.put(keyValue[0], keyValue[1]);
+        }
+        return map;
     }
 
     public static void main(String[] args) {

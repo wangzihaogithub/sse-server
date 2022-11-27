@@ -53,7 +53,7 @@ public class SseServerProperties {
         public static class Nacos {
             private String serverAddr;
             private String namespace;
-            private String serviceName;
+            private String serviceName = "sse-server";
             private String clusterName = "DEFAULT";
 
             private Properties properties = new Properties();

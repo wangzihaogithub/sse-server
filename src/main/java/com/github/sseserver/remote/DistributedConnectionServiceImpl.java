@@ -13,29 +13,25 @@ import java.util.function.Supplier;
 
 public class DistributedConnectionServiceImpl implements DistributedConnectionService {
     private final Supplier<LocalConnectionService> localConnectionServiceSupplier;
-    private ServiceDiscoveryService serviceDiscoveryService;
+    private final Supplier<ServiceDiscoveryService> serviceDiscoveryServiceSupplier;
 
     public DistributedConnectionServiceImpl(Supplier<LocalConnectionService> localConnectionServiceSupplier,
-                                            ServiceDiscoveryService serviceDiscoveryService) {
+                                            Supplier<ServiceDiscoveryService> serviceDiscoveryServiceSupplier) {
         this.localConnectionServiceSupplier = localConnectionServiceSupplier;
-        this.serviceDiscoveryService = serviceDiscoveryService;
+        this.serviceDiscoveryServiceSupplier = serviceDiscoveryServiceSupplier;
     }
 
     public LocalConnectionService getLocalConnectionService() {
         return localConnectionServiceSupplier.get();
     }
 
-    public void setServiceDiscoveryService(ServiceDiscoveryService serviceDiscoveryService) {
-        this.serviceDiscoveryService = serviceDiscoveryService;
-    }
-
     @Override
     public List<RemoteConnectionService> getRemoteConnectionServiceList() {
-        if (serviceDiscoveryService == null) {
+        if (serviceDiscoveryServiceSupplier == null) {
             return Collections.emptyList();
         }
         try {
-            return serviceDiscoveryService.getServiceList();
+            return serviceDiscoveryServiceSupplier.get().getServiceList();
         } catch (Exception e) {
             throw e;
 //            return Collections.emptyList();

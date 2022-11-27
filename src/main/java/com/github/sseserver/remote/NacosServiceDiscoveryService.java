@@ -1,38 +1,47 @@
 package com.github.sseserver.remote;
 
-import com.alibaba.nacos.api.common.Constants;
 import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.api.naming.NamingFactory;
 import com.alibaba.nacos.api.naming.NamingService;
+import com.alibaba.nacos.api.naming.listener.Event;
 import com.alibaba.nacos.api.naming.listener.NamingEvent;
 import com.alibaba.nacos.api.naming.pojo.Instance;
 import com.github.sseserver.springboot.SseServerProperties;
-import com.github.sseserver.util.WebUtil;
-import org.springframework.core.env.Environment;
+import com.sun.net.httpserver.HttpPrincipal;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.*;
+import java.util.regex.Pattern;
 
 public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
-    private List<RemoteConnectionService> serviceList;
-    private NamingService namingService;
-    private SseServerProperties.Remote.Nacos nacos;
+    public static final String METADATA_NAME_DEVICE_ID = "deviceId";
+    public static final String METADATA_NAME_ACCOUNT = "account";
+    public static final String METADATA_NAME_PASSWORD = "password";
+    public static final String METADATA_VALUE_DEVICE_ID = UUID.randomUUID().toString();
+    private static final Pattern NON_ASCII_PATTERN = Pattern.compile("\\P{ASCII}");
 
-    private String serviceName;
-    private String groupName;
-    private String clusterName;
-    private String projectName;
-    private Integer port;
-    private String ip;
-    private Map<String, String> metadata;
+    private List<RemoteConnectionService> clientList;
+    private List<Instance> instanceList;
+    private Instance lastRegisterInstance;
+
+    private final NamingService namingService;
+    private final String serviceName;
+    private final String groupName;
+    private final String clusterName;
+    private final String projectName;
 
     public NacosServiceDiscoveryService(String groupName,
-                                        SseServerProperties.Remote.Nacos nacos,
-                                        Environment springEnvironment) {
-        initProperties(groupName, nacos, springEnvironment);
+                                        SseServerProperties.Remote.Nacos nacos) {
+        this.groupName = groupName;
+        this.serviceName = nacos.getServiceName();
+        this.clusterName = nacos.getClusterName();
+        String[] userDirs = System.getProperty("user.dir").split("[/\\\\]");
+        this.projectName = userDirs[userDirs.length - 1];
 
         try {
-            createNamingService();
+            this.namingService = createNamingService(nacos.buildProperties());
         } catch (NacosException e) {
             throw new IllegalArgumentException(
                     "com.github.sseserver.remote.NacosServiceDiscoveryService createNamingService fail : " + e, e);
@@ -44,57 +53,23 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
             throw new IllegalArgumentException(
                     "com.github.sseserver.remote.NacosServiceDiscoveryService subscribe fail : " + e, e);
         }
-
-        try {
-            registerInstance();
-        } catch (NacosException e) {
-            throw new IllegalArgumentException(
-                    "com.github.sseserver.remote.NacosServiceDiscoveryService registerInstance fail : " + e, e);
-        }
-    }
-
-    private void initProperties(String groupName, SseServerProperties.Remote.Nacos nacos, Environment springEnvironment) {
-        this.nacos = nacos;
-        this.port = springEnvironment.getProperty("server.port", Integer.class, 8080);
-        this.ip = WebUtil.getIPAddress();
-        this.groupName = groupName;
-
-        String serviceName = nacos.getServiceName();
-        if (serviceName == null || serviceName.isEmpty()) {
-            String springApplicationName = springEnvironment.getProperty("spring.application.name", "");
-            if (springApplicationName.length() > 0) {
-                serviceName = springApplicationName;
-            } else {
-                serviceName = "sse-server";
-            }
-        }
-        this.serviceName = serviceName;
-
-        String clusterName = nacos.getClusterName();
-        if (clusterName == null || clusterName.isEmpty()) {
-            clusterName = Constants.DEFAULT_CLUSTER_NAME;
-        }
-        this.clusterName = clusterName;
-
-        String[] userDirs = System.getProperty("user.dir").split("[/\\\\]");
-        this.projectName = userDirs[userDirs.length - 1];
-
-        this.metadata = new LinkedHashMap<>();
     }
 
     public void subscribe() throws NacosException {
         boolean b = invokeNacosBefore();
         try {
-            namingService.subscribe(serviceName, groupName, Arrays.asList(clusterName), event -> {
-                if (!(event instanceof NamingEvent)) {
-                    return;
-                }
-                NamingEvent namingEvent = ((NamingEvent) event);
-                rebuild(namingEvent.getInstances());
-            });
+            namingService.subscribe(serviceName, groupName, Arrays.asList(clusterName), this::onEvent);
         } finally {
             invokeNacosAfter(b);
         }
+    }
+
+    public void onEvent(Event event) {
+        if (!(event instanceof NamingEvent)) {
+            return;
+        }
+        NamingEvent namingEvent = ((NamingEvent) event);
+        rebuild(this.instanceList = namingEvent.getInstances());
     }
 
     @Override
@@ -113,22 +88,45 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     }
 
     public List<RemoteConnectionService> rebuild(List<Instance> instanceList) {
-        List<RemoteConnectionService> old = this.serviceList;
-        this.serviceList = newInstances(instanceList);
+        List<RemoteConnectionService> old = this.clientList;
+        this.clientList = newInstances(instanceList);
         close(old);
         return old;
     }
 
-    public void createNamingService() throws NacosException {
+    public NamingService createNamingService(Properties properties) throws NacosException {
         boolean b = invokeNacosBefore();
         try {
-            this.namingService = NamingFactory.createNamingService(nacos.buildProperties());
+            return NamingFactory.createNamingService(properties);
         } finally {
             invokeNacosAfter(b);
         }
     }
 
-    public void registerInstance() throws NacosException {
+    @Override
+    public void registerInstance(String ip, int port) {
+        Instance currentInstance = this.lastRegisterInstance;
+        if (currentInstance != null) {
+            boolean b = invokeNacosBefore();
+            try {
+                namingService.deregisterInstance(serviceName, groupName, currentInstance);
+                this.lastRegisterInstance = null;
+            } catch (NacosException e) {
+                throw new IllegalStateException(
+                        "com.github.sseserver.remote.NacosServiceDiscoveryService deregisterInstance fail : " + e, e);
+            } finally {
+                invokeNacosAfter(b);
+            }
+        }
+
+        String account = projectName + "-" + UUID.randomUUID();
+        String password = UUID.randomUUID().toString();
+
+        Map<String, String> metadata = new LinkedHashMap<>(3);
+        metadata.put(METADATA_NAME_DEVICE_ID, METADATA_VALUE_DEVICE_ID);
+        metadata.put(METADATA_NAME_ACCOUNT, filterNonAscii(account));
+        metadata.put(METADATA_NAME_PASSWORD, password);
+
         Instance instance = new Instance();
         instance.setIp(ip);
         instance.setPort(port);
@@ -139,9 +137,46 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
         boolean b = invokeNacosBefore();
         try {
             namingService.registerInstance(serviceName, groupName, instance);
+            this.lastRegisterInstance = instance;
+        } catch (NacosException e) {
+            throw new IllegalStateException(
+                    "com.github.sseserver.remote.NacosServiceDiscoveryService registerInstance fail : " + e, e);
         } finally {
             invokeNacosAfter(b);
         }
+    }
+
+    @Override
+    public HttpPrincipal login(String authorization) {
+        if (!authorization.startsWith("Basic ")) {
+            return null;
+        }
+        String token = authorization.substring("Basic ".length());
+        String[] accountAndPassword = new String(Base64.getDecoder().decode(token)).split(":", 2);
+        if (accountAndPassword.length != 2) {
+            return null;
+        }
+        String account = accountAndPassword[0];
+        String password = accountAndPassword[1];
+        Instance instance = selectInstanceByAccount(account);
+        if (instance == null) {
+            return null;
+        }
+        String dbPassword = getPassword(instance);
+        if (Objects.equals(dbPassword, password)) {
+            return new HttpPrincipal(account, password);
+        }
+        return null;
+    }
+
+    protected Instance selectInstanceByAccount(String account) {
+        for (Instance instance : instanceList) {
+            String itemAccount = getAccount(instance);
+            if (Objects.equals(itemAccount, account)) {
+                return instance;
+            }
+        }
+        return null;
     }
 
     public void close(List<RemoteConnectionService> list) {
@@ -160,26 +195,41 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     public List<RemoteConnectionService> newInstances(List<Instance> instanceList) {
         List<RemoteConnectionService> list = new ArrayList<>(instanceList.size());
         for (Instance instance : instanceList) {
-            if (isCurrentServer(instance)) {
+            if (isLocalDevice(instance)) {
                 continue;
             }
-            RemoteConnectionServiceImpl service = new RemoteConnectionServiceImpl(instance.getIp(), instance.getPort());
-            list.add(service);
+            String account = getAccount(instance);
+            String password = getPassword(instance);
+            try {
+                URL url = new URL(String.format("http://%s:%s@%s:%d", account, password, instance.getIp(), instance.getPort()));
+                RemoteConnectionServiceImpl service = new RemoteConnectionServiceImpl(url);
+                list.add(service);
+            } catch (MalformedURLException ignored) {
+                // 不可能出现错误
+            }
         }
         return list;
     }
 
-    private boolean isCurrentServer(Instance instance) {
-        return Objects.equals(ip, instance.getIp())
-                && Objects.equals(port, instance.getPort());
+    protected String getAccount(Instance instance) {
+        return instance.getMetadata().get(METADATA_NAME_ACCOUNT);
+    }
+
+    protected String getPassword(Instance instance) {
+        return instance.getMetadata().get(METADATA_NAME_PASSWORD);
+    }
+
+    protected boolean isLocalDevice(Instance instance) {
+        String deviceId = instance.getMetadata().get(METADATA_NAME_DEVICE_ID);
+        return Objects.equals(deviceId, METADATA_VALUE_DEVICE_ID);
     }
 
     @Override
     public List<RemoteConnectionService> getServiceList() {
-        return serviceList;
+        return clientList;
     }
 
-    private boolean invokeNacosBefore() {
+    protected boolean invokeNacosBefore() {
         boolean missProjectName = System.getProperty("project.name") == null;
         if (missProjectName) {
             System.setProperty("project.name", projectName);
@@ -187,10 +237,16 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
         return missProjectName;
     }
 
-    private void invokeNacosAfter(boolean missProjectName) {
+    protected void invokeNacosAfter(boolean missProjectName) {
         if (missProjectName) {
             System.getProperties().remove("project.name");
         }
+    }
+
+    private static String filterNonAscii(String account) {
+        return NON_ASCII_PATTERN.matcher(account)
+                .replaceAll("")
+                .replace(" ", "");
     }
 
 }

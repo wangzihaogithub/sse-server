@@ -1,12 +1,22 @@
 package com.github.sseserver.remote;
 
+import com.github.sseserver.local.LocalConnectionController.Response;
+import org.springframework.web.client.RestTemplate;
+
 import java.io.IOException;
 import java.io.Serializable;
+import java.net.URL;
 import java.util.Collection;
 import java.util.List;
 
-public class RemoteConnectionServiceImpl implements RemoteConnectionService{
-    public RemoteConnectionServiceImpl(String ip,Integer port) {
+public class RemoteConnectionServiceImpl implements RemoteConnectionService {
+    private RestTemplate restTemplate = new RestTemplate();
+    private final URL url;
+    private final String urlString;
+
+    public RemoteConnectionServiceImpl(URL url) {
+        this.url = url;
+        this.urlString = url.toString();
     }
 
     @Override
@@ -16,27 +26,41 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService{
 
     @Override
     public boolean isOnline(Serializable userId) {
-        return false;
+        Response<Boolean> response = restTemplate.getForObject(
+                urlString + "/ConnectionQueryService/isOnline?userId={userId}", Response.class,
+                userId);
+        return response.getData();
     }
 
     @Override
     public <ACCESS_USER> ACCESS_USER getUser(Serializable userId) {
-        return null;
+        Response<ACCESS_USER> response = restTemplate.getForObject(
+                urlString + "/ConnectionQueryService/getUser?userId={userId}", Response.class,
+                userId);
+        return response.getData();
     }
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsers() {
-        return null;
+        Response<List<ACCESS_USER>> response = restTemplate.getForObject(
+                urlString + "/ConnectionQueryService/getUsers", Response.class);
+        return response.getData();
     }
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsersByListening(String sseListenerName) {
-        return null;
+        Response<List<ACCESS_USER>> response = restTemplate.getForObject(
+                urlString + "/ConnectionQueryService/getUsersByListening?sseListenerName={sseListenerName}", Response.class,
+                sseListenerName);
+        return response.getData();
     }
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsersByTenantIdListening(Serializable tenantId, String sseListenerName) {
-        return null;
+        Response<List<ACCESS_USER>> response = restTemplate.getForObject(
+                urlString + "/ConnectionQueryService/getUsersByTenantIdListening?tenantId={tenantId}&sseListenerName={sseListenerName}", Response.class,
+                tenantId, sseListenerName);
+        return response.getData();
     }
 
     @Override
