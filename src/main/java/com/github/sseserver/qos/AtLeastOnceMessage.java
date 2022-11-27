@@ -1,4 +1,4 @@
-package com.github.sseserver.qos.impl;
+package com.github.sseserver.qos;
 
 import com.github.sseserver.qos.Message;
 

@@ -1,6 +1,14 @@
 server:
-  port: 80
+  port: 83
 spring:
   servlet:
     multipart:
       location: ${user.dir}/src/test/resources/html
+  sse-server:
+    remote:
+      enabled: true
+      nacos:
+        server-addr: '192.168.25.179:8849'
+        namespace: hao
+  application:
+    name: 'xx-123'

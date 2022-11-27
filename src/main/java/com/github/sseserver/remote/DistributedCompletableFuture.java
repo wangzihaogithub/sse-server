@@ -1,4 +1,4 @@
-package com.github.sseserver.distributed;
+package com.github.sseserver.remote;
 
 import java.util.concurrent.CompletableFuture;
 

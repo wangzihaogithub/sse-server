@@ -3,9 +3,14 @@ package com.github.sseserver.remote;
 import com.github.sseserver.ConnectionQueryService;
 import com.github.sseserver.SendService;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.io.Serializable;
 
-public interface RemoteConnectionService extends ConnectionQueryService, SendService<RemoteCompletableFuture<Integer>> {
+public interface RemoteConnectionService extends ConnectionQueryService, SendService<RemoteCompletableFuture<Integer>>, Closeable {
+
+    @Override
+    void close() throws IOException;
 
     /* disconnect */
 

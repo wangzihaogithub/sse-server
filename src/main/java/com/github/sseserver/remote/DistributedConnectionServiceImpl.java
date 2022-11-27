@@ -1,35 +1,54 @@
-package com.github.sseserver.distributed.impl;
+package com.github.sseserver.remote;
 
-import com.github.sseserver.distributed.DistributedCompletableFuture;
-import com.github.sseserver.distributed.DistributedConnectionService;
 import com.github.sseserver.local.LocalConnectionService;
 import com.github.sseserver.local.SseEmitter;
-import com.github.sseserver.remote.RemoteCompletableFuture;
-import com.github.sseserver.remote.RemoteConnectionService;
 import com.github.sseserver.util.CompletableFutureUtil;
 
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.function.Supplier;
 
 public class DistributedConnectionServiceImpl implements DistributedConnectionService {
-    private LocalConnectionService localConnectionService;
-    private List<RemoteConnectionService> remoteConnectionServiceList;
+    private final Supplier<LocalConnectionService> localConnectionServiceSupplier;
+    private ServiceDiscoveryService serviceDiscoveryService;
 
-    public void onStateUpdate() {
-        for (RemoteConnectionService remote : remoteConnectionServiceList) {
+    public DistributedConnectionServiceImpl(Supplier<LocalConnectionService> localConnectionServiceSupplier,
+                                            ServiceDiscoveryService serviceDiscoveryService) {
+        this.localConnectionServiceSupplier = localConnectionServiceSupplier;
+        this.serviceDiscoveryService = serviceDiscoveryService;
+    }
 
+    public LocalConnectionService getLocalConnectionService() {
+        return localConnectionServiceSupplier.get();
+    }
+
+    public void setServiceDiscoveryService(ServiceDiscoveryService serviceDiscoveryService) {
+        this.serviceDiscoveryService = serviceDiscoveryService;
+    }
+
+    @Override
+    public List<RemoteConnectionService> getRemoteConnectionServiceList() {
+        if (serviceDiscoveryService == null) {
+            return Collections.emptyList();
+        }
+        try {
+            return serviceDiscoveryService.getServiceList();
+        } catch (Exception e) {
+            throw e;
+//            return Collections.emptyList();
         }
     }
 
     @Override
     public boolean isOnline(Serializable userId) {
-        boolean online = localConnectionService.isOnline(userId);
+        boolean online = getLocalConnectionService().isOnline(userId);
         if (online) {
             return true;
         }
-        for (RemoteConnectionService remote : remoteConnectionServiceList) {
+        for (RemoteConnectionService remote : getRemoteConnectionServiceList()) {
             if (remote.isOnline(userId)) {
                 return true;
             }
@@ -39,11 +58,11 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
 
     @Override
     public <ACCESS_USER> ACCESS_USER getUser(Serializable userId) {
-        ACCESS_USER user = localConnectionService.getUser(userId);
+        ACCESS_USER user = getLocalConnectionService().getUser(userId);
         if (user != null) {
             return user;
         }
-        for (RemoteConnectionService remote : remoteConnectionServiceList) {
+        for (RemoteConnectionService remote : getRemoteConnectionServiceList()) {
             user = remote.getUser(userId);
             if (user != null) {
                 return user;
@@ -122,13 +141,13 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
 
     @Override
     public DistributedCompletableFuture<Integer> sendAll(String eventName, Serializable body) {
-        List<RemoteCompletableFuture<Integer>> remoteFutureList = new ArrayList<>(remoteConnectionServiceList.size());
-        for (RemoteConnectionService remote : remoteConnectionServiceList) {
+        List<RemoteCompletableFuture<Integer>> remoteFutureList = new ArrayList<>(getRemoteConnectionServiceList().size());
+        for (RemoteConnectionService remote : getRemoteConnectionServiceList()) {
             RemoteCompletableFuture<Integer> future = remote.sendAll(eventName, body);
             remoteFutureList.add(future);
         }
 
-        int localCount = localConnectionService.sendAll(eventName, body);
+        int localCount = getLocalConnectionService().sendAll(eventName, body);
 
         DistributedCompletableFuture<Integer> future = new DistributedCompletableFuture<>();
         CompletableFutureUtil.join(remoteFutureList, future, () -> {
@@ -195,13 +214,13 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
 
     @Override
     public DistributedCompletableFuture<Integer> disconnectByUserId(Serializable userId) {
-        List<RemoteCompletableFuture<Integer>> remoteFutureList = new ArrayList<>(remoteConnectionServiceList.size());
-        for (RemoteConnectionService remote : remoteConnectionServiceList) {
+        List<RemoteCompletableFuture<Integer>> remoteFutureList = new ArrayList<>(getRemoteConnectionServiceList().size());
+        for (RemoteConnectionService remote : getRemoteConnectionServiceList()) {
             RemoteCompletableFuture<Integer> future = remote.disconnectByUserId(userId);
             remoteFutureList.add(future);
         }
 
-        List<SseEmitter<Object>> localList = localConnectionService.disconnectByUserId(userId);
+        List<SseEmitter<Object>> localList = getLocalConnectionService().disconnectByUserId(userId);
 
         DistributedCompletableFuture<Integer> future = new DistributedCompletableFuture<>();
         CompletableFutureUtil.join(remoteFutureList, future, () -> {

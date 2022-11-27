@@ -1,12 +1,9 @@
-package com.github.sseserver.qos.impl;
+package com.github.sseserver.qos;
 
 import com.github.sseserver.local.ChangeEvent;
 import com.github.sseserver.local.LocalConnectionService;
 import com.github.sseserver.SendService;
 import com.github.sseserver.local.SseEmitter;
-import com.github.sseserver.qos.Message;
-import com.github.sseserver.qos.MessageRepository;
-import com.github.sseserver.qos.QosCompletableFuture;
 
 import java.io.IOException;
 import java.io.Serializable;
