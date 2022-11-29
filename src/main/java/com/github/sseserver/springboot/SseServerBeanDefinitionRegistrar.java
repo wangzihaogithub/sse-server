@@ -5,6 +5,7 @@ import com.github.sseserver.local.LocalConnectionService;
 import com.github.sseserver.local.LocalConnectionServiceImpl;
 import com.github.sseserver.remote.DistributedConnectionService;
 import com.github.sseserver.remote.ServiceDiscoveryService;
+import com.github.sseserver.util.WebUtil;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
@@ -59,6 +60,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
         }
         this.definitionRegistry = definitionRegistry;
         Objects.requireNonNull(beanFactory);
+        WebUtil.port = environment.getProperty("server.port", Integer.class, 8080);
 
         // 1.GithubSseEmitterReturnValueHandler.class (if not exist)
         if (beanFactory.getBeanNamesForType(GithubSseEmitterReturnValueHandler.class).length == 0) {

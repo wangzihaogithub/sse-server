@@ -2,16 +2,20 @@ package com.github.sseserver.local;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.sseserver.ConnectionQueryService;
+import com.github.sseserver.SendService;
 import com.github.sseserver.remote.ServiceDiscoveryService;
 import com.github.sseserver.util.WebUtil;
 import com.sun.net.httpserver.*;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 
 public class LocalConnectionController implements Closeable {
@@ -55,6 +59,16 @@ public class LocalConnectionController implements Closeable {
                 new ConnectionQueryServiceHttpHandler(localConnectionServiceSupplier));
     }
 
+    protected HttpContext configSendService(HttpServer httpServer) {
+        return httpServer.createContext("/SendServiceHttpHandler/",
+                new SendServiceHttpHandler(localConnectionServiceSupplier));
+    }
+
+    protected HttpContext configRemoteConnectionService(HttpServer httpServer) {
+        return httpServer.createContext("/RemoteConnectionService/",
+                new RemoteConnectionServiceHttpHandler(localConnectionServiceSupplier));
+    }
+
     protected void configAuthenticator(List<HttpContext> httpContextList) {
         for (HttpContext httpContext : httpContextList) {
             httpContext.setAuthenticator(new AuthorizationHeaderAuthenticator(discoverySupplier));
@@ -69,17 +83,225 @@ public class LocalConnectionController implements Closeable {
     }
 
     protected void configHttpServer(HttpServer httpServer) {
-        httpServer.setExecutor(Runnable::run);
-
-        List<HttpContext> contextList = new ArrayList<>(1);
+        List<HttpContext> contextList = new ArrayList<>(2);
         contextList.add(configConnectionQueryService(httpServer));
+        contextList.add(configSendService(httpServer));
+        contextList.add(configRemoteConnectionService(httpServer));
 
-        configAuthenticator(contextList);
+//        configAuthenticator(contextList);
         configFilters(contextList);
     }
 
     public InetSocketAddress getAddress() {
         return httpServer.getAddress();
+    }
+
+    public static class RemoteConnectionServiceHttpHandler extends AbstractHttpHandler {
+        private final Supplier<? extends LocalConnectionService> supplier;
+
+        public RemoteConnectionServiceHttpHandler(Supplier<? extends LocalConnectionService> supplier) {
+            this.supplier = supplier;
+        }
+
+        @Override
+        public void handle0(HttpExchange request) throws IOException {
+            String rpcMethodName = getRpcMethodName();
+            LocalConnectionService service = supplier.get();
+            switch (rpcMethodName) {
+                case "disconnectByUserId": {
+                    writeResponse(request, service.disconnectByUserId(
+                            body("userId")
+                    ).size());
+                    break;
+                }
+                case "disconnectByAccessToken": {
+                    writeResponse(request, service.disconnectByAccessToken(
+                            body("accessToken")
+                    ).size());
+                    break;
+                }
+                case "disconnectByConnectionId": {
+                    writeResponse(request, service.disconnectByConnectionId(
+                            body("connectionId")
+                    ) != null ? 1 : 0);
+                    break;
+                }
+                default: {
+                    request.sendResponseHeaders(404, 0);
+                    break;
+                }
+            }
+        }
+    }
+
+    public static class SendServiceHttpHandler extends AbstractHttpHandler {
+        private final Supplier<? extends SendService<Integer>> supplier;
+
+        public SendServiceHttpHandler(Supplier<? extends SendService<Integer>> supplier) {
+            this.supplier = supplier;
+        }
+
+        @Override
+        public void handle0(HttpExchange request) throws IOException {
+            String rpcMethodName = getRpcMethodName();
+            SendService<Integer> service = supplier.get();
+            switch (rpcMethodName) {
+                case "sendAll": {
+                    writeResponse(request, service.sendAll(
+                            body("eventName"),
+                            body("body")
+                    ));
+                    break;
+                }
+                case "sendAllListening": {
+                    writeResponse(request, service.sendAllListening(
+                            body("eventName"),
+                            body("body")
+                    ));
+                    break;
+                }
+                case "sendByChannel": {
+                    Object channels = body("channels");
+                    if (channels instanceof Collection) {
+                        writeResponse(request, service.sendByChannel(
+                                (Collection<String>) channels,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    } else {
+                        writeResponse(request, service.sendByChannel(
+                                (String) channels,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    }
+                    break;
+                }
+                case "sendByChannelListening": {
+                    Object channels = body("channels");
+                    if (channels instanceof Collection) {
+                        writeResponse(request, service.sendByChannelListening(
+                                (Collection<String>) channels,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    } else {
+                        writeResponse(request, service.sendByChannelListening(
+                                (String) channels,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    }
+                    break;
+                }
+                case "sendByAccessToken": {
+                    Object accessTokens = body("accessTokens");
+                    if (accessTokens instanceof Collection) {
+                        writeResponse(request, service.sendByAccessToken(
+                                (Collection<String>) accessTokens,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    } else {
+                        writeResponse(request, service.sendByAccessToken(
+                                (String) accessTokens,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    }
+                    break;
+                }
+                case "sendByAccessTokenListening": {
+                    Object accessTokens = body("accessTokens");
+                    if (accessTokens instanceof Collection) {
+                        writeResponse(request, service.sendByAccessTokenListening(
+                                (Collection<String>) accessTokens,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    } else {
+                        writeResponse(request, service.sendByAccessTokenListening(
+                                (String) accessTokens,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    }
+                    break;
+                }
+                case "sendByUserId": {
+                    Object userIds = body("userIds");
+                    if (userIds instanceof Collection) {
+                        writeResponse(request, service.sendByUserId(
+                                (Collection<Serializable>) userIds,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    } else {
+                        writeResponse(request, service.sendByUserId(
+                                (String) userIds,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    }
+                    break;
+                }
+                case "sendByUserIdListening": {
+                    Object userIds = body("userIds");
+                    if (userIds instanceof Collection) {
+                        writeResponse(request, service.sendByUserIdListening(
+                                (Collection<Serializable>) userIds,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    } else {
+                        writeResponse(request, service.sendByUserIdListening(
+                                (String) userIds,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    }
+                    break;
+                }
+                case "sendByTenantId": {
+                    Object tenantIds = body("tenantIds");
+                    if (tenantIds instanceof Collection) {
+                        writeResponse(request, service.sendByTenantId(
+                                (Collection<Serializable>) tenantIds,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    } else {
+                        writeResponse(request, service.sendByTenantId(
+                                (String) tenantIds,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    }
+                    break;
+                }
+                case "sendByTenantIdListening": {
+                    Object tenantIds = body("tenantIds");
+                    if (tenantIds instanceof Collection) {
+                        writeResponse(request, service.sendByTenantIdListening(
+                                (Collection<Serializable>) tenantIds,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    } else {
+                        writeResponse(request, service.sendByTenantIdListening(
+                                (String) tenantIds,
+                                body("eventName"),
+                                body("body")
+                        ));
+                    }
+                    break;
+                }
+                default: {
+                    request.sendResponseHeaders(404, 0);
+                    break;
+                }
+            }
+        }
     }
 
     public static class ConnectionQueryServiceHttpHandler extends AbstractHttpHandler {
@@ -96,13 +318,13 @@ public class LocalConnectionController implements Closeable {
             switch (rpcMethodName) {
                 case "isOnline": {
                     writeResponse(request, service.isOnline(
-                            arg("userId")
+                            query("userId")
                     ));
                     break;
                 }
                 case "getUser": {
                     writeResponse(request, service.getUser(
-                            arg("userId")
+                            query("userId")
                     ));
                     break;
                 }
@@ -112,18 +334,64 @@ public class LocalConnectionController implements Closeable {
                 }
                 case "getUsersByListening": {
                     writeResponse(request, service.getUsersByListening(
-                            arg("sseListenerName")
+                            query("sseListenerName")
                     ));
                     break;
                 }
                 case "getUsersByTenantIdListening": {
                     writeResponse(request, service.getUsersByTenantIdListening(
-                            arg("tenantId"),
-                            arg("sseListenerName")
+                            query("tenantId"),
+                            query("sseListenerName")
                     ));
                     break;
                 }
+                case "getUserIds": {
+                    writeResponse(request, service.getUserIds(String.class));
+                    break;
+                }
+                case "getUserIdsByListening": {
+                    writeResponse(request, service.getUserIdsByListening(
+                            query("sseListenerName"),
+                            String.class
+                    ));
+                    break;
+                }
+                case "getUserIdsByTenantIdListening": {
+                    writeResponse(request, service.getUserIdsByTenantIdListening(
+                            query("tenantId"),
+                            query("sseListenerName"),
+                            String.class
+                    ));
+                    break;
+                }
+                case "getAccessTokens": {
+                    writeResponse(request, service.getAccessTokens());
+                    break;
+                }
+                case "getTenantIds": {
+                    writeResponse(request, service.getTenantIds(
+                            String.class
+                    ));
+                    break;
+                }
+                case "getChannels": {
+                    writeResponse(request, service.getChannels());
+                    break;
+                }
+                case "getAccessTokenCount": {
+                    writeResponse(request, service.getAccessTokenCount());
+                    break;
+                }
+                case "getUserCount": {
+                    writeResponse(request, service.getUserCount());
+                    break;
+                }
+                case "getConnectionCount": {
+                    writeResponse(request, service.getConnectionCount());
+                    break;
+                }
                 default: {
+                    request.sendResponseHeaders(404, 0);
                     break;
                 }
             }
@@ -172,11 +440,20 @@ public class LocalConnectionController implements Closeable {
     }
 
     public static abstract class AbstractHttpHandler implements HttpHandler {
-        private final ObjectMapper objectMapper = new ObjectMapper();
+        private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         private final ThreadLocal<HttpExchange> REQUEST_THREAD_LOCAL = new ThreadLocal<>();
+        private final ThreadLocal<Map> BODY_THREAD_LOCAL = new ThreadLocal<>();
 
-        protected String arg(String name) {
+        protected String query(String name) {
             return WebUtil.getQueryParam(REQUEST_THREAD_LOCAL.get().getRequestURI().getQuery(), name);
+        }
+
+        protected <T> T body(String name) {
+            Map body = BODY_THREAD_LOCAL.get();
+            if (body == null) {
+                return null;
+            }
+            return (T) body.get(name);
         }
 
         public String getRpcMethodName() {
@@ -186,11 +463,17 @@ public class LocalConnectionController implements Closeable {
 
         @Override
         public final void handle(HttpExchange request) throws IOException {
+            String contentLength = request.getRequestHeaders().getFirst("content-length");
+            if (contentLength != null && contentLength.length() > 0) {
+                Map body = objectMapper.readValue(request.getRequestBody(), Map.class);
+                BODY_THREAD_LOCAL.set(body);
+            }
             try {
                 REQUEST_THREAD_LOCAL.set(request);
                 handle0(request);
             } finally {
                 REQUEST_THREAD_LOCAL.remove();
+                BODY_THREAD_LOCAL.remove();
             }
         }
 

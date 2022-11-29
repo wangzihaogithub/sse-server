@@ -2,13 +2,14 @@ package com.github.sseserver.remote;
 
 import com.github.sseserver.local.LocalConnectionService;
 import com.github.sseserver.local.SseEmitter;
-import com.github.sseserver.util.CompletableFutureUtil;
+import com.github.sseserver.util.CompletableFuture;
 
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
 
 public class DistributedConnectionServiceImpl implements DistributedConnectionService {
@@ -127,11 +128,11 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
         return 0;
     }
 
-    private void handleSendError(RemoteCompletableFuture<Integer> remoteFuture, Throwable throwable) {
+    private void handleSendError(RemoteCompletableFuture<Integer> remoteFuture, Exception exception) {
 
     }
 
-    private void handleDisconnectError(RemoteCompletableFuture<Integer> remoteFuture, Throwable throwable) {
+    private void handleDisconnectError(RemoteCompletableFuture<Integer> remoteFuture, Exception exception) {
 
     }
 
@@ -146,16 +147,28 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
         int localCount = getLocalConnectionService().sendAll(eventName, body);
 
         DistributedCompletableFuture<Integer> future = new DistributedCompletableFuture<>();
-        CompletableFutureUtil.join(remoteFutureList, future, () -> {
+        CompletableFuture.join(remoteFutureList, future, () -> {
             int remoteCount = 0;
+            InterruptedException interruptedException = null;
             for (RemoteCompletableFuture<Integer> remoteFuture : remoteFutureList) {
                 try {
-                    Integer count = remoteFuture.get();
+                    Integer count;
+                    if (interruptedException != null) {
+                        if (remoteFuture.isDone()) {
+                            count = remoteFuture.get();
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        count = remoteFuture.get();
+                    }
                     if (count != null) {
                         remoteCount += count;
                     }
-                } catch (Throwable throwable) {
-                    handleSendError(remoteFuture, throwable);
+                } catch (InterruptedException exception) {
+                    interruptedException = exception;
+                } catch (ExecutionException exception) {
+                    handleSendError(remoteFuture, exception);
                 }
             }
             return localCount + remoteCount;
@@ -219,16 +232,28 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
         List<SseEmitter<Object>> localList = getLocalConnectionService().disconnectByUserId(userId);
 
         DistributedCompletableFuture<Integer> future = new DistributedCompletableFuture<>();
-        CompletableFutureUtil.join(remoteFutureList, future, () -> {
+        CompletableFuture.join(remoteFutureList, future, () -> {
             int remoteCount = 0;
+            InterruptedException interruptedException = null;
             for (RemoteCompletableFuture<Integer> remoteFuture : remoteFutureList) {
                 try {
-                    Integer count = remoteFuture.get();
+                    Integer count;
+                    if (interruptedException != null) {
+                        if (remoteFuture.isDone()) {
+                            count = remoteFuture.get();
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        count = remoteFuture.get();
+                    }
                     if (count != null) {
                         remoteCount += count;
                     }
-                } catch (Throwable throwable) {
-                    handleDisconnectError(remoteFuture, throwable);
+                } catch (InterruptedException exception) {
+                    interruptedException = exception;
+                } catch (ExecutionException exception) {
+                    handleDisconnectError(remoteFuture, exception);
                 }
             }
             return localList.size() + remoteCount;

@@ -20,11 +20,58 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Timestamp;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * @author wenshao[szujobs@hotmail.com]
  */
 public class TypeUtil {
+
+    public static final String NAME_TYPE = "@type";
+
+    public static <T> T castBean(Map<?, ?> map) {
+        if (map == null) {
+            return null;
+        }
+
+        String type = (String) map.get(NAME_TYPE);
+        if (type == null) {
+            return (T) map;
+        }
+
+        T result = BeanUtil.newInstance(type);
+        if (result instanceof Map) {
+            Map beanHandler = (Map) result;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                Object key = entry.getKey();
+                if (NAME_TYPE.equals(key)) {
+                    continue;
+                }
+                beanHandler.put(key, entry.getValue());
+            }
+        } else {
+            BeanMap beanHandler = new BeanMap(result);
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                Object key = entry.getKey();
+                if (key == null) {
+                    continue;
+                }
+                if (NAME_TYPE.equals(key)) {
+                    continue;
+                }
+                beanHandler.set(key.toString(), entry.getValue());
+            }
+        }
+        return result;
+    }
+
+    public static <SOURCE extends Collection<?>, T> List<T> castBasic(SOURCE source, Class<T> type) {
+        List<T> list = source.stream()
+                .map(e -> TypeUtil.cast(e, type))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        return list;
+    }
 
     public static String castToString(Object value) {
         if (value == null) {

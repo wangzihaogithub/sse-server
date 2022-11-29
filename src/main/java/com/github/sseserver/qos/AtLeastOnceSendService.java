@@ -305,7 +305,6 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
     }
 
     protected void complete(QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future, List<SseEmitter<ACCESS_USER>> succeedList) {
-        future.setEndTimestamp(System.currentTimeMillis());
         if (future.getMessageId() == null) {
             future.setMessageId(Message.newId());
         }

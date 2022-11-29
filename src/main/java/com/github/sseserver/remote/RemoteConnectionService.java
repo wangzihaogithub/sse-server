@@ -10,7 +10,7 @@ import java.io.Serializable;
 public interface RemoteConnectionService extends ConnectionQueryService, SendService<RemoteCompletableFuture<Integer>>, Closeable {
 
     @Override
-    void close() throws IOException;
+    void close() ;
 
     /* disconnect */
 

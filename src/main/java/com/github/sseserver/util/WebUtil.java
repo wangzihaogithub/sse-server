@@ -12,6 +12,7 @@ public class WebUtil {
     public static final String PROTOCOL_HTTP = "http:";
     public static final Pattern PATTERN_HTTP = Pattern.compile(PROTOCOL_HTTP);
     private static String ipAddress;
+    public static Integer port;
 
     /**
      * 是否是有效版本
@@ -163,10 +164,12 @@ public class WebUtil {
     }
 
     public static String getQueryParam(String query, String name) {
-        Map<String, String> map = new LinkedHashMap<>(1);
+        if (query == null || query.isEmpty()) {
+            return null;
+        }
         String[] params = query.split("&");
         for (String param : params) {
-            String[] keyValue = param.split("=",2);
+            String[] keyValue = param.split("=", 2);
             if (keyValue[0].equals(name)) {
                 return keyValue[1];
             }
@@ -178,7 +181,7 @@ public class WebUtil {
         Map<String, String> map = new LinkedHashMap<>(len);
         String[] params = query.split("&");
         for (String param : params) {
-            String[] keyValue = param.split("=",2);
+            String[] keyValue = param.split("=", 2);
             map.put(keyValue[0], keyValue[1]);
         }
         return map;
