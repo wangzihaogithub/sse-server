@@ -3,6 +3,7 @@ package com.github.sseserver.local;
 import com.github.sseserver.ConnectionQueryService;
 import com.github.sseserver.SendService;
 import com.github.sseserver.qos.QosCompletableFuture;
+import com.github.sseserver.remote.DistributedConnectionService;
 
 import java.io.Serializable;
 import java.util.Collection;
@@ -31,6 +32,10 @@ public interface LocalConnectionService extends ConnectionQueryService, SendServ
     /* QOS */
 
     <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> atLeastOnce();
+
+    /* distributed */
+
+    DistributedConnectionService distributed();
 
     /* connect */
 

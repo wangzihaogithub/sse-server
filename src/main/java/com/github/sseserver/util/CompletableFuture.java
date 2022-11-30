@@ -10,14 +10,18 @@ public class CompletableFuture<T> extends java.util.concurrent.CompletableFuture
 
     public static <R> void join(List<? extends java.util.concurrent.CompletableFuture> list, java.util.concurrent.CompletableFuture<R> end, Supplier<R> callback) {
         int size = list.size();
-        AtomicInteger count = new AtomicInteger();
-        for (java.util.concurrent.CompletableFuture f : list) {
-            f.handle((r, t) -> {
-                if (count.incrementAndGet() == size) {
-                    end.complete(callback.get());
-                }
-                return null;
-            });
+        if (size == 0) {
+            end.complete(callback.get());
+        } else {
+            AtomicInteger count = new AtomicInteger();
+            for (java.util.concurrent.CompletableFuture f : list) {
+                f.handle((r, t) -> {
+                    if (count.incrementAndGet() == size) {
+                        end.complete(callback.get());
+                    }
+                    return null;
+                });
+            }
         }
     }
 

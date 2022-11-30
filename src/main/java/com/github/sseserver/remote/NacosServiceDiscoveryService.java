@@ -6,7 +6,7 @@ import com.alibaba.nacos.api.naming.NamingService;
 import com.alibaba.nacos.api.naming.listener.Event;
 import com.alibaba.nacos.api.naming.listener.NamingEvent;
 import com.alibaba.nacos.api.naming.pojo.Instance;
-import com.github.sseserver.springboot.SseServerProperties;
+import com.github.sseserver.util.ReferenceCounted;
 import com.github.sseserver.util.SnowflakeIdWorker;
 import com.github.sseserver.util.WebUtil;
 import com.sun.net.httpserver.HttpPrincipal;
@@ -27,26 +27,27 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     public static final String METADATA_VALUE_DEVICE_ID = filterNonAscii(
             PROJECT_NAME + "-" + WebUtil.getIPAddress(WebUtil.port)
                     + "(" + new Timestamp(System.currentTimeMillis()) + SnowflakeIdWorker.INSTANCE.nextId() + ")");
-    public static int idIncr = 0;
-
-    private final int id = idIncr++;
-    private List<RemoteConnectionService> clientList;
+    private static int idIncr = 0;
+    private volatile ReferenceCounted<List<RemoteConnectionService>> serviceListRef;
     private List<Instance> instanceList;
     private Instance lastRegisterInstance;
 
+    private final int id = idIncr++;
     private final NamingService namingService;
     private final String serviceName;
     private final String groupName;
     private final String clusterName;
 
     public NacosServiceDiscoveryService(String groupName,
-                                        SseServerProperties.Remote.Nacos nacos) {
+                                        String serviceName,
+                                        String clusterName,
+                                        Properties nacosProperties) {
         this.groupName = groupName;
-        this.serviceName = nacos.getServiceName();
-        this.clusterName = nacos.getClusterName();
+        this.serviceName = serviceName;
+        this.clusterName = clusterName;
 
         try {
-            this.namingService = createNamingService(nacos.buildProperties());
+            this.namingService = createNamingService(nacosProperties);
         } catch (NacosException e) {
             throw new IllegalArgumentException(
                     "com.github.sseserver.remote.NacosServiceDiscoveryService createNamingService fail : " + e, e);
@@ -78,7 +79,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     }
 
     @Override
-    public List<RemoteConnectionService> rebuild() {
+    public ReferenceCounted<List<RemoteConnectionService>> rebuild() {
         boolean b = invokeNacosBefore();
         List<Instance> instanceList;
         try {
@@ -92,16 +93,25 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
         return rebuild(instanceList);
     }
 
-    public List<RemoteConnectionService> rebuild(List<Instance> instanceList) {
-        List<RemoteConnectionService> old = this.clientList;
-        this.clientList = newInstances(instanceList);
-        close(old);
+    public ReferenceCounted<List<RemoteConnectionService>> rebuild(List<Instance> instanceList) {
+        ReferenceCounted<List<RemoteConnectionService>> old = this.serviceListRef;
+        this.serviceListRef = new ReferenceCounted<>(newInstances(instanceList));
+        if (old != null) {
+            old.destroy(list -> {
+                for (RemoteConnectionService service : list) {
+                    service.close();
+                }
+            });
+        }
         return old;
     }
 
     public NamingService createNamingService(Properties properties) throws NacosException {
         boolean b = invokeNacosBefore();
         try {
+            if (clusterName != null && clusterName.length() > 0) {
+                properties.put("clusterName", clusterName);
+            }
             return NamingFactory.createNamingService(properties);
         } finally {
             invokeNacosAfter(b);
@@ -124,7 +134,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
             }
         }
 
-        String account = filterNonAscii(id + "-" + METADATA_VALUE_DEVICE_ID);
+        String account = filterNonAscii(id + "-" + groupName + "-" + METADATA_VALUE_DEVICE_ID);
         String password = UUID.randomUUID().toString().replace("-", "");
 
         Map<String, String> metadata = new LinkedHashMap<>(3);
@@ -184,19 +194,6 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
         return null;
     }
 
-    public void close(List<RemoteConnectionService> list) {
-        if (list == null) {
-            return;
-        }
-        for (RemoteConnectionService service : list) {
-            try {
-                service.close();
-            } catch (Exception ignored) {
-
-            }
-        }
-    }
-
     public List<RemoteConnectionService> newInstances(List<Instance> instanceList) {
         List<RemoteConnectionService> list = new ArrayList<>(instanceList.size());
         for (Instance instance : instanceList) {
@@ -206,11 +203,13 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
             String account = getAccount(instance);
             String password = getPassword(instance);
             try {
-                URL url = new URL(String.format("http://%s:%d", instance.getIp(), instance.getPort()));
+                URL url = new URL(String.format("http://%s:%s@%s:%d", account, password, instance.getIp(), instance.getPort()));
                 RemoteConnectionServiceImpl service = new RemoteConnectionServiceImpl(url, account, password);
                 list.add(service);
-            } catch (MalformedURLException ignored) {
-                // 不可能出现错误
+            } catch (MalformedURLException e) {
+                throw new IllegalStateException(
+                        String.format("newInstances => new URL fail!  account = '%s', password = '%s', IP = '%s', port = %d ",
+                                account, password, instance.getIp(), instance.getPort()), e);
             }
         }
         return list;
@@ -230,16 +229,16 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     }
 
     @Override
-    public List<RemoteConnectionService> getServiceList() {
-        return clientList;
+    public ReferenceCounted<List<RemoteConnectionService>> getServiceListRef() {
+        return serviceListRef.open();
     }
 
     protected boolean invokeNacosBefore() {
-        boolean missProjectName = System.getProperty("project.name") == null;
-        if (missProjectName) {
+        boolean isProjectNameNull = System.getProperty("project.name") == null;
+        if (isProjectNameNull) {
             System.setProperty("project.name", PROJECT_NAME);
         }
-        return missProjectName;
+        return isProjectNameNull;
     }
 
     protected void invokeNacosAfter(boolean missProjectName) {

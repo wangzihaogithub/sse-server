@@ -6,8 +6,11 @@ import com.github.sseserver.SendService;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.Serializable;
+import java.net.URL;
 
 public interface RemoteConnectionService extends ConnectionQueryService, SendService<RemoteCompletableFuture<Integer>>, Closeable {
+
+    URL getRemoteUrl();
 
     @Override
     void close() ;

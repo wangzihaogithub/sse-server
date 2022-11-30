@@ -3,6 +3,9 @@ package com.github.sseserver.remote;
 import com.github.sseserver.ConnectionQueryService;
 import com.github.sseserver.SendService;
 import com.github.sseserver.local.LocalConnectionService;
+import com.github.sseserver.qos.QosCompletableFuture;
+import com.github.sseserver.util.ReferenceCounted;
+import io.netty.buffer.ByteBuf;
 
 import java.io.Serializable;
 import java.util.List;
@@ -15,9 +18,13 @@ public interface DistributedConnectionService extends ConnectionQueryService, Se
         return new DistributedConnectionServiceImpl(provider, discoverySupplier);
     }
 
+    /* QOS */
+
+    <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> atLeastOnce();
+
     /* disconnect */
 
-    List<RemoteConnectionService> getRemoteConnectionServiceList();
+    ReferenceCounted<List<RemoteConnectionService>> getRemoteServiceListRef();
 
     DistributedCompletableFuture<Integer> disconnectByUserId(Serializable userId);
 

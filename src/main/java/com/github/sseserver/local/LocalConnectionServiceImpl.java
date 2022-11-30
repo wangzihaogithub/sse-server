@@ -1,13 +1,18 @@
 package com.github.sseserver.local;
 
 import com.github.sseserver.SendService;
-import com.github.sseserver.qos.MessageRepository;
-import com.github.sseserver.qos.QosCompletableFuture;
 import com.github.sseserver.qos.AtLeastOnceSendService;
 import com.github.sseserver.qos.MemoryMessageRepository;
+import com.github.sseserver.qos.MessageRepository;
+import com.github.sseserver.qos.QosCompletableFuture;
+import com.github.sseserver.remote.DistributedConnectionService;
+import com.github.sseserver.springboot.SseServerBeanDefinitionRegistrar;
 import com.github.sseserver.util.TypeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.DisposableBean;
 
@@ -35,7 +40,7 @@ import java.util.stream.Collectors;
  *
  * @author hao 2021年12月7日19:27:41
  */
-public class LocalConnectionServiceImpl implements LocalConnectionService, BeanNameAware, DisposableBean {
+public class LocalConnectionServiceImpl implements LocalConnectionService, BeanNameAware, DisposableBean, BeanFactoryAware {
     private final static Logger log = LoggerFactory.getLogger(LocalConnectionServiceImpl.class);
     private final static AtomicInteger SCHEDULED_INDEX = new AtomicInteger();
     /**
@@ -65,11 +70,15 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     protected final Map<String, List<Predicate<SseEmitter>>> disconnectListenerMap = new ConcurrentHashMap<>();
 
     private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
-    private String beanName = getClass().getSimpleName();
-    private int reconnectTime = 5000;
-    private boolean destroyFlag;
+
     private volatile AtLeastOnceSendService atLeastOnceSender;
     private MessageRepository messageRepository;
+
+    private BeanFactory beanFactory;
+    private String beanName = getClass().getSimpleName();
+
+    private int reconnectTime = 5000;
+    private boolean destroyFlag;
 
     @Override
     public ScheduledExecutorService getScheduled() {
@@ -89,6 +98,12 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             }
         }
         return atLeastOnceSender;
+    }
+
+    @Override
+    public DistributedConnectionService distributed() {
+        String beanName = SseServerBeanDefinitionRegistrar.getDistributedConnectionServiceBeanName(this.beanName);
+        return beanFactory.getBean(beanName, DistributedConnectionService.class);
     }
 
     public MessageRepository getMessageRepository() {
@@ -724,5 +739,10 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             }
         }
         return count;
+    }
+
+    @Override
+    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+        this.beanFactory = beanFactory;
     }
 }

@@ -1,8 +1,10 @@
 package com.github.sseserver.remote;
 
+import com.github.sseserver.SendService;
 import com.github.sseserver.local.LocalConnectionService;
-import com.github.sseserver.local.SseEmitter;
+import com.github.sseserver.qos.QosCompletableFuture;
 import com.github.sseserver.util.CompletableFuture;
+import com.github.sseserver.util.ReferenceCounted;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -10,6 +12,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class DistributedConnectionServiceImpl implements DistributedConnectionService {
@@ -27,16 +30,16 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
     }
 
     @Override
-    public List<RemoteConnectionService> getRemoteConnectionServiceList() {
+    public <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> atLeastOnce() {
+        return null;
+    }
+
+    @Override
+    public ReferenceCounted<List<RemoteConnectionService>> getRemoteServiceListRef() {
         if (serviceDiscoveryServiceSupplier == null) {
-            return Collections.emptyList();
+            return new ReferenceCounted<>(Collections.emptyList());
         }
-        try {
-            return serviceDiscoveryServiceSupplier.get().getServiceList();
-        } catch (Exception e) {
-            throw e;
-//            return Collections.emptyList();
-        }
+        return serviceDiscoveryServiceSupplier.get().getServiceListRef();
     }
 
     @Override
@@ -45,9 +48,11 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
         if (online) {
             return true;
         }
-        for (RemoteConnectionService remote : getRemoteConnectionServiceList()) {
-            if (remote.isOnline(userId)) {
-                return true;
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceListRef()) {
+            for (RemoteConnectionService remote : ref.get()) {
+                if (remote.isOnline(userId)) {
+                    return true;
+                }
             }
         }
         return false;
@@ -59,10 +64,12 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
         if (user != null) {
             return user;
         }
-        for (RemoteConnectionService remote : getRemoteConnectionServiceList()) {
-            user = remote.getUser(userId);
-            if (user != null) {
-                return user;
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceListRef()) {
+            for (RemoteConnectionService remote : ref.get()) {
+                user = remote.getUser(userId);
+                if (user != null) {
+                    return user;
+                }
             }
         }
         return null;
@@ -128,146 +135,157 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
         return 0;
     }
 
-    private void handleSendError(RemoteCompletableFuture<Integer> remoteFuture, Exception exception) {
-
-    }
-
-    private void handleDisconnectError(RemoteCompletableFuture<Integer> remoteFuture, Exception exception) {
-
-    }
-
     @Override
     public DistributedCompletableFuture<Integer> sendAll(String eventName, Serializable body) {
-        List<RemoteCompletableFuture<Integer>> remoteFutureList = new ArrayList<>(getRemoteConnectionServiceList().size());
-        for (RemoteConnectionService remote : getRemoteConnectionServiceList()) {
-            RemoteCompletableFuture<Integer> future = remote.sendAll(eventName, body);
-            remoteFutureList.add(future);
-        }
-
-        int localCount = getLocalConnectionService().sendAll(eventName, body);
-
-        DistributedCompletableFuture<Integer> future = new DistributedCompletableFuture<>();
-        CompletableFuture.join(remoteFutureList, future, () -> {
-            int remoteCount = 0;
-            InterruptedException interruptedException = null;
-            for (RemoteCompletableFuture<Integer> remoteFuture : remoteFutureList) {
-                try {
-                    Integer count;
-                    if (interruptedException != null) {
-                        if (remoteFuture.isDone()) {
-                            count = remoteFuture.get();
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        count = remoteFuture.get();
-                    }
-                    if (count != null) {
-                        remoteCount += count;
-                    }
-                } catch (InterruptedException exception) {
-                    interruptedException = exception;
-                } catch (ExecutionException exception) {
-                    handleSendError(remoteFuture, exception);
-                }
-            }
-            return localCount + remoteCount;
-        });
-        return future;
+        return broadcast(
+                e -> e.sendAll(eventName, body),
+                e -> e.sendAll(eventName, body)
+        );
     }
 
     @Override
     public DistributedCompletableFuture<Integer> sendAllListening(String eventName, Serializable body) {
-        return null;
+        return broadcast(
+                e -> e.sendAllListening(eventName, body),
+                e -> e.sendAllListening(eventName, body)
+        );
     }
 
     @Override
     public DistributedCompletableFuture<Integer> sendByChannel(Collection<String> channels, String eventName, Serializable body) {
-        return null;
+        return broadcast(
+                e -> e.sendByChannel(channels, eventName, body),
+                e -> e.sendByChannel(channels, eventName, body)
+        );
     }
 
     @Override
     public DistributedCompletableFuture<Integer> sendByChannelListening(Collection<String> channels, String eventName, Serializable body) {
-        return null;
+        return broadcast(
+                e -> e.sendByChannelListening(channels, eventName, body),
+                e -> e.sendByChannelListening(channels, eventName, body)
+        );
     }
 
     @Override
     public DistributedCompletableFuture<Integer> sendByAccessToken(Collection<String> accessTokens, String eventName, Serializable body) {
-        return null;
+        return broadcast(
+                e -> e.sendByAccessToken(accessTokens, eventName, body),
+                e -> e.sendByAccessToken(accessTokens, eventName, body)
+        );
     }
 
     @Override
     public DistributedCompletableFuture<Integer> sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Serializable body) {
-        return null;
+        return broadcast(
+                e -> e.sendByAccessTokenListening(accessTokens, eventName, body),
+                e -> e.sendByAccessTokenListening(accessTokens, eventName, body)
+        );
     }
 
     @Override
     public DistributedCompletableFuture<Integer> sendByUserId(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
-        return null;
+        return broadcast(
+                e -> e.sendByUserId(userIds, eventName, body),
+                e -> e.sendByUserId(userIds, eventName, body)
+        );
     }
 
     @Override
     public DistributedCompletableFuture<Integer> sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
-        return null;
+        return broadcast(
+                e -> e.sendByUserIdListening(userIds, eventName, body),
+                e -> e.sendByUserIdListening(userIds, eventName, body)
+        );
     }
 
     @Override
     public DistributedCompletableFuture<Integer> sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
-        return null;
+        return broadcast(
+                e -> e.sendByTenantId(tenantIds, eventName, body),
+                e -> e.sendByTenantId(tenantIds, eventName, body)
+        );
     }
 
     @Override
     public DistributedCompletableFuture<Integer> sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
-        return null;
+        return broadcast(
+                e -> e.sendByTenantIdListening(tenantIds, eventName, body),
+                e -> e.sendByTenantIdListening(tenantIds, eventName, body)
+        );
     }
 
     @Override
     public DistributedCompletableFuture<Integer> disconnectByUserId(Serializable userId) {
-        List<RemoteCompletableFuture<Integer>> remoteFutureList = new ArrayList<>(getRemoteConnectionServiceList().size());
-        for (RemoteConnectionService remote : getRemoteConnectionServiceList()) {
-            RemoteCompletableFuture<Integer> future = remote.disconnectByUserId(userId);
-            remoteFutureList.add(future);
-        }
-
-        List<SseEmitter<Object>> localList = getLocalConnectionService().disconnectByUserId(userId);
-
-        DistributedCompletableFuture<Integer> future = new DistributedCompletableFuture<>();
-        CompletableFuture.join(remoteFutureList, future, () -> {
-            int remoteCount = 0;
-            InterruptedException interruptedException = null;
-            for (RemoteCompletableFuture<Integer> remoteFuture : remoteFutureList) {
-                try {
-                    Integer count;
-                    if (interruptedException != null) {
-                        if (remoteFuture.isDone()) {
-                            count = remoteFuture.get();
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        count = remoteFuture.get();
-                    }
-                    if (count != null) {
-                        remoteCount += count;
-                    }
-                } catch (InterruptedException exception) {
-                    interruptedException = exception;
-                } catch (ExecutionException exception) {
-                    handleDisconnectError(remoteFuture, exception);
-                }
-            }
-            return localList.size() + remoteCount;
-        });
-        return future;
+        return broadcast(
+                e -> e.disconnectByUserId(userId),
+                e -> e.disconnectByUserId(userId).size()
+        );
     }
 
     @Override
     public DistributedCompletableFuture<Integer> disconnectByAccessToken(String accessToken) {
-        return null;
+        return broadcast(
+                e -> e.disconnectByAccessToken(accessToken),
+                e -> e.disconnectByAccessToken(accessToken).size()
+        );
     }
 
     @Override
     public DistributedCompletableFuture<Integer> disconnectByConnectionId(Long connectionId) {
-        return null;
+        return broadcast(
+                e -> e.disconnectByConnectionId(connectionId),
+                e -> e.disconnectByConnectionId(connectionId) != null ? 1 : 0
+        );
     }
+
+    protected DistributedCompletableFuture<Integer> broadcast(
+            Function<RemoteConnectionService, RemoteCompletableFuture<Integer>> remoteFunction,
+            Function<LocalConnectionService, Integer> localFunction) {
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceListRef()) {
+            List<RemoteConnectionService> serviceList = ref.get();
+
+            List<RemoteCompletableFuture<Integer>> remoteFutureList = new ArrayList<>(serviceList.size());
+            for (RemoteConnectionService remote : serviceList) {
+                RemoteCompletableFuture<Integer> future = remoteFunction.apply(remote);
+                remoteFutureList.add(future);
+            }
+
+            Integer localCount = localFunction.apply(getLocalConnectionService());
+
+            DistributedCompletableFuture<Integer> future = new DistributedCompletableFuture<>();
+            CompletableFuture.join(remoteFutureList, future, () -> {
+                int remoteCount = 0;
+                InterruptedException interruptedException = null;
+                for (RemoteCompletableFuture<Integer> remoteFuture : remoteFutureList) {
+                    try {
+                        Integer count;
+                        if (interruptedException != null) {
+                            if (remoteFuture.isDone()) {
+                                count = remoteFuture.get();
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            count = remoteFuture.get();
+                        }
+                        if (count != null) {
+                            remoteCount += count;
+                        }
+                    } catch (InterruptedException exception) {
+                        interruptedException = exception;
+                    } catch (ExecutionException exception) {
+                        handleRemoteException(remoteFuture, exception);
+                    }
+                }
+                return localCount + remoteCount;
+            });
+            return future;
+        }
+    }
+
+    protected void handleRemoteException(RemoteCompletableFuture<Integer> remoteFuture, ExecutionException exception) {
+
+    }
+
 }

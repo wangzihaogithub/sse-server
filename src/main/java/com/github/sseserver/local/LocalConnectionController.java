@@ -6,9 +6,12 @@ import com.github.sseserver.SendService;
 import com.github.sseserver.remote.ServiceDiscoveryService;
 import com.github.sseserver.util.WebUtil;
 import com.sun.net.httpserver.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
@@ -428,7 +431,9 @@ public class LocalConnectionController implements Closeable {
                 if (request.getResponseCode() == -1) {
                     request.getResponseHeaders().add("Content-Type", "text/html; charset=UTF-8");
                     request.sendResponseHeaders(500, body.length);
-                    request.getResponseBody().write(body);
+                    OutputStream responseBody = request.getResponseBody();
+                    responseBody.write(body);
+                    responseBody.flush();
                 }
             }
         }
@@ -440,7 +445,8 @@ public class LocalConnectionController implements Closeable {
     }
 
     public static abstract class AbstractHttpHandler implements HttpHandler {
-        private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        private final Logger logger = LoggerFactory.getLogger(getClass());
+        private final ObjectMapper objectMapper = new ObjectMapper();
         private final ThreadLocal<HttpExchange> REQUEST_THREAD_LOCAL = new ThreadLocal<>();
         private final ThreadLocal<Map> BODY_THREAD_LOCAL = new ThreadLocal<>();
 
@@ -464,7 +470,7 @@ public class LocalConnectionController implements Closeable {
         @Override
         public final void handle(HttpExchange request) throws IOException {
             String contentLength = request.getRequestHeaders().getFirst("content-length");
-            if (contentLength != null && contentLength.length() > 0) {
+            if (contentLength != null && Long.parseLong(contentLength) > 0) {
                 Map body = objectMapper.readValue(request.getRequestBody(), Map.class);
                 BODY_THREAD_LOCAL.set(body);
             }
@@ -488,7 +494,9 @@ public class LocalConnectionController implements Closeable {
 
             byte[] bytes = objectMapper.writeValueAsBytes(response);
             request.sendResponseHeaders(200, bytes.length);
-            request.getResponseBody().write(bytes);
+            OutputStream responseBody = request.getResponseBody();
+            responseBody.write(bytes);
+            responseBody.flush();
         }
     }
 

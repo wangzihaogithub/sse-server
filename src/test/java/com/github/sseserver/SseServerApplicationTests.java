@@ -22,21 +22,24 @@ public class SseServerApplicationTests {
 
     public static void main(String[] args) {
         ConfigurableApplicationContext context = SpringApplication.run(SseServerApplicationTests.class, args);
-        new Thread(() -> {
-            while (true) {
+        new Thread("aa"){
+            @Override
+            public void run() {
+                while (true) {
 
-                try {
-                    Thread.sleep(1000);
-                    DistributedConnectionService service = context.getBean(DistributedConnectionService.class);
-                    boolean online = service.isOnline(1);
-                    System.out.println("online = " + online);
+                    try {
+                        Thread.sleep(1000);
+                        DistributedConnectionService service = context.getBean(DistributedConnectionService.class);
+                        boolean online = service.isOnline(1);
+                        System.out.println("online = " + online);
 
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    ;
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        ;
+                    }
                 }
             }
-        }).start();
+        }.start();
     }
 
     @Bean
