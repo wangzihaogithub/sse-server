@@ -1,9 +1,6 @@
 package com.github.sseserver.local;
 
 import com.github.sseserver.SendService;
-import com.github.sseserver.qos.AtLeastOnceSendService;
-import com.github.sseserver.qos.MemoryMessageRepository;
-import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.qos.QosCompletableFuture;
 import com.github.sseserver.remote.DistributedConnectionService;
 import com.github.sseserver.springboot.SseServerBeanDefinitionRegistrar;
@@ -14,7 +11,6 @@ import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.BeanNameAware;
-import org.springframework.beans.factory.DisposableBean;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -40,7 +36,7 @@ import java.util.stream.Collectors;
  *
  * @author hao 2021年12月7日19:27:41
  */
-public class LocalConnectionServiceImpl implements LocalConnectionService, BeanNameAware, DisposableBean, BeanFactoryAware {
+public class LocalConnectionServiceImpl implements LocalConnectionService, BeanNameAware, BeanFactoryAware {
     private final static Logger log = LoggerFactory.getLogger(LocalConnectionServiceImpl.class);
     private final static AtomicInteger SCHEDULED_INDEX = new AtomicInteger();
     /**
@@ -71,14 +67,10 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
     private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
 
-    private volatile AtLeastOnceSendService atLeastOnceSender;
-    private MessageRepository messageRepository;
-
     private BeanFactory beanFactory;
     private String beanName = getClass().getSimpleName();
 
     private int reconnectTime = 5000;
-    private boolean destroyFlag;
 
     @Override
     public ScheduledExecutorService getScheduled() {
@@ -87,17 +79,8 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
     @Override
     public <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> atLeastOnce() {
-        if (atLeastOnceSender == null) {
-            synchronized (this) {
-                if (atLeastOnceSender == null) {
-                    if (messageRepository == null) {
-                        messageRepository = new MemoryMessageRepository();
-                    }
-                    atLeastOnceSender = new AtLeastOnceSendService(this, messageRepository);
-                }
-            }
-        }
-        return atLeastOnceSender;
+        String beanName = SseServerBeanDefinitionRegistrar.getAtLeastOnceBeanName(this.beanName);
+        return beanFactory.getBean(beanName, SendService.class);
     }
 
     @Override
@@ -106,19 +89,8 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         return beanFactory.getBean(beanName, DistributedConnectionService.class);
     }
 
-    public MessageRepository getMessageRepository() {
-        return messageRepository;
-    }
-
-    public void setMessageRepository(MessageRepository messageRepository) {
-        this.messageRepository = messageRepository;
-    }
-
     @Override
     public <ACCESS_USER> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap) {
-        if (destroyFlag) {
-            throw new IllegalStateException("destroy");
-        }
         if (keepaliveTime == null) {
             keepaliveTime = 900_000L;
         }
@@ -603,16 +575,6 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     @Override
     public void setBeanName(String beanName) {
         this.beanName = beanName;
-    }
-
-    @Override
-    public void destroy() {
-        destroyFlag = true;
-        connectionMap.values().forEach(SseEmitter::disconnect);
-        scheduled.shutdown();
-        if (messageRepository != null) {
-            messageRepository.close();
-        }
     }
 
     @Override

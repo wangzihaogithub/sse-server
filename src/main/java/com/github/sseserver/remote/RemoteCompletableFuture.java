@@ -2,14 +2,14 @@ package com.github.sseserver.remote;
 
 import com.github.sseserver.util.CompletableFuture;
 
-public class RemoteCompletableFuture<T> extends CompletableFuture<T> {
-    private RemoteConnectionService service;
+public class RemoteCompletableFuture<T, CLIENT> extends CompletableFuture<T> {
+    private CLIENT client;
 
-    public RemoteConnectionService getService() {
-        return service;
+    public CLIENT getClient() {
+        return client;
     }
 
-    public void setService(RemoteConnectionService service) {
-        this.service = service;
+    public void setClient(CLIENT client) {
+        this.client = client;
     }
 }

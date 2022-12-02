@@ -16,17 +16,17 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class DistributedConnectionServiceImpl implements DistributedConnectionService {
-    private final Supplier<LocalConnectionService> localConnectionServiceSupplier;
-    private final Supplier<ServiceDiscoveryService> serviceDiscoveryServiceSupplier;
+    private final Supplier<LocalConnectionService> localSupplier;
+    private final Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier;
 
-    public DistributedConnectionServiceImpl(Supplier<LocalConnectionService> localConnectionServiceSupplier,
-                                            Supplier<ServiceDiscoveryService> serviceDiscoveryServiceSupplier) {
-        this.localConnectionServiceSupplier = localConnectionServiceSupplier;
-        this.serviceDiscoveryServiceSupplier = serviceDiscoveryServiceSupplier;
+    public DistributedConnectionServiceImpl(Supplier<LocalConnectionService> localSupplier,
+                                            Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier) {
+        this.localSupplier = localSupplier;
+        this.remoteSupplier = remoteSupplier;
     }
 
-    public LocalConnectionService getLocalConnectionService() {
-        return localConnectionServiceSupplier.get();
+    public LocalConnectionService getLocalService() {
+        return localSupplier.get();
     }
 
     @Override
@@ -34,21 +34,20 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
         return null;
     }
 
-    @Override
-    public ReferenceCounted<List<RemoteConnectionService>> getRemoteServiceListRef() {
-        if (serviceDiscoveryServiceSupplier == null) {
+    public ReferenceCounted<List<RemoteConnectionService>> getRemoteServiceRef() {
+        if (remoteSupplier == null) {
             return new ReferenceCounted<>(Collections.emptyList());
         }
-        return serviceDiscoveryServiceSupplier.get().getServiceListRef();
+        return remoteSupplier.get();
     }
 
     @Override
     public boolean isOnline(Serializable userId) {
-        boolean online = getLocalConnectionService().isOnline(userId);
+        boolean online = getLocalService().isOnline(userId);
         if (online) {
             return true;
         }
-        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceListRef()) {
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
             for (RemoteConnectionService remote : ref.get()) {
                 if (remote.isOnline(userId)) {
                     return true;
@@ -60,11 +59,11 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
 
     @Override
     public <ACCESS_USER> ACCESS_USER getUser(Serializable userId) {
-        ACCESS_USER user = getLocalConnectionService().getUser(userId);
+        ACCESS_USER user = getLocalService().getUser(userId);
         if (user != null) {
             return user;
         }
-        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceListRef()) {
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
             for (RemoteConnectionService remote : ref.get()) {
                 user = remote.getUser(userId);
                 if (user != null) {
@@ -240,24 +239,24 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
     }
 
     protected DistributedCompletableFuture<Integer> broadcast(
-            Function<RemoteConnectionService, RemoteCompletableFuture<Integer>> remoteFunction,
+            Function<RemoteConnectionService, RemoteCompletableFuture<Integer, RemoteConnectionService>> remoteFunction,
             Function<LocalConnectionService, Integer> localFunction) {
-        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceListRef()) {
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
             List<RemoteConnectionService> serviceList = ref.get();
 
-            List<RemoteCompletableFuture<Integer>> remoteFutureList = new ArrayList<>(serviceList.size());
+            List<RemoteCompletableFuture<Integer, RemoteConnectionService>> remoteFutureList = new ArrayList<>(serviceList.size());
             for (RemoteConnectionService remote : serviceList) {
-                RemoteCompletableFuture<Integer> future = remoteFunction.apply(remote);
+                RemoteCompletableFuture<Integer, RemoteConnectionService> future = remoteFunction.apply(remote);
                 remoteFutureList.add(future);
             }
 
-            Integer localCount = localFunction.apply(getLocalConnectionService());
+            Integer localCount = localFunction.apply(getLocalService());
 
             DistributedCompletableFuture<Integer> future = new DistributedCompletableFuture<>();
             CompletableFuture.join(remoteFutureList, future, () -> {
                 int remoteCount = 0;
                 InterruptedException interruptedException = null;
-                for (RemoteCompletableFuture<Integer> remoteFuture : remoteFutureList) {
+                for (RemoteCompletableFuture<Integer, RemoteConnectionService> remoteFuture : remoteFutureList) {
                     try {
                         Integer count;
                         if (interruptedException != null) {
@@ -284,7 +283,7 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
         }
     }
 
-    protected void handleRemoteException(RemoteCompletableFuture<Integer> remoteFuture, ExecutionException exception) {
+    protected void handleRemoteException(RemoteCompletableFuture<Integer, RemoteConnectionService> remoteFuture, ExecutionException exception) {
 
     }
 

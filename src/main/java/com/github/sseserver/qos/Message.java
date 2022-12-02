@@ -20,7 +20,9 @@ public interface Message extends Serializable {
     Serializable getBody();
     String getEventName();
     String getId();
-    void setId(String id);
+    default void setId(String id){
+
+    }
 
     static String newId(){
         return UUID.randomUUID().toString();

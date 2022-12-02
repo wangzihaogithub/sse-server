@@ -28,7 +28,8 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
             PROJECT_NAME + "-" + WebUtil.getIPAddress(WebUtil.port)
                     + "(" + new Timestamp(System.currentTimeMillis()) + SnowflakeIdWorker.INSTANCE.nextId() + ")");
     private static int idIncr = 0;
-    private volatile ReferenceCounted<List<RemoteConnectionService>> serviceListRef;
+    private volatile ReferenceCounted<List<RemoteConnectionService>> connectionServiceListRef;
+    private volatile ReferenceCounted<List<RemoteMessageRepository>> messageRepositoryListRef;
     private List<Instance> instanceList;
     private Instance lastRegisterInstance;
 
@@ -75,30 +76,30 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
             return;
         }
         NamingEvent namingEvent = ((NamingEvent) event);
-        rebuild(this.instanceList = namingEvent.getInstances());
+        List<Instance> instanceList = this.instanceList = namingEvent.getInstances();
+        rebuildConnectionService(instanceList);
+        rebuildMessageRepository(instanceList);
     }
 
-    @Override
-    public ReferenceCounted<List<RemoteConnectionService>> rebuild() {
-        boolean b = invokeNacosBefore();
-        List<Instance> instanceList;
-        try {
-            instanceList = namingService.getAllInstances(serviceName, groupName, Arrays.asList(clusterName));
-        } catch (NacosException e) {
-            throw new IllegalStateException(
-                    "com.github.sseserver.remote.NacosServiceDiscoveryService getAllInstances fail : " + e, e);
-        } finally {
-            invokeNacosAfter(b);
-        }
-        return rebuild(instanceList);
-    }
-
-    public ReferenceCounted<List<RemoteConnectionService>> rebuild(List<Instance> instanceList) {
-        ReferenceCounted<List<RemoteConnectionService>> old = this.serviceListRef;
-        this.serviceListRef = new ReferenceCounted<>(newInstances(instanceList));
+    public ReferenceCounted<List<RemoteConnectionService>> rebuildConnectionService(List<Instance> instanceList) {
+        ReferenceCounted<List<RemoteConnectionService>> old = this.connectionServiceListRef;
+        this.connectionServiceListRef = new ReferenceCounted<>(newConnectionService(instanceList));
         if (old != null) {
             old.destroy(list -> {
                 for (RemoteConnectionService service : list) {
+                    service.close();
+                }
+            });
+        }
+        return old;
+    }
+
+    public ReferenceCounted<List<RemoteMessageRepository>> rebuildMessageRepository(List<Instance> instanceList) {
+        ReferenceCounted<List<RemoteMessageRepository>> old = this.messageRepositoryListRef;
+        this.messageRepositoryListRef = new ReferenceCounted<>(newMessageRepository(instanceList));
+        if (old != null) {
+            old.destroy(list -> {
+                for (RemoteMessageRepository service : list) {
                     service.close();
                 }
             });
@@ -194,7 +195,28 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
         return null;
     }
 
-    public List<RemoteConnectionService> newInstances(List<Instance> instanceList) {
+    public List<RemoteMessageRepository> newMessageRepository(List<Instance> instanceList) {
+        List<RemoteMessageRepository> list = new ArrayList<>(instanceList.size());
+        for (Instance instance : instanceList) {
+            if (isLocalDevice(instance)) {
+                continue;
+            }
+            String account = getAccount(instance);
+            String password = getPassword(instance);
+            try {
+                URL url = new URL(String.format("http://%s:%s@%s:%d", account, password, instance.getIp(), instance.getPort()));
+                RemoteMessageRepository service = new RemoteMessageRepository(url, account, password);
+                list.add(service);
+            } catch (MalformedURLException e) {
+                throw new IllegalStateException(
+                        String.format("newMessageRepository => new URL fail!  account = '%s', password = '%s', IP = '%s', port = %d ",
+                                account, password, instance.getIp(), instance.getPort()), e);
+            }
+        }
+        return list;
+    }
+
+    public List<RemoteConnectionService> newConnectionService(List<Instance> instanceList) {
         List<RemoteConnectionService> list = new ArrayList<>(instanceList.size());
         for (Instance instance : instanceList) {
             if (isLocalDevice(instance)) {
@@ -208,7 +230,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
                 list.add(service);
             } catch (MalformedURLException e) {
                 throw new IllegalStateException(
-                        String.format("newInstances => new URL fail!  account = '%s', password = '%s', IP = '%s', port = %d ",
+                        String.format("newConnectionService => new URL fail!  account = '%s', password = '%s', IP = '%s', port = %d ",
                                 account, password, instance.getIp(), instance.getPort()), e);
             }
         }
@@ -229,8 +251,13 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     }
 
     @Override
-    public ReferenceCounted<List<RemoteConnectionService>> getServiceListRef() {
-        return serviceListRef.open();
+    public ReferenceCounted<List<RemoteConnectionService>> getConnectionServiceListRef() {
+        return connectionServiceListRef.open();
+    }
+
+    @Override
+    public ReferenceCounted<List<RemoteMessageRepository>> getMessageRepositoryListRef() {
+        return messageRepositoryListRef.open();
     }
 
     protected boolean invokeNacosBefore() {

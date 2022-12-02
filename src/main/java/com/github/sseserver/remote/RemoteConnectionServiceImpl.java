@@ -1,23 +1,16 @@
 package com.github.sseserver.remote;
 
 import com.github.sseserver.local.LocalConnectionController.Response;
-import com.github.sseserver.util.NettyUtil;
-import com.github.sseserver.util.OkhttpUtil;
+import com.github.sseserver.util.SpringUtil;
 import com.github.sseserver.util.TypeUtil;
-import org.springframework.beans.factory.DisposableBean;
 import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.AsyncClientHttpRequestFactory;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.util.concurrent.ListenableFuture;
 import org.springframework.web.client.AsyncRestTemplate;
 
 import java.io.Serializable;
 import java.net.URL;
 import java.nio.channels.ClosedChannelException;
-import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
@@ -32,101 +25,22 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     public static int threadsIfBlockRequest = Integer.getInteger("RemoteConnectionServiceImpl.threadsIfBlockRequest",
             Runtime.getRuntime().availableProcessors() * 2);
 
-    private static final HttpHeaders EMPTY_HEADERS = new HttpHeaders();
-
-    private static final boolean SUPPORT_NETTY4;
-    private static final boolean SUPPORT_OKHTTP3;
-
     private final AsyncRestTemplate restTemplate;
     private final URL url;
     private final String urlConnectionQueryService;
     private final String urlSendService;
     private final String urlRemoteConnectionService;
-    private final String authorization;
     private boolean closeFlag = false;
-
-    static {
-        boolean supportNetty4;
-        try {
-            Class.forName("io.netty.channel.ChannelHandler");
-            supportNetty4 = true;
-        } catch (Throwable e) {
-            supportNetty4 = false;
-        }
-        SUPPORT_NETTY4 = supportNetty4;
-
-        boolean supportOkhttp3;
-        try {
-            Class.forName("okhttp3.OkHttpClient");
-            supportOkhttp3 = true;
-        } catch (Throwable e) {
-            supportOkhttp3 = false;
-        }
-        SUPPORT_OKHTTP3 = supportOkhttp3;
-    }
 
     public RemoteConnectionServiceImpl(URL url, String account, String password) {
         this.url = url;
-        this.authorization = "Basic " + HttpHeaders.encodeBasicAuth(account, password, Charset.forName("ISO-8859-1"));
         this.urlConnectionQueryService = url + "/ConnectionQueryService";
         this.urlSendService = url + "/SendService";
         this.urlRemoteConnectionService = url + "/RemoteConnectionService";
-        this.restTemplate = newAsyncRestTemplate(connectTimeout, readTimeout,
-                threadsIfAsyncRequest, threadsIfBlockRequest, account);
-        this.restTemplate.getInterceptors().add((request, body, execution) -> {
-            request.getHeaders().set("Authorization", authorization);
-            return execution.executeAsync(request, body);
-        });
-    }
-
-    protected AsyncRestTemplate newAsyncRestTemplate(int connectTimeout, int readTimeout,
-                                                     int threadsIfAsyncRequest, int threadsIfBlockRequest,
-                                                     String threadName) {
-        if (SUPPORT_NETTY4) {
-            return new AsyncRestTemplate(NettyUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName));
-        } else if (SUPPORT_OKHTTP3) {
-            return new AsyncRestTemplate(OkhttpUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName));
-        } else {
-            ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-            executor.setDaemon(true);
-            executor.setThreadNamePrefix(threadName + "-");
-            executor.setCorePoolSize(0);
-            executor.setKeepAliveSeconds(60);
-            executor.setMaxPoolSize(threadsIfBlockRequest);
-            executor.setWaitForTasksToCompleteOnShutdown(true);
-            ClientHttpRequestFactory factory = new ClientHttpRequestFactory(executor);
-            factory.setConnectTimeout(connectTimeout);
-            factory.setReadTimeout(readTimeout);
-            return new AsyncRestTemplate(factory);
-        }
-    }
-
-    @Override
-    public URL getRemoteUrl() {
-        return url;
-    }
-
-    @Override
-    public String toString() {
-        return url == null ? "null" : url.toString();
-    }
-
-    @Override
-    public void close() {
-        AsyncClientHttpRequestFactory factory = restTemplate.getAsyncRequestFactory();
-        if (factory instanceof DisposableBean) {
-            try {
-                ((DisposableBean) factory).destroy();
-            } catch (Exception ignored) {
-            }
-        }
-        this.closeFlag = true;
-    }
-
-    protected void checkClose() {
-        if (closeFlag) {
-            sneakyThrows(new ClosedChannelException());
-        }
+        this.restTemplate = SpringUtil.newAsyncRestTemplate(
+                connectTimeout, readTimeout,
+                threadsIfAsyncRequest, threadsIfBlockRequest,
+                account, account, password);
     }
 
     @Override
@@ -228,7 +142,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> sendAll(String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendAll(String eventName, Serializable body) {
         Map<String, Object> request = new HashMap<>(2);
         request.put("eventName", eventName);
         request.put("body", body);
@@ -236,7 +150,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> sendAllListening(String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendAllListening(String eventName, Serializable body) {
         Map<String, Object> request = new HashMap<>(2);
         request.put("eventName", eventName);
         request.put("body", body);
@@ -244,7 +158,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> sendByChannel(Collection<String> channels, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByChannel(Collection<String> channels, String eventName, Serializable body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("channels", channels);
         request.put("eventName", eventName);
@@ -253,7 +167,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> sendByChannelListening(Collection<String> channels, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByChannelListening(Collection<String> channels, String eventName, Serializable body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("channels", channels);
         request.put("eventName", eventName);
@@ -262,7 +176,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> sendByAccessToken(Collection<String> accessTokens, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByAccessToken(Collection<String> accessTokens, String eventName, Serializable body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("accessTokens", accessTokens);
         request.put("eventName", eventName);
@@ -271,7 +185,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Serializable body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("accessTokens", accessTokens);
         request.put("eventName", eventName);
@@ -280,7 +194,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> sendByUserId(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByUserId(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("userIds", userIds);
         request.put("eventName", eventName);
@@ -289,7 +203,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("userIds", userIds);
         request.put("eventName", eventName);
@@ -298,7 +212,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("tenantIds", tenantIds);
         request.put("eventName", eventName);
@@ -307,7 +221,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("tenantIds", tenantIds);
         request.put("eventName", eventName);
@@ -316,21 +230,21 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> disconnectByUserId(Serializable userId) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByUserId(Serializable userId) {
         Map<String, Object> request = new HashMap<>(1);
         request.put("userId", userId);
         return asyncPostRemoteConnectionService("/disconnectByUserId", request);
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> disconnectByAccessToken(String accessToken) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByAccessToken(String accessToken) {
         Map<String, Object> request = new HashMap<>(1);
         request.put("accessToken", accessToken);
         return asyncPostRemoteConnectionService("/disconnectByAccessToken", request);
     }
 
     @Override
-    public RemoteCompletableFuture<Integer> disconnectByConnectionId(Long connectionId) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByConnectionId(Long connectionId) {
         Map<String, Object> request = new HashMap<>(1);
         request.put("connectionId", connectionId);
         return asyncPostRemoteConnectionService("/disconnectByConnectionId", request);
@@ -340,11 +254,11 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
         return syncGet(urlConnectionQueryService + uri, uriVariables);
     }
 
-    protected <T> RemoteCompletableFuture<T> asyncPostSendService(String uri, Map<String, Object> request) {
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPostSendService(String uri, Map<String, Object> request) {
         return asyncPost(urlSendService + uri, request);
     }
 
-    protected <T> RemoteCompletableFuture<T> asyncPostRemoteConnectionService(String uri, Map<String, Object> request) {
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPostRemoteConnectionService(String uri, Map<String, Object> request) {
         return asyncPost(urlRemoteConnectionService + uri, request);
     }
 
@@ -355,21 +269,21 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
             ResponseEntity<Response> responseEntity = future.get();
             return extract(responseEntity);
         } catch (InterruptedException | ExecutionException e) {
-            sneakyThrows(e);
+            SpringUtil.sneakyThrows(e);
             return null;
         }
     }
 
-    protected <T> RemoteCompletableFuture<T> asyncPost(String url, Map<String, Object> request) {
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPost(String url, Map<String, Object> request) {
         checkClose();
         ListenableFuture<ResponseEntity<Response>> future = restTemplate.postForEntity(
-                url, new HttpEntity(request, EMPTY_HEADERS), Response.class);
+                url, new HttpEntity(request, SpringUtil.EMPTY_HEADERS), Response.class);
         return completable(future);
     }
 
-    protected <T> RemoteCompletableFuture<T> completable(ListenableFuture<ResponseEntity<Response>> future) {
-        RemoteCompletableFuture<T> result = new RemoteCompletableFuture<>();
-        result.setService(this);
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> completable(ListenableFuture<ResponseEntity<Response>> future) {
+        RemoteCompletableFuture<T, RemoteConnectionService> result = new RemoteCompletableFuture<>();
+        result.setClient(this);
         future.addCallback(response -> result.complete(extract(response)), result::completeExceptionally);
         return result;
     }
@@ -393,22 +307,25 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
         return TypeUtil.castBasic(source, type);
     }
 
-    private static <E extends Throwable> void sneakyThrows(Throwable t) throws E {
-        throw (E) t;
+    @Override
+    public URL getRemoteUrl() {
+        return url;
     }
 
-    public static class ClientHttpRequestFactory extends SimpleClientHttpRequestFactory implements DisposableBean {
-        private final ThreadPoolTaskExecutor threadPool;
+    @Override
+    public String toString() {
+        return url == null ? "null" : url.toString();
+    }
 
-        public ClientHttpRequestFactory(ThreadPoolTaskExecutor threadPool) {
-            this.threadPool = threadPool;
-            threadPool.afterPropertiesSet();
-            setTaskExecutor(threadPool);
-        }
+    @Override
+    public void close() {
+        SpringUtil.close(this.restTemplate);
+        this.closeFlag = true;
+    }
 
-        @Override
-        public void destroy() {
-            threadPool.shutdown();
+    protected void checkClose() {
+        if (closeFlag) {
+            SpringUtil.sneakyThrows(new ClosedChannelException());
         }
     }
 

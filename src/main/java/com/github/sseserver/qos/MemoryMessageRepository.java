@@ -1,9 +1,5 @@
 package com.github.sseserver.qos;
 
-import com.github.sseserver.local.SseEmitter;
-import com.github.sseserver.qos.Message;
-import com.github.sseserver.qos.MessageRepository;
-
 import java.io.Serializable;
 import java.util.*;
 
@@ -19,7 +15,7 @@ public class MemoryMessageRepository implements MessageRepository {
     }
 
     @Override
-    public <ACCESS_USER> List<Message> select(SseEmitter<ACCESS_USER> query) {
+    public List<Message> select(Query query) {
         if (messageMap.isEmpty()) {
             return Collections.emptyList();
         }
@@ -46,7 +42,7 @@ public class MemoryMessageRepository implements MessageRepository {
         messageMap.clear();
     }
 
-    protected <ACCESS_USER> boolean match(SseEmitter<ACCESS_USER> query, Message message) {
+    protected boolean match(Query query, Message message) {
         if (message.isFilter(Message.FILTER_TENANT_ID)
                 && !exist(query.getTenantId(), message.getTenantIdList())) {
             return false;

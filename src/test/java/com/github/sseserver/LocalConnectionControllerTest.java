@@ -9,8 +9,5 @@ public class LocalConnectionControllerTest {
     public static void main(String[] args) throws IOException {
         InetSocketAddress inetSocketAddress = new InetSocketAddress(0);
 
-        LocalConnectionController controller = new LocalConnectionController(null,null);
-
-        System.out.println("controller = " + controller);
     }
 }

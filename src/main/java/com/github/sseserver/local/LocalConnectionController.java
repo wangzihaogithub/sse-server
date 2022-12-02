@@ -3,6 +3,9 @@ package com.github.sseserver.local;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.sseserver.ConnectionQueryService;
 import com.github.sseserver.SendService;
+import com.github.sseserver.qos.Message;
+import com.github.sseserver.qos.MessageRepository;
+import com.github.sseserver.remote.ServiceAuthenticator;
 import com.github.sseserver.remote.ServiceDiscoveryService;
 import com.github.sseserver.util.WebUtil;
 import com.sun.net.httpserver.*;
@@ -15,25 +18,30 @@ import java.io.OutputStream;
 import java.io.Serializable;
 import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Supplier;
 
 public class LocalConnectionController implements Closeable {
     private static final Charset UTF_8 = Charset.forName("UTF-8");
     private final com.sun.net.httpserver.HttpServer httpServer;
     private final Supplier<LocalConnectionService> localConnectionServiceSupplier;
-    private final Supplier<ServiceDiscoveryService> discoverySupplier;
+    private final Supplier<MessageRepository> localMessageRepositorySupplier;
+    private final Supplier<? extends ServiceAuthenticator> discoverySupplier;
 
-    public LocalConnectionController(Supplier<LocalConnectionService> localConnectionServiceSupplier, Supplier<ServiceDiscoveryService> discoverySupplier) {
-        this(WebUtil.getIPAddress(), localConnectionServiceSupplier, discoverySupplier);
+
+    public LocalConnectionController(Supplier<LocalConnectionService> localConnectionServiceSupplier,
+                                     Supplier<MessageRepository> localMessageRepositorySupplier,
+                                     Supplier<ServiceDiscoveryService> discoverySupplier) {
+        this(WebUtil.getIPAddress(), localConnectionServiceSupplier, localMessageRepositorySupplier, discoverySupplier);
     }
 
-    public LocalConnectionController(String ip, Supplier<LocalConnectionService> localConnectionServiceSupplier, Supplier<ServiceDiscoveryService> discoverySupplier) {
-        this.discoverySupplier = discoverySupplier;
+    public LocalConnectionController(String ip,
+                                     Supplier<LocalConnectionService> localConnectionServiceSupplier,
+                                     Supplier<MessageRepository> localMessageRepositorySupplier,
+                                     Supplier<ServiceDiscoveryService> discoverySupplier) {
+        this.localMessageRepositorySupplier = localMessageRepositorySupplier;
         this.localConnectionServiceSupplier = localConnectionServiceSupplier;
+        this.discoverySupplier = discoverySupplier;
         this.httpServer = createHttpServer(ip);
         configHttpServer(httpServer);
         httpServer.start();
@@ -50,6 +58,7 @@ public class LocalConnectionController implements Closeable {
     protected HttpServer createHttpServer(String ip) {
         while (true) {
             try {
+                // 0 = random port
                 return HttpServer.create(new InetSocketAddress(ip, 0), 0);
             } catch (IOException e) {
                 e.printStackTrace();
@@ -72,6 +81,11 @@ public class LocalConnectionController implements Closeable {
                 new RemoteConnectionServiceHttpHandler(localConnectionServiceSupplier));
     }
 
+    protected HttpContext configMessageRepository(HttpServer httpServer) {
+        return httpServer.createContext("/MessageRepository/",
+                new MessageRepositoryHttpHandler(localMessageRepositorySupplier));
+    }
+
     protected void configAuthenticator(List<HttpContext> httpContextList) {
         for (HttpContext httpContext : httpContextList) {
             httpContext.setAuthenticator(new AuthorizationHeaderAuthenticator(discoverySupplier));
@@ -90,8 +104,9 @@ public class LocalConnectionController implements Closeable {
         contextList.add(configConnectionQueryService(httpServer));
         contextList.add(configSendService(httpServer));
         contextList.add(configRemoteConnectionService(httpServer));
+        contextList.add(configMessageRepository(httpServer));
 
-//        configAuthenticator(contextList);
+        configAuthenticator(contextList);
         configFilters(contextList);
     }
 
@@ -401,18 +416,143 @@ public class LocalConnectionController implements Closeable {
         }
     }
 
-    public static class AuthorizationHeaderAuthenticator extends Authenticator {
-        private final Supplier<ServiceDiscoveryService> discoverySupplier;
+    public static class MessageRepositoryHttpHandler extends AbstractHttpHandler {
+        private final Supplier<? extends MessageRepository> supplier;
+        private final Message repositoryMessage = new RequestMessage();
 
-        public AuthorizationHeaderAuthenticator(Supplier<ServiceDiscoveryService> discoverySupplier) {
-            this.discoverySupplier = discoverySupplier;
+        public MessageRepositoryHttpHandler(Supplier<? extends MessageRepository> supplier) {
+            this.supplier = supplier;
+        }
+
+        @Override
+        public void handle0(HttpExchange request) throws IOException {
+            String rpcMethodName = getRpcMethodName();
+            MessageRepository service = supplier.get();
+            switch (rpcMethodName) {
+                case "insert": {
+                    writeResponse(request, service.insert(
+                            repositoryMessage
+                    ));
+                    break;
+                }
+                case "select": {
+                    writeResponse(request, service.select(
+                            new RequestQuery()
+                    ));
+                    break;
+                }
+                case "delete": {
+                    writeResponse(request, service.delete(body("id")));
+                    break;
+                }
+                default: {
+                    request.sendResponseHeaders(404, 0);
+                    break;
+                }
+            }
+        }
+
+        public class RequestMessage implements Message {
+
+            @Override
+            public String getListenerName() {
+                return body("listenerName");
+            }
+
+            @Override
+            public Collection<? extends Serializable> getUserIdList() {
+                return body("userIdList");
+            }
+
+            @Override
+            public Collection<? extends Serializable> getTenantIdList() {
+                return body("tenantIdList");
+            }
+
+            @Override
+            public Collection<String> getAccessTokenList() {
+                return body("accessTokenList");
+            }
+
+            @Override
+            public Collection<String> getChannelList() {
+                return body("channelList");
+            }
+
+            @Override
+            public Serializable getBody() {
+                return body("body");
+            }
+
+            @Override
+            public String getEventName() {
+                return body("eventName");
+            }
+
+            @Override
+            public String getId() {
+                return body("id");
+            }
+
+            @Override
+            public int getFilters() {
+                return body("filters");
+            }
+        }
+
+        public class RequestQuery implements MessageRepository.Query {
+            private Set<String> listeners;
+
+            @Override
+            public Serializable getTenantId() {
+                return body("filters");
+            }
+
+            @Override
+            public String getChannel() {
+                return body("channel");
+            }
+
+            @Override
+            public String getAccessToken() {
+                return body("accessToken");
+            }
+
+            @Override
+            public Serializable getUserId() {
+                return body("userId");
+            }
+
+            @Override
+            public Set<String> getListeners() {
+                if (this.listeners == null) {
+                    Object listeners = body("listeners");
+                    if (listeners instanceof Set) {
+                        this.listeners = (Set) listeners;
+                    } else if (listeners instanceof Collection) {
+                        this.listeners = new HashSet((Collection) listeners);
+                    } else {
+                        return null;
+                    }
+                }
+                return this.listeners;
+            }
+        }
+
+    }
+
+    public static class AuthorizationHeaderAuthenticator extends Authenticator {
+        private final Supplier<? extends ServiceAuthenticator> serviceAuthenticatorSupplier;
+
+        public AuthorizationHeaderAuthenticator(Supplier<? extends ServiceAuthenticator> serviceAuthenticatorSupplier) {
+            this.serviceAuthenticatorSupplier = serviceAuthenticatorSupplier;
         }
 
         @Override
         public Authenticator.Result authenticate(HttpExchange exchange) {
             String authorization = exchange.getRequestHeaders().getFirst("Authorization");
-            ServiceDiscoveryService discoveryService = discoverySupplier.get();
-            HttpPrincipal principal = discoveryService.login(authorization);
+            ServiceAuthenticator serviceAuthenticator = serviceAuthenticatorSupplier.get();
+            HttpPrincipal principal = serviceAuthenticator.login(authorization);
             if (principal != null) {
                 return new Authenticator.Success(principal);
             } else {

@@ -3,6 +3,7 @@ package com.github.sseserver.local;
 import com.github.sseserver.AccessToken;
 import com.github.sseserver.AccessUser;
 import com.github.sseserver.TenantAccessUser;
+import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.util.SnowflakeIdWorker;
 import com.github.sseserver.util.WebUtil;
 import org.slf4j.Logger;
@@ -30,7 +31,7 @@ import java.util.stream.Collectors;
  *
  * @author wangzihaogithub 2022-11-12
  */
-public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc.method.annotation.SseEmitter {
+public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc.method.annotation.SseEmitter implements MessageRepository.Query {
     public static final String VERSION = "1.1.6";
     public static final String EVENT_ADD_LISTENER = "addListener";
     public static final String EVENT_REMOVE_LISTENER = "removeListener";
@@ -260,6 +261,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
      *
      * @return true=在监听
      */
+    @Override
     public boolean existListener(String sseListenerName) {
         return getListeners().contains(sseListenerName);
     }

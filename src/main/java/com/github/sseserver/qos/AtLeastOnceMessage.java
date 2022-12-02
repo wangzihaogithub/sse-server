@@ -1,7 +1,5 @@
 package com.github.sseserver.qos;
 
-import com.github.sseserver.qos.Message;
-
 import java.io.Serializable;
 import java.util.Collection;
 
@@ -63,8 +61,21 @@ public class AtLeastOnceMessage implements Message {
         return id;
     }
 
+    @Override
     public void setId(String id) {
         this.id = id;
+    }
+
+    public void setFilters(int filters) {
+        this.filters = filters;
+    }
+
+    public void setBody(Serializable body) {
+        this.body = body;
+    }
+
+    public void setEventName(String eventName) {
+        this.eventName = eventName;
     }
 
     @Override
