@@ -1,21 +1,19 @@
 package com.github.sseserver.remote;
 
-import com.github.sseserver.SendService;
 import com.github.sseserver.local.LocalConnectionService;
-import com.github.sseserver.qos.QosCompletableFuture;
 import com.github.sseserver.util.CompletableFuture;
 import com.github.sseserver.util.ReferenceCounted;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class DistributedConnectionServiceImpl implements DistributedConnectionService {
+    private final static Logger log = LoggerFactory.getLogger(DistributedConnectionServiceImpl.class);
     private final Supplier<LocalConnectionService> localSupplier;
     private final Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier;
 
@@ -29,11 +27,6 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
         return localSupplier.get();
     }
 
-    @Override
-    public <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> atLeastOnce() {
-        return null;
-    }
-
     public ReferenceCounted<List<RemoteConnectionService>> getRemoteServiceRef() {
         if (remoteSupplier == null) {
             return new ReferenceCounted<>(Collections.emptyList());
@@ -43,8 +36,7 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
 
     @Override
     public boolean isOnline(Serializable userId) {
-        boolean online = getLocalService().isOnline(userId);
-        if (online) {
+        if (getLocalService().isOnline(userId)) {
             return true;
         }
         try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
@@ -59,15 +51,15 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
 
     @Override
     public <ACCESS_USER> ACCESS_USER getUser(Serializable userId) {
-        ACCESS_USER user = getLocalService().getUser(userId);
-        if (user != null) {
-            return user;
+        ACCESS_USER result = getLocalService().getUser(userId);
+        if (result != null) {
+            return result;
         }
         try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
             for (RemoteConnectionService remote : ref.get()) {
-                user = remote.getUser(userId);
-                if (user != null) {
-                    return user;
+                result = remote.getUser(userId);
+                if (result != null) {
+                    return result;
                 }
             }
         }
@@ -76,62 +68,122 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsers() {
-        return null;
+        Set<ACCESS_USER> result = new LinkedHashSet<>(getLocalService().getUsers());
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
+            for (RemoteConnectionService remote : ref.get()) {
+                result.addAll(remote.getUsers());
+            }
+        }
+        return new ArrayList<>(result);
     }
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsersByListening(String sseListenerName) {
-        return null;
+        Set<ACCESS_USER> result = new LinkedHashSet<>(getLocalService().getUsersByListening(sseListenerName));
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
+            for (RemoteConnectionService remote : ref.get()) {
+                result.addAll(remote.getUsersByListening(sseListenerName));
+            }
+        }
+        return new ArrayList<>(result);
     }
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsersByTenantIdListening(Serializable tenantId, String sseListenerName) {
-        return null;
+        Set<ACCESS_USER> result = new LinkedHashSet<>(getLocalService().getUsersByTenantIdListening(tenantId, sseListenerName));
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
+            for (RemoteConnectionService remote : ref.get()) {
+                result.addAll(remote.getUsersByTenantIdListening(tenantId, sseListenerName));
+            }
+        }
+        return new ArrayList<>(result);
     }
 
     @Override
     public <T> Collection<T> getUserIds(Class<T> type) {
-        return null;
+        Set<T> result = new LinkedHashSet<>(getLocalService().getUserIds(type));
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
+            for (RemoteConnectionService remote : ref.get()) {
+                result.addAll(remote.getUserIds(type));
+            }
+        }
+        return result;
     }
 
     @Override
     public <T> List<T> getUserIdsByListening(String sseListenerName, Class<T> type) {
-        return null;
+        Set<T> result = new LinkedHashSet<>(getLocalService().getUserIdsByListening(sseListenerName, type));
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
+            for (RemoteConnectionService remote : ref.get()) {
+                result.addAll(remote.getUserIdsByListening(sseListenerName, type));
+            }
+        }
+        return new ArrayList<>(result);
     }
 
     @Override
     public <T> List<T> getUserIdsByTenantIdListening(Serializable tenantId, String sseListenerName, Class<T> type) {
-        return null;
+        Set<T> result = new LinkedHashSet<>(getLocalService().getUserIdsByTenantIdListening(tenantId, sseListenerName, type));
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
+            for (RemoteConnectionService remote : ref.get()) {
+                result.addAll(remote.getUserIdsByTenantIdListening(tenantId, sseListenerName, type));
+            }
+        }
+        return new ArrayList<>(result);
     }
 
     @Override
     public Collection<String> getAccessTokens() {
-        return null;
+        Set<String> result = new LinkedHashSet<>(getLocalService().getAccessTokens());
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
+            for (RemoteConnectionService remote : ref.get()) {
+                result.addAll(remote.getAccessTokens());
+            }
+        }
+        return new ArrayList<>(result);
     }
 
     @Override
     public <T> List<T> getTenantIds(Class<T> type) {
-        return null;
+        Set<T> result = new LinkedHashSet<>(getLocalService().getTenantIds(type));
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
+            for (RemoteConnectionService remote : ref.get()) {
+                result.addAll(remote.getTenantIds(type));
+            }
+        }
+        return new ArrayList<>(result);
     }
 
     @Override
     public List<String> getChannels() {
-        return null;
+        Set<String> result = new LinkedHashSet<>(getLocalService().getChannels());
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
+            for (RemoteConnectionService remote : ref.get()) {
+                result.addAll(remote.getChannels());
+            }
+        }
+        return new ArrayList<>(result);
     }
 
     @Override
     public int getAccessTokenCount() {
-        return 0;
+        return getAccessTokens().size();
     }
 
     @Override
     public int getUserCount() {
-        return 0;
+        return getUserIds(String.class).size();
     }
 
     @Override
     public int getConnectionCount() {
-        return 0;
+        int result = getLocalService().getConnectionCount();
+        try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
+            for (RemoteConnectionService remote : ref.get()) {
+                result += remote.getConnectionCount();
+            }
+        }
+        return result;
     }
 
     @Override
@@ -284,7 +336,8 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
     }
 
     protected void handleRemoteException(RemoteCompletableFuture<Integer, RemoteConnectionService> remoteFuture, ExecutionException exception) {
-
+        log.debug("RemoteConnectionService {} , RemoteException {}",
+                remoteFuture.getClient(),exception, exception);
     }
 
 }

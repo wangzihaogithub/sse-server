@@ -515,7 +515,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     protected Consumer<Throwable> errorCallBack(SseEmitter sseEmitter) {
         return throwable -> {
             sseEmitter.disconnect();
-            log.debug("sse {} {} error 发生错误：{}, {}", beanName, sseEmitter, throwable, throwable);
+            log.debug("sse {} {} error 发生错误：{}", beanName, sseEmitter, throwable, throwable);
         };
     }
 

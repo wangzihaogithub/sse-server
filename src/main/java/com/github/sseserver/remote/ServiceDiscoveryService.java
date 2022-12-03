@@ -2,10 +2,11 @@ package com.github.sseserver.remote;
 
 import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.ReferenceCounted;
+import com.sun.net.httpserver.HttpPrincipal;
 
 import java.util.List;
 
-public interface ServiceDiscoveryService extends ServiceAuthenticator {
+public interface ServiceDiscoveryService {
 
     static NacosServiceDiscoveryService newInstance(String groupName,
                                                     SseServerProperties.Remote remote) {
@@ -20,6 +21,8 @@ public interface ServiceDiscoveryService extends ServiceAuthenticator {
             return null;
         }
     }
+
+    HttpPrincipal login(String authorization);
 
     void registerInstance(String ip, int port);
 

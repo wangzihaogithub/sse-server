@@ -1,6 +1,6 @@
 package com.github.sseserver.remote;
 
-import com.github.sseserver.local.LocalConnectionController.Response;
+import com.github.sseserver.local.LocalController.Response;
 import com.github.sseserver.util.SpringUtil;
 import com.github.sseserver.util.TypeUtil;
 import org.springframework.http.HttpEntity;
@@ -13,7 +13,6 @@ import java.net.URL;
 import java.nio.channels.ClosedChannelException;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
 
 public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     public static int connectTimeout = Integer.getInteger("RemoteConnectionServiceImpl.connectTimeout",
@@ -54,29 +53,25 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
 
     @Override
     public <ACCESS_USER> ACCESS_USER getUser(Serializable userId) {
-        Map result = syncGetConnectionQueryService("/getUser?userId={userId}",
+        return syncGetConnectionQueryService("/getUser?userId={userId}",
                 userId);
-        return castBean(result);
     }
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsers() {
-        List<Map> result = syncGetConnectionQueryService("/getUsers");
-        return castBean(result);
+        return syncGetConnectionQueryService("/getUsers");
     }
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsersByListening(String sseListenerName) {
-        List<Map> result = syncGetConnectionQueryService("/getUsersByListening?sseListenerName={sseListenerName}",
+        return syncGetConnectionQueryService("/getUsersByListening?sseListenerName={sseListenerName}",
                 sseListenerName);
-        return castBean(result);
     }
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsersByTenantIdListening(Serializable tenantId, String sseListenerName) {
-        List<Map> result = syncGetConnectionQueryService("/getUsersByTenantIdListening?tenantId={tenantId}&sseListenerName={sseListenerName}",
+        return syncGetConnectionQueryService("/getUsersByTenantIdListening?tenantId={tenantId}&sseListenerName={sseListenerName}",
                 tenantId, sseListenerName);
-        return castBean(result);
     }
 
     @Override
@@ -289,18 +284,10 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     protected <T> T extract(ResponseEntity<Response> response) {
-        Object data = response.getBody().getData();
+        Response body = response.getBody();
+        body.autoCast();
+        Object data = body.getData();
         return (T) data;
-    }
-
-    protected <SOURCE extends Collection<Map>, T> List<T> castBean(SOURCE list) {
-        return list.stream()
-                .map(e -> (T) castBean(e))
-                .collect(Collectors.toList());
-    }
-
-    protected <T> T castBean(Map<?, ?> map) {
-        return TypeUtil.castBean(map);
     }
 
     protected <SOURCE extends Collection<?>, T> List<T> castBasic(SOURCE source, Class<T> type) {

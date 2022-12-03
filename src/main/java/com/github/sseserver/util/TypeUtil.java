@@ -19,6 +19,7 @@ import java.lang.reflect.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Timestamp;
+import java.time.temporal.TemporalAccessor;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -27,50 +28,45 @@ import java.util.stream.Collectors;
  */
 public class TypeUtil {
 
-    public static final String NAME_TYPE = "@type";
-
-    public static <T> T castBean(Map<?, ?> map) {
-        if (map == null) {
-            return null;
+    public static boolean isBasicType(Object value) {
+        if (value == null) {
+            return true;
         }
-
-        String type = (String) map.get(NAME_TYPE);
-        if (type == null) {
-            return (T) map;
-        }
-
-        T result = BeanUtil.newInstance(type);
-        if (result instanceof Map) {
-            Map beanHandler = (Map) result;
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                Object key = entry.getKey();
-                if (NAME_TYPE.equals(key)) {
-                    continue;
-                }
-                beanHandler.put(key, entry.getValue());
-            }
+        Class<?> type = value.getClass();
+        if (type.isPrimitive()
+                || value instanceof Number
+                || value instanceof CharSequence
+                || value instanceof Date
+                || value instanceof TemporalAccessor
+                || value instanceof Enum) {
+            return true;
         } else {
-            BeanMap beanHandler = new BeanMap(result);
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                Object key = entry.getKey();
-                if (key == null) {
-                    continue;
-                }
-                if (NAME_TYPE.equals(key)) {
-                    continue;
-                }
-                beanHandler.set(key.toString(), entry.getValue());
+            Package aPackage = type.getPackage();
+            if (aPackage == null) {
+                return true;
             }
+            return aPackage.getName().startsWith("java.");
         }
-        return result;
+    }
+
+    public static <T> T castBean(Object obj, String typeString) {
+        if (obj == null || typeString == null) {
+            return (T) obj;
+        }
+        Class<T> type;
+        try {
+            type = (Class<T>) Class.forName(typeString);
+        } catch (Exception e) {
+            throw new IllegalStateException("castBean newInstance(" + typeString + ") fail : " + e, e);
+        }
+        return TypeUtil.cast(obj, type);
     }
 
     public static <SOURCE extends Collection<?>, T> List<T> castBasic(SOURCE source, Class<T> type) {
-        List<T> list = source.stream()
+        return source.stream()
                 .map(e -> TypeUtil.cast(e, type))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
-        return list;
     }
 
     public static String castToString(Object value) {
@@ -776,8 +772,8 @@ public class TypeUtil {
                 return (T) toLocale(strVal);
             }
         }
-//        return BeanUtil.transform(obj, clazz);
-        throw new IllegalArgumentException("can not cast to : " + clazz.getName());
+        return BeanUtil.transform(obj, clazz);
+//        throw new IllegalArgumentException("can not cast to : " + clazz.getName());
     }
 
     public static Locale toLocale(String strVal) {

@@ -13,6 +13,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @EnableScheduling
@@ -52,6 +53,9 @@ public class SseServerApplicationTests {
                 for (String s : event.getAfter()) {
                     service.atLeastOnce().sendAllListening(s, event.getEventName());
                 }
+
+                List<Object> users = service.distributed().getUsers();
+                System.out.println("users = " + users);
             }, 3000, TimeUnit.MILLISECONDS);
         });
         return service;

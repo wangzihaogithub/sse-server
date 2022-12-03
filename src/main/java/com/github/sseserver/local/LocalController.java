@@ -5,12 +5,10 @@ import com.github.sseserver.ConnectionQueryService;
 import com.github.sseserver.SendService;
 import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
-import com.github.sseserver.remote.ServiceAuthenticator;
 import com.github.sseserver.remote.ServiceDiscoveryService;
+import com.github.sseserver.util.TypeUtil;
 import com.github.sseserver.util.WebUtil;
 import com.sun.net.httpserver.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -21,24 +19,23 @@ import java.nio.charset.Charset;
 import java.util.*;
 import java.util.function.Supplier;
 
-public class LocalConnectionController implements Closeable {
+public class LocalController implements Closeable {
     private static final Charset UTF_8 = Charset.forName("UTF-8");
     private final com.sun.net.httpserver.HttpServer httpServer;
     private final Supplier<LocalConnectionService> localConnectionServiceSupplier;
     private final Supplier<MessageRepository> localMessageRepositorySupplier;
-    private final Supplier<? extends ServiceAuthenticator> discoverySupplier;
+    private final Supplier<? extends ServiceDiscoveryService> discoverySupplier;
 
-
-    public LocalConnectionController(Supplier<LocalConnectionService> localConnectionServiceSupplier,
-                                     Supplier<MessageRepository> localMessageRepositorySupplier,
-                                     Supplier<ServiceDiscoveryService> discoverySupplier) {
+    public LocalController(Supplier<LocalConnectionService> localConnectionServiceSupplier,
+                           Supplier<MessageRepository> localMessageRepositorySupplier,
+                           Supplier<ServiceDiscoveryService> discoverySupplier) {
         this(WebUtil.getIPAddress(), localConnectionServiceSupplier, localMessageRepositorySupplier, discoverySupplier);
     }
 
-    public LocalConnectionController(String ip,
-                                     Supplier<LocalConnectionService> localConnectionServiceSupplier,
-                                     Supplier<MessageRepository> localMessageRepositorySupplier,
-                                     Supplier<ServiceDiscoveryService> discoverySupplier) {
+    public LocalController(String ip,
+                           Supplier<LocalConnectionService> localConnectionServiceSupplier,
+                           Supplier<MessageRepository> localMessageRepositorySupplier,
+                           Supplier<ServiceDiscoveryService> discoverySupplier) {
         this.localMessageRepositorySupplier = localMessageRepositorySupplier;
         this.localConnectionServiceSupplier = localConnectionServiceSupplier;
         this.discoverySupplier = discoverySupplier;
@@ -48,6 +45,10 @@ public class LocalConnectionController implements Closeable {
         if (discoverySupplier != null) {
             registerInstance(discoverySupplier, httpServer.getAddress());
         }
+    }
+
+    public InetSocketAddress getAddress() {
+        return httpServer.getAddress();
     }
 
     protected void registerInstance(Supplier<ServiceDiscoveryService> discoverySupplier, InetSocketAddress address) {
@@ -108,10 +109,6 @@ public class LocalConnectionController implements Closeable {
 
         configAuthenticator(contextList);
         configFilters(contextList);
-    }
-
-    public InetSocketAddress getAddress() {
-        return httpServer.getAddress();
     }
 
     public static class RemoteConnectionServiceHttpHandler extends AbstractHttpHandler {
@@ -418,7 +415,7 @@ public class LocalConnectionController implements Closeable {
 
     public static class MessageRepositoryHttpHandler extends AbstractHttpHandler {
         private final Supplier<? extends MessageRepository> supplier;
-        private final Message repositoryMessage = new RequestMessage();
+        private final Message repositoryMessage = new RemoteRequestMessage();
 
         public MessageRepositoryHttpHandler(Supplier<? extends MessageRepository> supplier) {
             this.supplier = supplier;
@@ -452,7 +449,7 @@ public class LocalConnectionController implements Closeable {
             }
         }
 
-        public class RequestMessage implements Message {
+        public class RemoteRequestMessage implements Message {
 
             @Override
             public String getListenerName() {
@@ -542,17 +539,17 @@ public class LocalConnectionController implements Closeable {
     }
 
     public static class AuthorizationHeaderAuthenticator extends Authenticator {
-        private final Supplier<? extends ServiceAuthenticator> serviceAuthenticatorSupplier;
+        private final Supplier<? extends ServiceDiscoveryService> supplier;
 
-        public AuthorizationHeaderAuthenticator(Supplier<? extends ServiceAuthenticator> serviceAuthenticatorSupplier) {
-            this.serviceAuthenticatorSupplier = serviceAuthenticatorSupplier;
+        public AuthorizationHeaderAuthenticator(Supplier<? extends ServiceDiscoveryService> supplier) {
+            this.supplier = supplier;
         }
 
         @Override
         public Authenticator.Result authenticate(HttpExchange exchange) {
             String authorization = exchange.getRequestHeaders().getFirst("Authorization");
-            ServiceAuthenticator serviceAuthenticator = serviceAuthenticatorSupplier.get();
-            HttpPrincipal principal = serviceAuthenticator.login(authorization);
+            ServiceDiscoveryService service = supplier.get();
+            HttpPrincipal principal = service.login(authorization);
             if (principal != null) {
                 return new Authenticator.Success(principal);
             } else {
@@ -585,10 +582,13 @@ public class LocalConnectionController implements Closeable {
     }
 
     public static abstract class AbstractHttpHandler implements HttpHandler {
-        private final Logger logger = LoggerFactory.getLogger(getClass());
         private final ObjectMapper objectMapper = new ObjectMapper();
         private final ThreadLocal<HttpExchange> REQUEST_THREAD_LOCAL = new ThreadLocal<>();
         private final ThreadLocal<Map> BODY_THREAD_LOCAL = new ThreadLocal<>();
+
+        public AbstractHttpHandler() {
+//            objectMapper.findAndRegisterModules().getSerializerFactory().withAdditionalKeySerializers().ad()
+        }
 
         protected String query(String name) {
             return WebUtil.getQueryParam(REQUEST_THREAD_LOCAL.get().getRequestURI().getQuery(), name);
@@ -632,6 +632,23 @@ public class LocalConnectionController implements Closeable {
             Response response = new Response();
             response.setData(data);
 
+            if (data instanceof Collection) {
+                int i = 0;
+                Map<String, List<Integer>> classMap = new HashMap<>();
+                for (Object item : (Collection) data) {
+                    if (!TypeUtil.isBasicType(item)) {
+                        classMap.computeIfAbsent(item.getClass().getName(), e -> new ArrayList<>())
+                                .add(i);
+                    }
+                    i++;
+                }
+                response.setArrayClassName(classMap);
+            } else if (TypeUtil.isBasicType(data)) {
+
+            } else {
+                response.setObjectClassName(data.getClass().getName());
+            }
+
             byte[] bytes = objectMapper.writeValueAsBytes(response);
             request.sendResponseHeaders(200, bytes.length);
             OutputStream responseBody = request.getResponseBody();
@@ -642,6 +659,24 @@ public class LocalConnectionController implements Closeable {
 
     public static class Response<T> {
         private T data;
+        private Map<String, Collection<Integer>> arrayClassName;
+        private String objectClassName;
+
+        public Map<String, Collection<Integer>> getArrayClassName() {
+            return arrayClassName;
+        }
+
+        public void setArrayClassName(Map<String, Collection<Integer>> arrayClassName) {
+            this.arrayClassName = arrayClassName;
+        }
+
+        public String getObjectClassName() {
+            return objectClassName;
+        }
+
+        public void setObjectClassName(String objectClassName) {
+            this.objectClassName = objectClassName;
+        }
 
         public T getData() {
             return data;
@@ -649,6 +684,37 @@ public class LocalConnectionController implements Closeable {
 
         public void setData(T data) {
             this.data = data;
+        }
+
+        public void autoCast() {
+            if (objectClassName != null) {
+                data = TypeUtil.castBean(data, objectClassName);
+            } else if (arrayClassName != null && data instanceof Collection) {
+                for (Map.Entry<String, Collection<Integer>> entry : arrayClassName.entrySet()) {
+                    Collection<Integer> value = entry.getValue();
+                    if (!(value instanceof Set)) {
+                        entry.setValue(new HashSet<>(value));
+                    }
+                }
+                List list = new ArrayList(((Collection<?>) data).size());
+                int i = 0;
+                for (Object item : (Collection) data) {
+                    String objectClassName = null;
+                    for (Map.Entry<String, Collection<Integer>> entry : arrayClassName.entrySet()) {
+                        if (entry.getValue().contains(i)) {
+                            objectClassName = entry.getKey();
+                            break;
+                        }
+                    }
+                    if (objectClassName == null) {
+                        list.add(item);
+                    } else {
+                        list.add(TypeUtil.castBean(item, objectClassName));
+                    }
+                    i++;
+                }
+                this.data = (T) list;
+            }
         }
     }
 

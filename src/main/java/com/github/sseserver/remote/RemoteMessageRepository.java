@@ -1,7 +1,6 @@
 package com.github.sseserver.remote;
 
-import com.github.sseserver.local.LocalConnectionController;
-import com.github.sseserver.qos.AtLeastOnceMessage;
+import com.github.sseserver.local.LocalController;
 import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.util.SpringUtil;
@@ -17,7 +16,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -35,10 +33,12 @@ public class RemoteMessageRepository implements MessageRepository {
     private final URL url;
     private final String urlMessageRepository;
     private boolean closeFlag = false;
+    private final String id;
 
     public RemoteMessageRepository(URL url, String account, String password) {
         this.url = url;
         this.urlMessageRepository = url + "/MessageRepository";
+        this.id = account;
         this.restTemplate = SpringUtil.newAsyncRestTemplate(
                 connectTimeout, readTimeout,
                 threadsIfAsyncRequest, threadsIfBlockRequest,
@@ -47,32 +47,17 @@ public class RemoteMessageRepository implements MessageRepository {
 
     @Override
     public String insert(Message message) {
-        try {
-            return insertAsync(message).get();
-        } catch (InterruptedException | ExecutionException e) {
-            SpringUtil.sneakyThrows(e);
-            return null;
-        }
+        return insertAsync(message).block();
     }
 
     @Override
     public List<Message> select(Query query) {
-        try {
-            return selectAsync(query).get();
-        } catch (InterruptedException | ExecutionException e) {
-            SpringUtil.sneakyThrows(e);
-            return null;
-        }
+        return selectAsync(query).block();
     }
 
     @Override
     public boolean delete(String id) {
-        try {
-            return deleteAsync(id).get();
-        } catch (InterruptedException | ExecutionException e) {
-            SpringUtil.sneakyThrows(e);
-            return false;
-        }
+        return deleteAsync(id).block();
     }
 
     public RemoteCompletableFuture<String, RemoteMessageRepository> insertAsync(Message message) {
@@ -115,32 +100,35 @@ public class RemoteMessageRepository implements MessageRepository {
 
     protected <T> RemoteCompletableFuture<T, RemoteMessageRepository> asyncPost(String url,
                                                                                 Object request,
-                                                                                Function<ResponseEntity<LocalConnectionController.Response>, T> extract) {
+                                                                                Function<ResponseEntity<LocalController.Response>, T> extract) {
         checkClose();
-        ListenableFuture<ResponseEntity<LocalConnectionController.Response>> future = restTemplate.postForEntity(
-                urlMessageRepository + url, new HttpEntity(request, SpringUtil.EMPTY_HEADERS), LocalConnectionController.Response.class);
+        ListenableFuture<ResponseEntity<LocalController.Response>> future = restTemplate.postForEntity(
+                urlMessageRepository + url, new HttpEntity(request, SpringUtil.EMPTY_HEADERS), LocalController.Response.class);
         return completable(future, extract);
     }
 
     protected <T> RemoteCompletableFuture<T, RemoteMessageRepository> completable(
-            ListenableFuture<ResponseEntity<LocalConnectionController.Response>> future,
-            Function<ResponseEntity<LocalConnectionController.Response>, T> extract) {
+            ListenableFuture<ResponseEntity<LocalController.Response>> future,
+            Function<ResponseEntity<LocalController.Response>, T> extract) {
         RemoteCompletableFuture<T, RemoteMessageRepository> result = new RemoteCompletableFuture<>();
         result.setClient(this);
         future.addCallback(response -> result.complete(extract.apply(response)), result::completeExceptionally);
         return result;
     }
 
-    protected <T> T extract(ResponseEntity<LocalConnectionController.Response> response) {
-        Object data = response.getBody().getData();
+    protected <T> T extract(ResponseEntity<LocalController.Response> response) {
+        LocalController.Response body = response.getBody();
+        body.autoCast();
+        Object data = body.getData();
         return (T) data;
     }
 
-    protected List<Message> extractListMessage(ResponseEntity<LocalConnectionController.Response> response) {
+    protected List<Message> extractListMessage(ResponseEntity<LocalController.Response> response) {
         List<Map> data = (List<Map>) response.getBody().getData();
         return data.stream()
                 .map(source -> {
-                    AtLeastOnceMessage target = new AtLeastOnceMessage();
+                    RemoteResponseMessage target = new RemoteResponseMessage();
+                    target.setRemoteMessageRepositoryId(id);
                     target.setFilters((Integer) source.get("filters"));
 
                     target.setId((String) source.get("id"));
@@ -159,6 +147,10 @@ public class RemoteMessageRepository implements MessageRepository {
 
     public URL getRemoteUrl() {
         return url;
+    }
+
+    public String getId() {
+        return id;
     }
 
     @Override

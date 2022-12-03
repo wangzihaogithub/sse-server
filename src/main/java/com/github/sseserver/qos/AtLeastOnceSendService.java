@@ -1,9 +1,11 @@
 package com.github.sseserver.qos;
 
+import com.github.sseserver.SendService;
 import com.github.sseserver.local.ChangeEvent;
 import com.github.sseserver.local.LocalConnectionService;
-import com.github.sseserver.SendService;
 import com.github.sseserver.local.SseEmitter;
+import com.github.sseserver.remote.DistributedMessageRepository;
+import com.github.sseserver.remote.RemoteResponseMessage;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -27,12 +29,11 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
     public AtLeastOnceSendService(LocalConnectionService localConnectionService, MessageRepository messageRepository) {
         this.localConnectionService = localConnectionService;
         this.messageRepository = messageRepository;
-        localConnectionService.addConnectListener(this::resend);
+        localConnectionService.<ACCESS_USER>addConnectListener(this::resend);
         localConnectionService.addListeningChangeWatch((Consumer<ChangeEvent<ACCESS_USER, Set<String>>>) event -> {
-            if (!SseEmitter.EVENT_ADD_LISTENER.equals(event.getEventName())) {
-                return;
+            if (SseEmitter.EVENT_ADD_LISTENER.equals(event.getEventName())) {
+                resend(event.getInstance());
             }
-            resend(event.getInstance());
         });
     }
 
@@ -328,7 +329,15 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
     }
 
     protected void resend(SseEmitter<ACCESS_USER> connection) {
-        List<Message> messageList = messageRepository.select(connection);
+        if (messageRepository instanceof DistributedMessageRepository) {
+            ((DistributedMessageRepository) messageRepository).selectAsync(connection)
+                    .thenAccept(e -> resend(e, connection));
+        } else {
+            resend(messageRepository.select(connection), connection);
+        }
+    }
+
+    protected void resend(List<Message> messageList, SseEmitter<ACCESS_USER> connection) {
         if (messageList.isEmpty()) {
             return;
         }
@@ -343,23 +352,42 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
             }
             String id = message.getId();
             try {
-                if (connection.isActive() && connection.isWriteable() && error == null) {
-                    connection.send(SseEmitter.event()
-                            .id(id)
-                            .name(message.getEventName())
-                            .comment("resend")
-                            .data(message.getBody()));
-                    messageRepository.delete(id);
-                    QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = futureMap.remove(id);
-                    if (future != null) {
-                        complete(future, succeedList);
+                if (!connection.isActive() || !connection.isWriteable() || error != null) {
+                    continue;
+                }
+
+                connection.send(SseEmitter.event()
+                        .id(id)
+                        .name(message.getEventName())
+                        .comment("resend")
+                        .data(message.getBody()));
+
+                if (messageRepository instanceof DistributedMessageRepository) {
+                    DistributedMessageRepository repository = ((DistributedMessageRepository) messageRepository);
+                    String repositoryId;
+                    if (message instanceof RemoteResponseMessage) {
+                        repositoryId = ((RemoteResponseMessage) message).getRemoteMessageRepositoryId();
+                    } else {
+                        repositoryId = null;
                     }
+                    repository.deleteAsync(id, repositoryId)
+                            .thenAccept(e -> removeAndCompleteFuture(id, succeedList));
+                } else {
+                    messageRepository.delete(id);
+                    removeAndCompleteFuture(id, succeedList);
                 }
             } catch (IOException e) {
                 error = e;
             } finally {
                 sendingSet.remove(id);
             }
+        }
+    }
+
+    protected void removeAndCompleteFuture(String messageId, List<SseEmitter<ACCESS_USER>> succeedList) {
+        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = futureMap.remove(messageId);
+        if (future != null) {
+            complete(future, succeedList);
         }
     }
 }

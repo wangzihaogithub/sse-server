@@ -1,7 +1,7 @@
 package com.github.sseserver.springboot;
 
 import com.github.sseserver.SendService;
-import com.github.sseserver.local.LocalConnectionController;
+import com.github.sseserver.local.LocalController;
 import com.github.sseserver.local.LocalConnectionService;
 import com.github.sseserver.local.LocalConnectionServiceImpl;
 import com.github.sseserver.qos.AtLeastOnceSendService;
@@ -206,12 +206,12 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
 
     protected void registerBeanDefinitionsLocalConnectionController(String[] localConnectionServiceBeanNames) {
         for (String localConnectionServiceBeanName : localConnectionServiceBeanNames) {
-            BeanDefinitionBuilder builder = BeanDefinitionBuilder.rootBeanDefinition(LocalConnectionController.class,
+            BeanDefinitionBuilder builder = BeanDefinitionBuilder.rootBeanDefinition(LocalController.class,
                     () -> {
                         Supplier<LocalConnectionService> localConnectionServiceSupplier = () -> beanFactory.getBean(localConnectionServiceBeanName, LocalConnectionService.class);
                         Supplier<MessageRepository> localMessageRepositorySupplier = () -> beanFactory.getBean(getLocalMessageRepositoryBeanName(localConnectionServiceBeanName), MessageRepository.class);
                         Supplier<ServiceDiscoveryService> discoverySupplier = () -> beanFactory.getBean(getServiceDiscoveryServiceBeanName(localConnectionServiceBeanName), ServiceDiscoveryService.class);
-                        return new LocalConnectionController(localConnectionServiceSupplier, localMessageRepositorySupplier, discoverySupplier);
+                        return new LocalController(localConnectionServiceSupplier, localMessageRepositorySupplier, discoverySupplier);
                     });
 
             String beanName = getLocalConnectionControllerBeanName(localConnectionServiceBeanName);

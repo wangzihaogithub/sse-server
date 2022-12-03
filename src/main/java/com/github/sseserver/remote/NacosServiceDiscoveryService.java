@@ -33,8 +33,8 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     private List<Instance> instanceList;
     private Instance lastRegisterInstance;
 
-    private final int id = idIncr++;
     private final NamingService namingService;
+    private final String account;
     private final String serviceName;
     private final String groupName;
     private final String clusterName;
@@ -46,6 +46,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
         this.groupName = groupName;
         this.serviceName = serviceName;
         this.clusterName = clusterName;
+        this.account = filterNonAscii((idIncr++) + "-" + groupName + "-" + METADATA_VALUE_DEVICE_ID);
 
         try {
             this.namingService = createNamingService(nacosProperties);
@@ -121,11 +122,11 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
 
     @Override
     public void registerInstance(String ip, int port) {
-        Instance currentInstance = this.lastRegisterInstance;
-        if (currentInstance != null) {
+        Instance lastRegisterInstance = this.lastRegisterInstance;
+        if (lastRegisterInstance != null) {
             boolean b = invokeNacosBefore();
             try {
-                namingService.deregisterInstance(serviceName, groupName, currentInstance);
+                namingService.deregisterInstance(serviceName, groupName, lastRegisterInstance);
                 this.lastRegisterInstance = null;
             } catch (NacosException e) {
                 throw new IllegalStateException(
@@ -135,13 +136,10 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
             }
         }
 
-        String account = filterNonAscii(id + "-" + groupName + "-" + METADATA_VALUE_DEVICE_ID);
-        String password = UUID.randomUUID().toString().replace("-", "");
-
         Map<String, String> metadata = new LinkedHashMap<>(3);
         metadata.put(METADATA_NAME_DEVICE_ID, METADATA_VALUE_DEVICE_ID);
         metadata.put(METADATA_NAME_ACCOUNT, account);
-        metadata.put(METADATA_NAME_PASSWORD, password);
+        metadata.put(METADATA_NAME_PASSWORD, UUID.randomUUID().toString().replace("-", ""));
 
         Instance instance = new Instance();
         instance.setIp(ip);
