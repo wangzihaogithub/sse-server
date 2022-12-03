@@ -772,7 +772,7 @@ public class TypeUtil {
                 return (T) toLocale(strVal);
             }
         }
-        return BeanUtil.transform(obj, clazz);
+        return BeanUtil.transform(obj, clazz, BeanUtil.EMPTY_IDENTITY_HASH_MAP);
 //        throw new IllegalArgumentException("can not cast to : " + clazz.getName());
     }
 
