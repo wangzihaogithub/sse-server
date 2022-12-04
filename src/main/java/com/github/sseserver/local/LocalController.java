@@ -107,7 +107,7 @@ public class LocalController implements Closeable {
         contextList.add(configRemoteConnectionService(httpServer));
         contextList.add(configMessageRepository(httpServer));
 
-//        configAuthenticator(contextList);
+        configAuthenticator(contextList);
         configFilters(contextList);
     }
 
