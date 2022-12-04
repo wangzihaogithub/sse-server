@@ -29,7 +29,7 @@ public class WebUtil {
      * @return true=有效,大于等于minVersion。 false=无效版本，小于minVersion
      */
     public static boolean isInVersion(String requestVersion, String minVersion) {
-        // 限制最低使用版本 (1.1.6)
+        // 限制最低使用版本 (1.1.7)
         Integer[] pluginVersionNumbers = WebUtil.parseNumber(requestVersion);
         Integer[] minVersionNumbers = WebUtil.parseNumber(minVersion);
         for (int i = 0; i < pluginVersionNumbers.length && i < minVersionNumbers.length; i++) {
