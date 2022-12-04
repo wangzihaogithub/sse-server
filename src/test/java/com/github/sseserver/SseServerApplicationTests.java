@@ -4,7 +4,11 @@ import com.github.netty.springboot.EnableNettyEmbedded;
 import com.github.sseserver.local.LocalConnectionService;
 import com.github.sseserver.local.LocalConnectionServiceImpl;
 import com.github.sseserver.local.SseWebController;
-import com.github.sseserver.remote.DistributedConnectionService;
+import com.github.sseserver.qos.MessageRepository;
+import com.github.sseserver.qos.QosCompletableFuture;
+import com.github.sseserver.remote.ClusterConnectionService;
+import com.github.sseserver.remote.ClusterMessageRepository;
+import com.github.sseserver.remote.ServiceDiscoveryService;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -14,7 +18,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 @EnableScheduling
 @EnableNettyEmbedded
@@ -23,20 +26,25 @@ public class SseServerApplicationTests {
 
     public static void main(String[] args) {
         ConfigurableApplicationContext context = SpringApplication.run(SseServerApplicationTests.class, args);
-        new Thread("aa"){
+        new Thread("aa") {
             @Override
             public void run() {
                 while (true) {
-
                     try {
                         Thread.sleep(1000);
-                        DistributedConnectionService service = context.getBean(DistributedConnectionService.class);
-                        boolean online = service.isOnline(1);
-                        System.out.println("online = " + online);
+                        LocalConnectionService service = context.getBean(LocalConnectionService.class);
+                        ClusterConnectionService cluster = service.getCluster();
+                        SendService<QosCompletableFuture<Object>> leastOnce = service.qos();
+                        ServiceDiscoveryService discovery = service.getDiscovery();
+                        MessageRepository localMessageRepository = service.getLocalMessageRepository();
+                        ClusterMessageRepository clusterMessageRepository = service.getClusterMessageRepository();
 
+                        List<Object> users = cluster.getUsers();
+                        System.out.println("users = " + users);
+
+                        Thread.sleep(50);
                     } catch (Exception e) {
                         e.printStackTrace();
-                        ;
                     }
                 }
             }
@@ -48,15 +56,7 @@ public class SseServerApplicationTests {
         LocalConnectionServiceImpl service = new LocalConnectionServiceImpl();
 
         service.addListeningChangeWatch(event -> {
-            service.getScheduled().schedule(() -> {
-                event.getAfter().removeAll(event.getBefore());
-                for (String s : event.getAfter()) {
-                    service.atLeastOnce().sendAllListening(s, event.getEventName());
-                }
 
-                List<Object> users = service.distributed().getUsers();
-                System.out.println("users = " + users);
-            }, 3000, TimeUnit.MILLISECONDS);
         });
         return service;
     }
@@ -113,6 +113,15 @@ public class SseServerApplicationTests {
 
         public void setName(String name) {
             this.name = name;
+        }
+
+        @Override
+        public String toString() {
+            return "MyAccessUser{" +
+                    "accessToken='" + accessToken + '\'' +
+                    ", id=" + id +
+                    ", name='" + name + '\'' +
+                    '}';
         }
     }
 }

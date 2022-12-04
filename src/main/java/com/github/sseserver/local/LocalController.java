@@ -107,8 +107,13 @@ public class LocalController implements Closeable {
         contextList.add(configRemoteConnectionService(httpServer));
         contextList.add(configMessageRepository(httpServer));
 
-        configAuthenticator(contextList);
+//        configAuthenticator(contextList);
         configFilters(contextList);
+    }
+
+    @Override
+    public void close() {
+        httpServer.stop(0);
     }
 
     public static class RemoteConnectionServiceHttpHandler extends AbstractHttpHandler {
@@ -570,7 +575,7 @@ public class LocalController implements Closeable {
                     request.sendResponseHeaders(500, body.length);
                     OutputStream responseBody = request.getResponseBody();
                     responseBody.write(body);
-                    responseBody.flush();
+                    responseBody.close();
                 }
             }
         }
@@ -586,8 +591,15 @@ public class LocalController implements Closeable {
         private final ThreadLocal<HttpExchange> REQUEST_THREAD_LOCAL = new ThreadLocal<>();
         private final ThreadLocal<Map> BODY_THREAD_LOCAL = new ThreadLocal<>();
 
-        public AbstractHttpHandler() {
-//            objectMapper.findAndRegisterModules().getSerializerFactory().withAdditionalKeySerializers().ad()
+        private static boolean isKeepAlive(HttpExchange request) {
+            String connection = request.getRequestHeaders().getFirst("Connection");
+            String protocol = request.getProtocol();
+            if (protocol.endsWith("1.0")) {
+                return "keep-alive".equalsIgnoreCase(connection);
+            } else {
+                //不包含close就是保持
+                return !"close".equalsIgnoreCase(connection);
+            }
         }
 
         protected String query(String name) {
@@ -629,31 +641,20 @@ public class LocalController implements Closeable {
 
         protected void writeResponse(HttpExchange request, Object data) throws IOException {
             request.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
-            Response response = new Response();
-            response.setData(data);
-
-            if (data instanceof Collection) {
-                int i = 0;
-                Map<String, List<Integer>> classMap = new HashMap<>();
-                for (Object item : (Collection) data) {
-                    if (!TypeUtil.isBasicType(item)) {
-                        classMap.computeIfAbsent(item.getClass().getName(), e -> new ArrayList<>())
-                                .add(i);
-                    }
-                    i++;
-                }
-                response.setArrayClassName(classMap);
-            } else if (TypeUtil.isBasicType(data)) {
-
+            if (isKeepAlive(request)) {
+                request.getResponseHeaders().set("Connection", "keep-alive");
             } else {
-                response.setObjectClassName(data.getClass().getName());
+                request.getResponseHeaders().set("Connection", "close");
             }
 
-            byte[] bytes = objectMapper.writeValueAsBytes(response);
-            request.sendResponseHeaders(200, bytes.length);
-            OutputStream responseBody = request.getResponseBody();
-            responseBody.write(bytes);
-            responseBody.flush();
+            Response body = new Response();
+            body.setData(data);
+            body.autoCastClassName(true);
+
+            request.sendResponseHeaders(200, 0L);
+            OutputStream out = request.getResponseBody();
+            objectMapper.writeValue(out, body);
+            out.close();
         }
     }
 
@@ -686,40 +687,54 @@ public class LocalController implements Closeable {
             this.data = data;
         }
 
-        public void autoCast() {
-            if (objectClassName != null) {
-                data = TypeUtil.castBean(data, objectClassName);
-            } else if (arrayClassName != null && data instanceof Collection) {
-                for (Map.Entry<String, Collection<Integer>> entry : arrayClassName.entrySet()) {
-                    Collection<Integer> value = entry.getValue();
-                    if (!(value instanceof Set)) {
-                        entry.setValue(new HashSet<>(value));
+        public void autoCastClassName(boolean server) {
+            if (server) {
+                if (data instanceof Collection) {
+                    int i = 0;
+                    Map<String, Collection<Integer>> classMap = new HashMap<>(1);
+                    for (Object item : (Collection) data) {
+                        if (!TypeUtil.isBasicType(item)) {
+                            classMap.computeIfAbsent(item.getClass().getName(), e -> new ArrayList<>())
+                                    .add(i);
+                        }
+                        i++;
                     }
+                    arrayClassName = classMap;
+                } else if (TypeUtil.isBasicType(data)) {
+
+                } else {
+                    objectClassName = data.getClass().getName();
                 }
-                List list = new ArrayList(((Collection<?>) data).size());
-                int i = 0;
-                for (Object item : (Collection) data) {
-                    String objectClassName = null;
+            } else {
+                if (objectClassName != null) {
+                    data = TypeUtil.castBean(data, objectClassName);
+                } else if (arrayClassName != null && data instanceof Collection) {
                     for (Map.Entry<String, Collection<Integer>> entry : arrayClassName.entrySet()) {
-                        if (entry.getValue().contains(i)) {
-                            objectClassName = entry.getKey();
-                            break;
+                        Collection<Integer> value = entry.getValue();
+                        if (!(value instanceof Set)) {
+                            entry.setValue(new HashSet<>(value));
                         }
                     }
-                    if (objectClassName == null) {
-                        list.add(item);
-                    } else {
-                        list.add(TypeUtil.castBean(item, objectClassName));
+                    List list = new ArrayList(((Collection<?>) data).size());
+                    int i = 0;
+                    for (Object item : (Collection) data) {
+                        String objectClassName = null;
+                        for (Map.Entry<String, Collection<Integer>> entry : arrayClassName.entrySet()) {
+                            if (entry.getValue().contains(i)) {
+                                objectClassName = entry.getKey();
+                                break;
+                            }
+                        }
+                        if (objectClassName == null) {
+                            list.add(item);
+                        } else {
+                            list.add(TypeUtil.castBean(item, objectClassName));
+                        }
+                        i++;
                     }
-                    i++;
+                    this.data = (T) list;
                 }
-                this.data = (T) list;
             }
         }
-    }
-
-    @Override
-    public void close() {
-        httpServer.stop(0);
     }
 }

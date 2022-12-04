@@ -16,12 +16,11 @@ import javax.servlet.http.Cookie;
 import java.io.IOException;
 import java.io.Serializable;
 import java.nio.channels.ClosedChannelException;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -37,7 +36,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     public static final String EVENT_REMOVE_LISTENER = "removeListener";
 
     private final static Logger log = LoggerFactory.getLogger(SseEmitter.class);
-    private static final MediaType TEXT_PLAIN = new MediaType("text", "plain", StandardCharsets.UTF_8);
+    private static final MediaType TEXT_PLAIN = new MediaType("text", "plain", Charset.forName("UTF-8"));
 
     private final long id = SnowflakeIdWorker.INSTANCE.nextId();
     private final ACCESS_USER accessUser;
@@ -45,7 +44,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     private final Queue<SseEventBuilder> earlySendQueue = new LinkedList<>();
     private final List<Consumer<SseEmitter<ACCESS_USER>>> connectListeners = new ArrayList<>(2);
     private final List<Consumer<SseEmitter<ACCESS_USER>>> disconnectListeners = new ArrayList<>(2);
-    private final List<Consumer<ChangeEvent<ACCESS_USER, Set<String>>>> listenersWatchList = new ArrayList<>(2);
+    private final List<Consumer<SseChangeEvent<ACCESS_USER, Set<String>>>> listenersWatchList = new ArrayList<>(2);
     private final Map<String, Object> attributeMap = new LinkedHashMap<>(3);
     private final long createTime = System.currentTimeMillis();
     private final Map<String, Object> httpParameters = new LinkedHashMap<>(6);
@@ -114,7 +113,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
         this.lastRequestTimestamp = System.currentTimeMillis();
     }
 
-    public void addListeningWatch(Consumer<ChangeEvent<ACCESS_USER, Set<String>>> watch) {
+    public void addListeningWatch(Consumer<SseChangeEvent<ACCESS_USER, Set<String>>> watch) {
         listenersWatchList.add(watch);
     }
 
@@ -361,7 +360,9 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
             try {
                 consumer.accept(this);
             } catch (Exception e) {
-                log.warn("addConnectListener connectListener error = {} {}", e.toString(), consumer, e);
+                if (log.isWarnEnabled()) {
+                    log.warn("addConnectListener connectListener error = {} {}", e.toString(), consumer, e);
+                }
             }
         } else {
             connectListeners.add(consumer);
@@ -373,7 +374,9 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
             try {
                 consumer.accept(this);
             } catch (Exception e) {
-                log.warn("addDisConnectListener connectListener error = {} {}", e.toString(), consumer, e);
+                if (log.isWarnEnabled()) {
+                    log.warn("addDisConnectListener connectListener error = {} {}", e.toString(), consumer, e);
+                }
             }
         } else {
             disconnectListeners.add(consumer);
@@ -412,7 +415,9 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
             try {
                 connectListener.accept(this);
             } catch (Exception e) {
-                log.warn("connectListener error = {} {}", e, connectListener, e);
+                if (log.isWarnEnabled()) {
+                    log.warn("connectListener error = {} {}", e, connectListener, e);
+                }
             }
         }
         connectListeners.clear();
@@ -466,11 +471,13 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
         } else {
             future = null;
         }
-        if (builder instanceof SseEmitter.SseEventBuilderFuture) {
-            log.debug("sse connection send {} : {}, id = {}, name = {}, active = {}",
-                    count, this, ((SseEventBuilderFuture) builder).id, ((SseEventBuilderFuture) builder).name, active);
-        } else {
-            log.debug("sse connection send {} : {}, active = {}", count, this, active);
+        if (log.isDebugEnabled()) {
+            if (builder instanceof SseEmitter.SseEventBuilderFuture) {
+                log.debug("sse connection send {} : {}, id = {}, name = {}, active = {}",
+                        count, this, ((SseEventBuilderFuture) builder).id, ((SseEventBuilderFuture) builder).name, active);
+            } else {
+                log.debug("sse connection send {} : {}, active = {}", count, this, active);
+            }
         }
         if (sendError != null) {
             if (future != null) {
@@ -567,7 +574,9 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
                 try {
                     disconnectListener.accept(this);
                 } catch (Exception e) {
-                    log.warn("disconnectListener error = {} {}", e.toString(), disconnectListener, e);
+                    if (log.isWarnEnabled()) {
+                        log.warn("disconnectListener error = {} {}", e.toString(), disconnectListener, e);
+                    }
                 }
             }
             disconnectListeners.clear();
@@ -581,7 +590,9 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
             try {
                 complete();
             } catch (Exception e) {
-                log.warn("sse connection disconnect exception : {}. {}", e.toString(), this);
+                if (log.isWarnEnabled()) {
+                    log.warn("sse connection disconnect exception : {}. {}", e.toString(), this);
+                }
             }
             return true;
         } else {
@@ -636,8 +647,8 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
         listeners.addAll(addListener);
         Set<String> afterCopy = new LinkedHashSet<>(listeners);
 
-        ChangeEvent<ACCESS_USER, Set<String>> event = new ChangeEvent<>(this, EVENT_ADD_LISTENER, beforeCopy, afterCopy);
-        for (Consumer<ChangeEvent<ACCESS_USER, Set<String>>> changeEventConsumer : new ArrayList<>(listenersWatchList)) {
+        SseChangeEvent<ACCESS_USER, Set<String>> event = new SseChangeEvent<>(this, EVENT_ADD_LISTENER, beforeCopy, afterCopy);
+        for (Consumer<SseChangeEvent<ACCESS_USER, Set<String>>> changeEventConsumer : new ArrayList<>(listenersWatchList)) {
             changeEventConsumer.accept(event);
         }
     }
@@ -648,8 +659,8 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
         listeners.removeAll(removeListener);
         Set<String> afterCopy = new LinkedHashSet<>(listeners);
 
-        ChangeEvent<ACCESS_USER, Set<String>> event = new ChangeEvent<>(this, EVENT_REMOVE_LISTENER, beforeCopy, afterCopy);
-        for (Consumer<ChangeEvent<ACCESS_USER, Set<String>>> changeEventConsumer : new ArrayList<>(listenersWatchList)) {
+        SseChangeEvent<ACCESS_USER, Set<String>> event = new SseChangeEvent<>(this, EVENT_REMOVE_LISTENER, beforeCopy, afterCopy);
+        for (Consumer<SseChangeEvent<ACCESS_USER, Set<String>>> changeEventConsumer : new ArrayList<>(listenersWatchList)) {
             changeEventConsumer.accept(event);
         }
     }

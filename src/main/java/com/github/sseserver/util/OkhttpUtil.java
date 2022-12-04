@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit;
 
 public class OkhttpUtil {
 
-    public static OkHttp3ClientHttpRequestFactory newRequestFactory(int connectTimeout, int readTimeout, int maxThreads,String threadName) {
+    public static OkHttp3ClientHttpRequestFactory newRequestFactory(int connectTimeout, int readTimeout, int maxThreads, String threadName) {
         OkHttpClient okHttpClient = new OkHttpClient.Builder()
                 .dispatcher(new Dispatcher(new ThreadPoolExecutor(
                         0, maxThreads,

@@ -1,10 +1,10 @@
 package com.github.sseserver.qos;
 
 import com.github.sseserver.SendService;
-import com.github.sseserver.local.ChangeEvent;
 import com.github.sseserver.local.LocalConnectionService;
+import com.github.sseserver.local.SseChangeEvent;
 import com.github.sseserver.local.SseEmitter;
-import com.github.sseserver.remote.DistributedMessageRepository;
+import com.github.sseserver.remote.ClusterMessageRepository;
 import com.github.sseserver.remote.RemoteResponseMessage;
 
 import java.io.IOException;
@@ -30,7 +30,7 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
         this.localConnectionService = localConnectionService;
         this.messageRepository = messageRepository;
         localConnectionService.<ACCESS_USER>addConnectListener(this::resend);
-        localConnectionService.addListeningChangeWatch((Consumer<ChangeEvent<ACCESS_USER, Set<String>>>) event -> {
+        localConnectionService.addListeningChangeWatch((Consumer<SseChangeEvent<ACCESS_USER, Set<String>>>) event -> {
             if (SseEmitter.EVENT_ADD_LISTENER.equals(event.getEventName())) {
                 resend(event.getInstance());
             }
@@ -329,8 +329,8 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
     }
 
     protected void resend(SseEmitter<ACCESS_USER> connection) {
-        if (messageRepository instanceof DistributedMessageRepository) {
-            ((DistributedMessageRepository) messageRepository).selectAsync(connection)
+        if (messageRepository instanceof ClusterMessageRepository) {
+            ((ClusterMessageRepository) messageRepository).selectAsync(connection)
                     .thenAccept(e -> resend(e, connection));
         } else {
             resend(messageRepository.select(connection), connection);
@@ -362,8 +362,8 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
                         .comment("resend")
                         .data(message.getBody()));
 
-                if (messageRepository instanceof DistributedMessageRepository) {
-                    DistributedMessageRepository repository = ((DistributedMessageRepository) messageRepository);
+                if (messageRepository instanceof ClusterMessageRepository) {
+                    ClusterMessageRepository repository = ((ClusterMessageRepository) messageRepository);
                     String repositoryId;
                     if (message instanceof RemoteResponseMessage) {
                         repositoryId = ((RemoteResponseMessage) message).getRemoteMessageRepositoryId();

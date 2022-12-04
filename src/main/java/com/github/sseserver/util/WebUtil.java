@@ -1,9 +1,15 @@
 package com.github.sseserver.util;
 
+import io.netty.util.internal.PlatformDependent;
+
 import javax.servlet.http.HttpServletRequest;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
-import java.util.*;
+import java.nio.charset.Charset;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -11,8 +17,9 @@ public class WebUtil {
     public static final String PROTOCOL_HTTPS = "https:";
     public static final String PROTOCOL_HTTP = "http:";
     public static final Pattern PATTERN_HTTP = Pattern.compile(PROTOCOL_HTTP);
-    private static String ipAddress;
+    private static final Charset UTF_8 = Charset.forName("UTF-8");
     public static Integer port;
+    private static String ipAddress;
 
     /**
      * 是否是有效版本
@@ -163,32 +170,123 @@ public class WebUtil {
         }
     }
 
-    public static String getQueryParam(String query, String name) {
-        if (query == null || query.isEmpty()) {
-            return null;
+    public static String getQueryParam(String uriQuery, String findName) {
+        int len = uriQuery.length();
+        int nameStart = 0;
+        int valueStart = -1;
+        int i;
+        loop:
+        for (i = 0; i < len; i++) {
+            switch (uriQuery.charAt(i)) {
+                case '=':
+                    if (nameStart == i) {
+                        nameStart = i + 1;
+                    } else if (valueStart < nameStart) {
+                        valueStart = i + 1;
+                    }
+                    break;
+                case '&':
+                case ';':
+                    if (nameStart < i) {
+                        int valueStart0 = valueStart;
+                        if (valueStart0 <= nameStart) {
+                            valueStart0 = i + 1;
+                        }
+                        String name = decodeComponent(uriQuery, nameStart, valueStart0 - 1, UTF_8);
+                        if (findName.equals(name)) {
+                            return decodeComponent(uriQuery, valueStart0, i, UTF_8);
+                        }
+                    }
+                    nameStart = i + 1;
+                    break;
+                case '#':
+                    break loop;
+                default:
+                    // continue
+            }
         }
-        String[] params = query.split("&");
-        for (String param : params) {
-            String[] keyValue = param.split("=", 2);
-            if (keyValue[0].equals(name)) {
-                return keyValue[1];
+        if (nameStart < i) {
+            int valueStart0 = valueStart;
+            if (valueStart0 <= nameStart) {
+                valueStart0 = i + 1;
+            }
+            String name = decodeComponent(uriQuery, nameStart, valueStart0 - 1, UTF_8);
+            if (findName.equals(name)) {
+                return decodeComponent(uriQuery, valueStart0, i, UTF_8);
             }
         }
         return null;
     }
 
-    public static Map<String, String> decodeQueryParams(String query, int len) {
-        Map<String, String> map = new LinkedHashMap<>(len);
-        String[] params = query.split("&");
-        for (String param : params) {
-            String[] keyValue = param.split("=", 2);
-            map.put(keyValue[0], keyValue[1]);
+    public static String decodeComponent(String s, int from, int toExcluded, Charset charset) {
+        int len = toExcluded - from;
+        if (len <= 0) {
+            return "";
         }
-        return map;
+        int firstEscaped = -1;
+        for (int i = from; i < toExcluded; i++) {
+            char c = s.charAt(i);
+            if (c == '%' || c == '+') {
+                firstEscaped = i;
+                break;
+            }
+        }
+        if (firstEscaped == -1) {
+            return s.substring(from, toExcluded);
+        }
+
+        // Each encoded byte takes 3 characters (e.g. "%20")
+        int decodedCapacity = (toExcluded - firstEscaped) / 3;
+        byte[] buf = PlatformDependent.allocateUninitializedArray(decodedCapacity);
+        int bufIdx;
+
+        StringBuilder strBuf = new StringBuilder(len);
+        strBuf.append(s, from, firstEscaped);
+
+
+        for (int i = firstEscaped; i < toExcluded; i++) {
+            char c = s.charAt(i);
+            if (c != '%') {
+                strBuf.append(c != '+' ? c : ' ');
+                continue;
+            }
+
+            bufIdx = 0;
+            do {
+                if (i + 3 > toExcluded) {
+                    return s.substring(from, toExcluded);
+//                    throw new IllegalArgumentException("unterminated escape sequence at index " + i + " of: " + s);
+                }
+                int hi = decodeHexNibble(s.charAt(i + 1));
+                int lo = decodeHexNibble(s.charAt(i + 2));
+                if (hi != -1 && lo != -1) {
+                    buf[bufIdx++] = (byte) ((hi << 4) + lo);
+                } else {
+                    return s.substring(from, toExcluded);
+//                    throw new IllegalArgumentException(String.format("invalid hex byte '%s' at index %d of '%s'", s.subSequence(pos, pos + 2), pos, s));
+                }
+
+                i += 3;
+            } while (i < toExcluded && s.charAt(i) == '%');
+            i--;
+
+            strBuf.append(new String(buf, 0, bufIdx, charset));
+        }
+        return strBuf.toString();
     }
 
-    public static void main(String[] args) {
-        getIPAddress();
+    private static int decodeHexNibble(final char c) {
+        // Character.digit() is not used here, as it addresses a larger
+        // set of characters (both ASCII and full-width latin letters).
+        if (c >= '0' && c <= '9') {
+            return c - '0';
+        }
+        if (c >= 'A' && c <= 'F') {
+            return c - ('A' - 0xA);
+        }
+        if (c >= 'a' && c <= 'f') {
+            return c - ('a' - 0xA);
+        }
+        return -1;
     }
-
 }

@@ -80,6 +80,19 @@ public class SpringUtil {
         throw (E) t;
     }
 
+    public static String filterNonAscii(String str) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < str.length(); i++) {
+            char c = str.charAt(i);
+            if (c == ':') {
+                builder.append('-');
+            } else if (c >= 32 && c <= 126) {
+                builder.append(c);
+            }
+        }
+        return builder.toString();
+    }
+
     public static class ClientHttpRequestFactory extends SimpleClientHttpRequestFactory implements DisposableBean {
         private final ThreadPoolTaskExecutor threadPool;
 

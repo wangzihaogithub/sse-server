@@ -27,13 +27,13 @@ public class RemoteMessageRepository implements MessageRepository {
     public static int threadsIfAsyncRequest = Integer.getInteger("RemoteMessageRepository.threadsIfAsyncRequest",
             1);
     public static int threadsIfBlockRequest = Integer.getInteger("RemoteMessageRepository.threadsIfBlockRequest",
-            Runtime.getRuntime().availableProcessors() * 2);
+            Math.max(16, Runtime.getRuntime().availableProcessors() * 2));
 
     private final AsyncRestTemplate restTemplate;
     private final URL url;
     private final String urlMessageRepository;
-    private boolean closeFlag = false;
     private final String id;
+    private boolean closeFlag = false;
 
     public RemoteMessageRepository(URL url, String account, String password) {
         this.url = url;
@@ -118,7 +118,7 @@ public class RemoteMessageRepository implements MessageRepository {
 
     protected <T> T extract(ResponseEntity<LocalController.Response> response) {
         LocalController.Response body = response.getBody();
-        body.autoCast();
+        body.autoCastClassName(false);
         Object data = body.getData();
         return (T) data;
     }

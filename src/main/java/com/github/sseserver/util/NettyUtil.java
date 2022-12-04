@@ -6,7 +6,7 @@ import org.springframework.http.client.Netty4ClientHttpRequestFactory;
 
 public class NettyUtil {
 
-    public static Netty4ClientHttpRequestFactory newRequestFactory(int connectTimeout, int readTimeout, int maxThreads,String threadName) {
+    public static Netty4ClientHttpRequestFactory newRequestFactory(int connectTimeout, int readTimeout, int maxThreads, String threadName) {
         NioEventLoopGroup eventLoopGroup = new NioEventLoopGroup(maxThreads, new DefaultThreadFactory(threadName, true));
         Netty4ClientHttpRequestFactory factory = new Netty4ClientHttpRequestFactory(eventLoopGroup) {
             @Override

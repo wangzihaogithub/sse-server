@@ -561,16 +561,16 @@ public class SseWebController<ACCESS_USER> {
             return listener;
         }
 
+        public void setListener(List<String> listener) {
+            this.listener = listener;
+        }
+
         public Long getConnectionId() {
             return connectionId;
         }
 
         public void setConnectionId(Long connectionId) {
             this.connectionId = connectionId;
-        }
-
-        public void setListener(List<String> listener) {
-            this.listener = listener;
         }
     }
 

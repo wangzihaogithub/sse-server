@@ -35,9 +35,17 @@ public class RemoteResponseMessage implements Message {
         return eventName;
     }
 
+    public void setEventName(String eventName) {
+        this.eventName = eventName;
+    }
+
     @Override
     public int getFilters() {
         return filters;
+    }
+
+    public void setFilters(int filters) {
+        this.filters = filters;
     }
 
     @Override
@@ -71,21 +79,13 @@ public class RemoteResponseMessage implements Message {
         this.id = id;
     }
 
-    public void setFilters(int filters) {
-        this.filters = filters;
+    @Override
+    public Serializable getBody() {
+        return body;
     }
 
     public void setBody(Serializable body) {
         this.body = body;
-    }
-
-    public void setEventName(String eventName) {
-        this.eventName = eventName;
-    }
-
-    @Override
-    public Serializable getBody() {
-        return body;
     }
 
     @Override

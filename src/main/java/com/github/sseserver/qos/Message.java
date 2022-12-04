@@ -11,24 +11,32 @@ public interface Message extends Serializable {
     int FILTER_LISTENER_NAME = (1 << 4);
     int FILTER_CHANNEL = (1 << 5);
 
-    String getListenerName();
-    Collection<? extends Serializable> getUserIdList();
-    Collection<? extends Serializable> getTenantIdList();
-    Collection<String> getAccessTokenList();
-    Collection<String> getChannelList();
-
-    Serializable getBody();
-    String getEventName();
-    String getId();
-    default void setId(String id){
-
-    }
-
-    static String newId(){
+    static String newId() {
         return UUID.randomUUID().toString();
     }
 
+    String getListenerName();
+
+    Collection<? extends Serializable> getUserIdList();
+
+    Collection<? extends Serializable> getTenantIdList();
+
+    Collection<String> getAccessTokenList();
+
+    Collection<String> getChannelList();
+
+    Serializable getBody();
+
+    String getEventName();
+
+    String getId();
+
+    default void setId(String id) {
+
+    }
+
     int getFilters();
+
     default boolean isFilter(int filter) {
         return (getFilters() & filter) != 0;
     }

@@ -1,8 +1,11 @@
 package com.github.sseserver.local;
 
 import com.github.sseserver.SendService;
+import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.qos.QosCompletableFuture;
-import com.github.sseserver.remote.DistributedConnectionService;
+import com.github.sseserver.remote.ClusterConnectionService;
+import com.github.sseserver.remote.ClusterMessageRepository;
+import com.github.sseserver.remote.ServiceDiscoveryService;
 import com.github.sseserver.springboot.SseServerBeanDefinitionRegistrar;
 import com.github.sseserver.util.TypeUtil;
 import org.slf4j.Logger;
@@ -57,19 +60,16 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
      */
     protected final List<Consumer<SseEmitter>> connectListenerList = new ArrayList<>();
     protected final List<Consumer<SseEmitter>> disconnectListenerList = new ArrayList<>();
-    protected final List<Consumer<ChangeEvent<?, Set<String>>>> listeningChangeWatchList = new ArrayList<>();
+    protected final List<Consumer<SseChangeEvent<?, Set<String>>>> listeningChangeWatchList = new ArrayList<>();
     /**
      * 如果 {@link Predicate#test(Object)} 返回true，则是只监听一次事件的一次性listener。 否则永久事件监听。
      * {@link #connectListenerMap,#disconnectListenerMap}
      */
     protected final Map<String, List<Predicate<SseEmitter>>> connectListenerMap = new ConcurrentHashMap<>();
     protected final Map<String, List<Predicate<SseEmitter>>> disconnectListenerMap = new ConcurrentHashMap<>();
-
-    private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
-
     private BeanFactory beanFactory;
     private String beanName = getClass().getSimpleName();
-
+    private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
     private int reconnectTime = 5000;
 
     @Override
@@ -78,16 +78,35 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> atLeastOnce() {
+    public <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> qos() {
         String beanName = SseServerBeanDefinitionRegistrar.getAtLeastOnceBeanName(this.beanName);
         return beanFactory.getBean(beanName, SendService.class);
     }
 
     @Override
-    public DistributedConnectionService distributed() {
-        String beanName = SseServerBeanDefinitionRegistrar.getDistributedConnectionServiceBeanName(this.beanName);
-        return beanFactory.getBean(beanName, DistributedConnectionService.class);
+    public ClusterConnectionService getCluster() {
+        String beanName = SseServerBeanDefinitionRegistrar.getClusterConnectionServiceBeanName(this.beanName);
+        return beanFactory.getBean(beanName, ClusterConnectionService.class);
     }
+
+    @Override
+    public ServiceDiscoveryService getDiscovery() {
+        String beanName = SseServerBeanDefinitionRegistrar.getServiceDiscoveryServiceBeanName(this.beanName);
+        return beanFactory.getBean(beanName, ServiceDiscoveryService.class);
+    }
+
+    @Override
+    public MessageRepository getLocalMessageRepository() {
+        String beanName = SseServerBeanDefinitionRegistrar.getLocalMessageRepositoryBeanName(this.beanName);
+        return beanFactory.getBean(beanName, MessageRepository.class);
+    }
+
+    @Override
+    public ClusterMessageRepository getClusterMessageRepository() {
+        String beanName = SseServerBeanDefinitionRegistrar.getClusterMessageRepositoryBeanName(this.beanName);
+        return beanFactory.getBean(beanName, ClusterMessageRepository.class);
+    }
+
 
     @Override
     public <ACCESS_USER> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap) {
@@ -110,7 +129,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         String tenantId = wrapStringKey(result.getTenantId());
 
         result.addDisConnectListener(e -> {
-            log.debug("sse {} connection disconnect : {}", beanName, e);
+            if (log.isDebugEnabled()) {
+                log.debug("sse {} connection disconnect : {}", beanName, e);
+            }
 
             String channel = wrapStringKey(e.getChannel());
 
@@ -157,11 +178,13 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                 channel2ConnectionIdMap.computeIfAbsent(channel, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
                         .add(e.getId());
             }
-            log.debug("sse {} connection create : {}", beanName, e);
+            if (log.isDebugEnabled()) {
+                log.debug("sse {} connection create : {}", beanName, e);
+            }
             notifyListener(e, connectListenerList, connectListenerMap);
         });
         result.addListeningWatch(e -> {
-            for (Consumer<ChangeEvent<?, Set<String>>> changeEventConsumer : new ArrayList<>(listeningChangeWatchList)) {
+            for (Consumer<SseChangeEvent<?, Set<String>>> changeEventConsumer : new ArrayList<>(listeningChangeWatchList)) {
                 changeEventConsumer.accept(e);
             }
         });
@@ -191,7 +214,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                             + "}"));
             return result;
         } catch (IOException e) {
-            log.error("sse {} send {} IOException:{}", beanName, result, e, e);
+            if (log.isErrorEnabled()) {
+                log.error("sse {} send {} IOException:{}", beanName, result, e, e);
+            }
             return null;
         }
     }
@@ -354,7 +379,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public <ACCESS_USER> void addListeningChangeWatch(Consumer<ChangeEvent<ACCESS_USER, Set<String>>> watch) {
+    public <ACCESS_USER> void addListeningChangeWatch(Consumer<SseChangeEvent<ACCESS_USER, Set<String>>> watch) {
         listeningChangeWatchList.add((Consumer) watch);
     }
 
@@ -501,7 +526,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     protected Runnable completionCallBack(SseEmitter sseEmitter) {
         return () -> {
             sseEmitter.disconnect();
-            log.debug("sse {} completion 结束连接：{}", beanName, sseEmitter);
+            if (log.isDebugEnabled()) {
+                log.debug("sse {} completion 结束连接：{}", beanName, sseEmitter);
+            }
         };
     }
 
@@ -515,7 +542,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     protected Consumer<Throwable> errorCallBack(SseEmitter sseEmitter) {
         return throwable -> {
             sseEmitter.disconnect();
-            log.debug("sse {} {} error 发生错误：{}", beanName, sseEmitter, throwable, throwable);
+            if (log.isDebugEnabled()) {
+                log.debug("sse {} {} error 发生错误：{}", beanName, sseEmitter, throwable, throwable);
+            }
         };
     }
 
@@ -530,7 +559,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             try {
                 listener.accept(emitter);
             } catch (Exception e) {
-                log.error("notifyListener error = {}. listener = {}, emitter = {}", e.toString(), listener, emitter, e);
+                if (log.isErrorEnabled()) {
+                    log.error("notifyListener error = {}. listener = {}, emitter = {}", e.toString(), listener, emitter, e);
+                }
             }
         }
         List<Predicate<SseEmitter>> consumerList = listenerMap.get(wrapStringKey(emitter.getAccessToken()));
@@ -541,7 +572,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                         consumerList.remove(listener);
                     }
                 } catch (Exception e) {
-                    log.error("notifyListener error = {}. predicate = {}, emitter = {}", e.toString(), listener, emitter, e);
+                    if (log.isErrorEnabled()) {
+                        log.error("notifyListener error = {}. predicate = {}, emitter = {}", e.toString(), listener, emitter, e);
+                    }
                 }
             }
         }

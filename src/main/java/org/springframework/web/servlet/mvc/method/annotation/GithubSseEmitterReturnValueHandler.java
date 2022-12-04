@@ -23,7 +23,7 @@ import javax.servlet.ServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -44,7 +44,7 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
             }
         }
         List<HttpMessageConverter<?>> result = new ArrayList<>(converters.size() + 1);
-        result.add(new StringHttpMessageConverter(StandardCharsets.UTF_8));
+        result.add(new StringHttpMessageConverter(Charset.forName("UTF-8")));
         result.addAll(converters);
         return result;
     }
