@@ -433,7 +433,6 @@ public class LocalController implements Closeable {
 
     public static class MessageRepositoryHttpHandler extends AbstractHttpHandler {
         private final Supplier<? extends MessageRepository> supplier;
-        private final Message repositoryMessage = new RemoteRequestMessage();
 
         public MessageRepositoryHttpHandler(Supplier<? extends MessageRepository> supplier) {
             this.supplier = supplier;
@@ -446,7 +445,7 @@ public class LocalController implements Closeable {
             switch (rpcMethodName) {
                 case "insert": {
                     writeResponse(request, service.insert(
-                            repositoryMessage
+                            new RemoteRequestMessage(request.getPrincipal(), body())
                     ), false);
                     break;
                 }
@@ -469,51 +468,79 @@ public class LocalController implements Closeable {
             }
         }
 
-        public class RemoteRequestMessage implements Message {
+        public static class RemoteRequestMessage implements Message {
+            private final HttpPrincipal principal;
+
+            private final String listenerName;
+            private final Collection<? extends Serializable> userIdList;
+            private final Collection<? extends Serializable> tenantIdList;
+            private final Collection<String> accessTokenList;
+            private final Collection<String> channelList;
+            private final Object body;
+            private final String eventName;
+            private final String id;
+            private final int filters;
+
+            public RemoteRequestMessage(HttpPrincipal principal, Map body) {
+                this.principal = principal;
+                this.listenerName = body(body, "listenerName");
+                this.userIdList = body(body, "userIdList");
+                this.tenantIdList = body(body, "tenantIdList");
+                this.accessTokenList = body(body, "accessTokenList");
+                this.channelList = body(body, "channelList");
+                this.body = body(body, "body");
+                this.eventName = body(body, "eventName");
+                this.id = body(body, "id");
+                this.filters = body(body, "filters");
+            }
+
+            public static <T> T body(Map body, String name) {
+                return (T) body.get(name);
+            }
 
             @Override
             public String getListenerName() {
-                return body("listenerName");
+                return listenerName;
             }
 
             @Override
             public Collection<? extends Serializable> getUserIdList() {
-                return body("userIdList");
+                return userIdList;
             }
 
             @Override
             public Collection<? extends Serializable> getTenantIdList() {
-                return body("tenantIdList");
+                return tenantIdList;
             }
 
             @Override
             public Collection<String> getAccessTokenList() {
-                return body("accessTokenList");
+                return accessTokenList;
             }
 
             @Override
             public Collection<String> getChannelList() {
-                return body("channelList");
+                return channelList;
             }
 
             @Override
             public Object getBody() {
-                return body("body");
+                return body;
             }
 
             @Override
             public String getEventName() {
-                return body("eventName");
+                return eventName;
             }
 
             @Override
             public String getId() {
-                return body("id");
+                return id;
             }
 
             @Override
             public int getFilters() {
-                return body("filters");
+                return filters;
             }
         }
 
@@ -619,6 +646,10 @@ public class LocalController implements Closeable {
 
         protected String query(String name) {
             return WebUtil.getQueryParam(REQUEST_THREAD_LOCAL.get().getRequestURI().getQuery(), name);
+        }
+
+        protected Map body() {
+            return BODY_THREAD_LOCAL.get();
         }
 
         protected <T> T body(String name) {

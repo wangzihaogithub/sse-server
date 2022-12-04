@@ -149,7 +149,7 @@ public class RemoteMessageRepository implements MessageRepository {
         target.setFilters((Integer) source.get("filters"));
 
         target.setId((String) source.get("id"));
-        target.setBody((Serializable) source.get("body"));
+        target.setBody(source.get("body"));
         target.setEventName((String) source.get("eventName"));
         target.setListenerName((String) source.get("listenerName"));
 
