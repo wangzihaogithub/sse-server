@@ -69,6 +69,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     private ScheduledFuture<?> timeoutCheckFuture;
     private HttpHeaders responseHeaders;
     private IOException sendError;
+    private int defaultId;
 
     /**
      * timeout = 0是永不过期
@@ -446,7 +447,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
      */
     public SseEventBuilderFuture<SseEmitter<ACCESS_USER>> send(String name, Object data) throws IOException {
         SseEventBuilderFuture event = event();
-        send(event.name(name).data(data));
+        send(event.defaultId(++defaultId).name(name).data(data));
         return event;
     }
 
@@ -676,11 +677,17 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
      */
     public static class SseEventBuilderFuture<ACCESS_USER> extends CompletableFuture<SseEmitter<ACCESS_USER>> implements SseEventBuilder {
         private final Set<DataWithMediaType> dataToSend = new LinkedHashSet<>(3);
+        private int defaultId;
         private String id;
         private String name;
         private StringBuilder sb;
 
         public SseEventBuilderFuture() {
+        }
+
+        public SseEventBuilderFuture<ACCESS_USER> defaultId(int defaultId) {
+            this.defaultId = defaultId;
+            return this;
         }
 
         public String getId() {
@@ -724,6 +731,9 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
 
         @Override
         public SseEventBuilderFuture<ACCESS_USER> data(Object object, MediaType mediaType) {
+            if (id == null) {
+                id(Integer.toString(defaultId));
+            }
             append("data:");
             saveAppendedText();
             this.dataToSend.add(new DataWithMediaType(object, mediaType));

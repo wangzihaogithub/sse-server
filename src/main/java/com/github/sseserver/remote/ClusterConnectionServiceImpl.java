@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import java.io.Serializable;
 import java.net.URL;
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -20,6 +21,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     private final static Logger log = LoggerFactory.getLogger(ClusterConnectionServiceImpl.class);
     private final Supplier<LocalConnectionService> localSupplier;
     private final Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier;
+    private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
 
     public ClusterConnectionServiceImpl(Supplier<LocalConnectionService> localSupplier,
                                         Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier) {
@@ -185,7 +187,20 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
-    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendAll(String eventName, Serializable body) {
+    public <T> T scopeOnWriteable(Callable<T> runnable) {
+        scopeOnWriteableThreadLocal.set(true);
+        try {
+            return runnable.call();
+        } catch (Exception e) {
+            LambdaUtil.sneakyThrows(e);
+            return null;
+        } finally {
+            scopeOnWriteableThreadLocal.remove();
+        }
+    }
+
+    @Override
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendAll(String eventName, Object body) {
         return mapReduce(
                 e -> e.sendAll(eventName, body),
                 e -> e.sendAll(eventName, body),
@@ -194,7 +209,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
-    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendAllListening(String eventName, Serializable body) {
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendAllListening(String eventName, Object body) {
         return mapReduce(
                 e -> e.sendAllListening(eventName, body),
                 e -> e.sendAllListening(eventName, body),
@@ -203,7 +218,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
-    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByChannel(Collection<String> channels, String eventName, Serializable body) {
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByChannel(Collection<String> channels, String eventName, Object body) {
         return mapReduce(
                 e -> e.sendByChannel(channels, eventName, body),
                 e -> e.sendByChannel(channels, eventName, body),
@@ -212,7 +227,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
-    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByChannelListening(Collection<String> channels, String eventName, Serializable body) {
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByChannelListening(Collection<String> channels, String eventName, Object body) {
         return mapReduce(
                 e -> e.sendByChannelListening(channels, eventName, body),
                 e -> e.sendByChannelListening(channels, eventName, body),
@@ -221,7 +236,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
-    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByAccessToken(Collection<String> accessTokens, String eventName, Serializable body) {
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByAccessToken(Collection<String> accessTokens, String eventName, Object body) {
         return mapReduce(
                 e -> e.sendByAccessToken(accessTokens, eventName, body),
                 e -> e.sendByAccessToken(accessTokens, eventName, body),
@@ -230,7 +245,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
-    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Serializable body) {
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Object body) {
         return mapReduce(
                 e -> e.sendByAccessTokenListening(accessTokens, eventName, body),
                 e -> e.sendByAccessTokenListening(accessTokens, eventName, body),
@@ -239,7 +254,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
-    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByUserId(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByUserId(Collection<? extends Serializable> userIds, String eventName, Object body) {
         return mapReduce(
                 e -> e.sendByUserId(userIds, eventName, body),
                 e -> e.sendByUserId(userIds, eventName, body),
@@ -248,7 +263,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
-    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Object body) {
         return mapReduce(
                 e -> e.sendByUserIdListening(userIds, eventName, body),
                 e -> e.sendByUserIdListening(userIds, eventName, body),
@@ -257,7 +272,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
-    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Object body) {
         return mapReduce(
                 e -> e.sendByTenantId(tenantIds, eventName, body),
                 e -> e.sendByTenantId(tenantIds, eventName, body),
@@ -266,7 +281,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
-    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Object body) {
         return mapReduce(
                 e -> e.sendByTenantIdListening(tenantIds, eventName, body),
                 e -> e.sendByTenantIdListening(tenantIds, eventName, body),
@@ -318,16 +333,28 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
         try (ReferenceCounted<List<RemoteConnectionService>> ref = getRemoteServiceRef()) {
             List<RemoteConnectionService> serviceList = ref.get();
 
+            Boolean scopeOnWriteable = scopeOnWriteableThreadLocal.get();
+
             List<URL> remoteUrlList = new ArrayList<>(serviceList.size());
             List<RemoteCompletableFuture<T, RemoteConnectionService>> remoteFutureList = new ArrayList<>(serviceList.size());
             for (RemoteConnectionService remote : serviceList) {
                 remoteUrlList.add(remote.getRemoteUrl());
                 // rpc async method call
-                remoteFutureList.add(remoteFunction.apply(remote));
+                if (scopeOnWriteable != null && scopeOnWriteable) {
+                    remoteFutureList.add(remote.scopeOnWriteable(() -> remoteFunction.apply(remote)));
+                } else {
+                    remoteFutureList.add(remoteFunction.apply(remote));
+                }
             }
 
             // local method call
-            T localPart = localFunction.apply(getLocalService());
+            LocalConnectionService local = getLocalService();
+            T localPart;
+            if (scopeOnWriteable != null && scopeOnWriteable) {
+                localPart = local.scopeOnWriteable(() -> localFunction.apply(local));
+            } else {
+                localPart = localFunction.apply(local);
+            }
 
             ClusterCompletableFuture<R, ClusterConnectionService> future = new ClusterCompletableFuture<>(remoteUrlList, this);
             CompletableFuture.join(remoteFutureList, future, () -> {

@@ -3,6 +3,7 @@ package com.github.sseserver.remote;
 import com.github.sseserver.local.LocalController;
 import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
+import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.SpringUtil;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -56,7 +58,7 @@ public class RemoteMessageRepository implements MessageRepository {
     }
 
     @Override
-    public boolean delete(String id) {
+    public Message delete(String id) {
         return deleteAsync(id).block();
     }
 
@@ -86,16 +88,24 @@ public class RemoteMessageRepository implements MessageRepository {
         return asyncPost("/select", request, this::extractListMessage);
     }
 
-    public RemoteCompletableFuture<Boolean, RemoteMessageRepository> deleteAsync(String id) {
+    public RemoteCompletableFuture<Message, RemoteMessageRepository> deleteAsync(String id) {
         Map<String, Object> request = new HashMap<>(1);
         request.put("id", id);
-        return asyncPost("/delete", request, this::extract);
+        return asyncPost("/delete", request, entity -> {
+            Map data = (Map) entity.getBody().getData();
+            return buildMessage(data);
+        });
     }
 
     @Override
     public void close() {
         SpringUtil.close(restTemplate);
         this.closeFlag = true;
+    }
+
+    @Override
+    public void addDeleteListener(Consumer<Message> listener) {
+        throw new UnsupportedOperationException("public void addDeleteListener(Consumer<Message> listener)");
     }
 
     protected <T> RemoteCompletableFuture<T, RemoteMessageRepository> asyncPost(String url,
@@ -126,23 +136,28 @@ public class RemoteMessageRepository implements MessageRepository {
     protected List<Message> extractListMessage(ResponseEntity<LocalController.Response> response) {
         List<Map> data = (List<Map>) response.getBody().getData();
         return data.stream()
-                .map(source -> {
-                    RemoteResponseMessage target = new RemoteResponseMessage();
-                    target.setRemoteMessageRepositoryId(id);
-                    target.setFilters((Integer) source.get("filters"));
-
-                    target.setId((String) source.get("id"));
-                    target.setBody((Serializable) source.get("body"));
-                    target.setEventName((String) source.get("eventName"));
-                    target.setListenerName((String) source.get("listenerName"));
-
-                    target.setTenantIdList((Collection<? extends Serializable>) source.get("tenantIdList"));
-                    target.setUserIdList((Collection<? extends Serializable>) source.get("userIdList"));
-                    target.setAccessTokenList((Collection<String>) source.get("accessTokenList"));
-                    target.setChannelList((Collection<String>) source.get("channelList"));
-                    return target;
-                })
+                .map(this::buildMessage)
                 .collect(Collectors.toList());
+    }
+
+    protected RemoteResponseMessage buildMessage(Map source) {
+        if (source == null) {
+            return null;
+        }
+        RemoteResponseMessage target = new RemoteResponseMessage();
+        target.setRemoteMessageRepositoryId(id);
+        target.setFilters((Integer) source.get("filters"));
+
+        target.setId((String) source.get("id"));
+        target.setBody((Serializable) source.get("body"));
+        target.setEventName((String) source.get("eventName"));
+        target.setListenerName((String) source.get("listenerName"));
+
+        target.setTenantIdList((Collection<? extends Serializable>) source.get("tenantIdList"));
+        target.setUserIdList((Collection<? extends Serializable>) source.get("userIdList"));
+        target.setAccessTokenList((Collection<String>) source.get("accessTokenList"));
+        target.setChannelList((Collection<String>) source.get("channelList"));
+        return target;
     }
 
     public URL getRemoteUrl() {
@@ -160,7 +175,7 @@ public class RemoteMessageRepository implements MessageRepository {
 
     protected void checkClose() {
         if (closeFlag) {
-            SpringUtil.sneakyThrows(new ClosedChannelException());
+            LambdaUtil.sneakyThrows(new ClosedChannelException());
         }
     }
 

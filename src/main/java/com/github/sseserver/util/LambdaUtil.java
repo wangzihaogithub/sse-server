@@ -10,6 +10,10 @@ import java.util.function.Supplier;
 
 public class LambdaUtil {
 
+    public static <E extends Throwable> void sneakyThrows(Throwable t) throws E {
+        throw (E) t;
+    }
+
     public static <T> Function<T, T> noop() {
         return o -> o;
     }

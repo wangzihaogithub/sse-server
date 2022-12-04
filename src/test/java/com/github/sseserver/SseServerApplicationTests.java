@@ -9,6 +9,7 @@ import com.github.sseserver.qos.QosCompletableFuture;
 import com.github.sseserver.remote.ClusterConnectionService;
 import com.github.sseserver.remote.ClusterMessageRepository;
 import com.github.sseserver.remote.ServiceDiscoveryService;
+import com.github.sseserver.util.WebUtil;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -33,8 +34,11 @@ public class SseServerApplicationTests {
                     try {
                         Thread.sleep(1000);
                         LocalConnectionService service = context.getBean(LocalConnectionService.class);
+
+                        boolean enableCluster = service.isEnableCluster();
+
                         ClusterConnectionService cluster = service.getCluster();
-                        SendService<QosCompletableFuture<Object>> leastOnce = service.qos();
+                        SendService<QosCompletableFuture<Object>> qos = service.qos();
                         ServiceDiscoveryService discovery = service.getDiscovery();
                         MessageRepository localMessageRepository = service.getLocalMessageRepository();
                         ClusterMessageRepository clusterMessageRepository = service.getClusterMessageRepository();
@@ -42,6 +46,9 @@ public class SseServerApplicationTests {
                         List<Object> users = cluster.getUsers();
                         System.out.println("users = " + users);
 
+                        if(WebUtil.port == 80){
+                            qos.sendAll("aa",users);
+                        }
                         Thread.sleep(50);
                     } catch (Exception e) {
                         e.printStackTrace();

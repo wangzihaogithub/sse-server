@@ -10,7 +10,7 @@ public class RemoteResponseMessage implements Message {
     private String remoteMessageRepositoryId;
 
     private String eventName;
-    private Serializable body;
+    private Object body;
     private int filters;
 
     private String listenerName;
@@ -80,11 +80,11 @@ public class RemoteResponseMessage implements Message {
     }
 
     @Override
-    public Serializable getBody() {
+    public Object getBody() {
         return body;
     }
 
-    public void setBody(Serializable body) {
+    public void setBody(Object body) {
         this.body = body;
     }
 

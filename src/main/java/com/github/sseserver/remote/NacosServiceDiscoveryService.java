@@ -35,6 +35,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     private final String account;
     private final String serviceName;
     private final String groupName;
+    private final String applicationName;
     private final String clusterName;
     private volatile ReferenceCounted<List<RemoteConnectionService>> connectionServiceListRef;
     private volatile ReferenceCounted<List<RemoteMessageRepository>> messageRepositoryListRef;
@@ -43,11 +44,13 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     private EventListener onEvent;
 
     public NacosServiceDiscoveryService(String groupName,
+                                        String applicationName,
                                         String serviceName,
                                         String clusterName,
                                         Properties nacosProperties) {
         this.groupName = groupName;
-        this.serviceName = serviceName;
+        this.applicationName = applicationName;
+        this.serviceName = serviceName == null || serviceName.isEmpty() ? applicationName : serviceName;
         this.clusterName = clusterName;
         this.account = SpringUtil.filterNonAscii((idIncr++) + "-" + groupName + "-" + METADATA_VALUE_DEVICE_ID);
 

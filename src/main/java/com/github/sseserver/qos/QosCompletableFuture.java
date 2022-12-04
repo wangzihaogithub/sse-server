@@ -2,19 +2,21 @@ package com.github.sseserver.qos;
 
 import com.github.sseserver.util.CompletableFuture;
 
+import java.util.Objects;
+
 public class QosCompletableFuture<T> extends CompletableFuture<T> {
     /**
      * 消息ID
      * {@link Message#newId()}
      */
-    private String messageId;
+    private final String messageId;
+
+    public QosCompletableFuture(String messageId) {
+        this.messageId = Objects.requireNonNull(messageId);
+    }
 
     public String getMessageId() {
         return messageId;
-    }
-
-    public void setMessageId(String messageId) {
-        this.messageId = messageId;
     }
 
 }

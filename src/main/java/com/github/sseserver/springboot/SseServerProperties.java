@@ -53,7 +53,7 @@ public class SseServerProperties {
         public static class Nacos {
             private String serverAddr;
             private String namespace;
-            private String serviceName = "sse-server";
+            private String serviceName;
             private String clusterName = "DEFAULT";
 
             private Properties properties = new Properties();
@@ -62,12 +62,6 @@ public class SseServerProperties {
                 Properties properties = new Properties(this.properties);
                 if (serverAddr != null && serverAddr.length() > 0) {
                     properties.put("serverAddr", serverAddr);
-                }
-                if (clusterName != null && clusterName.length() > 0) {
-                    properties.put("clusterName", clusterName);
-                }
-                if (serviceName != null && serviceName.length() > 0) {
-                    properties.put("serviceName", serviceName);
                 }
                 if (namespace != null && namespace.length() > 0) {
                     properties.put("namespace", namespace);

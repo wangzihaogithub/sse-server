@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Import;
  */
 @AutoConfigureOrder(Integer.MAX_VALUE - 9)
 @EnableConfigurationProperties(SseServerProperties.class)
-@Import(value = {SseServerBeanDefinitionRegistrar.class, SseServerCommandLineRunner.class})
+@Import(value = {SseServerBeanDefinitionRegistrar.class})
 @Configuration(proxyBeanMethods = false)
 public class SseServerAutoConfiguration {
 

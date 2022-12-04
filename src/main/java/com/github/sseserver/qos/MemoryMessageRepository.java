@@ -2,15 +2,16 @@ package com.github.sseserver.qos;
 
 import java.io.Serializable;
 import java.util.*;
+import java.util.function.Consumer;
 
 public class MemoryMessageRepository implements MessageRepository {
     protected final Map<String, Message> messageMap = Collections.synchronizedMap(new LinkedHashMap<>(6));
+    protected final List<Consumer<Message>> deleteListenerList = new LinkedList<>();
 
     @Override
     public String insert(Message message) {
-        String id = newId();
+        String id = message.getId();
         messageMap.put(id, message);
-        message.setId(id);
         return id;
     }
 
@@ -29,17 +30,28 @@ public class MemoryMessageRepository implements MessageRepository {
     }
 
     @Override
-    public boolean delete(String id) {
+    public Message delete(String id) {
         if (id != null) {
-            return messageMap.remove(id) != null;
+            Message remove = messageMap.remove(id);
+            if(remove != null) {
+                for (Consumer<Message> messageConsumer : deleteListenerList) {
+                    messageConsumer.accept(remove);
+                }
+            }
+            return remove ;
         } else {
-            return false;
+            return null;
         }
     }
 
     @Override
     public void close() {
         messageMap.clear();
+    }
+
+    @Override
+    public void addDeleteListener(Consumer<Message> listener) {
+        deleteListenerList.add(listener);
     }
 
     protected boolean match(Query query, Message message) {

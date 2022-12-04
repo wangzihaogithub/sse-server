@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -51,8 +52,13 @@ public class ClusterMessageRepository implements MessageRepository {
     }
 
     @Override
-    public boolean delete(String id) {
+    public Message delete(String id) {
         return deleteAsync(id, null).block();
+    }
+
+    @Override
+    public void addDeleteListener(Consumer<Message> listener) {
+        getLocalRepository().addDeleteListener(listener);
     }
 
     public ClusterCompletableFuture<List<Message>, ClusterMessageRepository> selectAsync(Query query) {
@@ -64,20 +70,20 @@ public class ClusterMessageRepository implements MessageRepository {
                 ArrayList::new);
     }
 
-    public ClusterCompletableFuture<Boolean, ClusterMessageRepository> deleteAsync(String id, String remoteMessageRepositoryId) {
+    public ClusterCompletableFuture<Message, ClusterMessageRepository> deleteAsync(String id, String remoteMessageRepositoryId) {
         return mapReduce(e -> {
                     if (remoteMessageRepositoryId == null || Objects.equals(e.getId(), remoteMessageRepositoryId)) {
                         return e.deleteAsync(id);
                     } else {
-                        RemoteCompletableFuture<Boolean, RemoteMessageRepository> future = new RemoteCompletableFuture<>();
+                        RemoteCompletableFuture<Message, RemoteMessageRepository> future = new RemoteCompletableFuture<>();
                         future.setClient(e);
-                        future.complete(false);
+                        future.complete(null);
                         return future;
                     }
                 },
-                e -> remoteMessageRepositoryId != null && e.delete(id),
-                Boolean::logicalOr,
-                LambdaUtil.defaultFalse());
+                e -> remoteMessageRepositoryId != null ? e.delete(id) : null,
+                LambdaUtil.filterNull(),
+                LambdaUtil.defaultNull());
     }
 
     protected <T> ClusterCompletableFuture<T, ClusterMessageRepository> mapReduce(

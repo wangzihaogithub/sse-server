@@ -73,7 +73,7 @@ public class LocalController implements Closeable {
     }
 
     protected HttpContext configSendService(HttpServer httpServer) {
-        return httpServer.createContext("/SendServiceHttpHandler/",
+        return httpServer.createContext("/SendService/",
                 new SendServiceHttpHandler(localConnectionServiceSupplier));
     }
 
@@ -165,6 +165,19 @@ public class LocalController implements Closeable {
         public void handle0(HttpExchange request) throws IOException {
             String rpcMethodName = getRpcMethodName();
             SendService<Integer> service = supplier.get();
+
+            Object scopeOnWriteable = body("scopeOnWriteable");
+            if (Boolean.TRUE.equals(scopeOnWriteable)) {
+                service.scopeOnWriteable(() -> {
+                    handleCase(request, rpcMethodName, service);
+                    return null;
+                });
+            } else {
+                handleCase(request, rpcMethodName, service);
+            }
+        }
+
+        public void handleCase(HttpExchange request, String rpcMethodName, SendService<Integer> service) throws IOException {
             switch (rpcMethodName) {
                 case "sendAll": {
                     writeResponse(request, service.sendAll(
@@ -434,17 +447,19 @@ public class LocalController implements Closeable {
                 case "insert": {
                     writeResponse(request, service.insert(
                             repositoryMessage
-                    ));
+                    ), false);
                     break;
                 }
                 case "select": {
                     writeResponse(request, service.select(
                             new RequestQuery()
-                    ));
+                    ), false);
                     break;
                 }
                 case "delete": {
-                    writeResponse(request, service.delete(body("id")));
+                    writeResponse(request, service.delete(
+                            body("id")
+                    ), false);
                     break;
                 }
                 default: {
@@ -482,7 +497,7 @@ public class LocalController implements Closeable {
             }
 
             @Override
-            public Serializable getBody() {
+            public Object getBody() {
                 return body("body");
             }
 
@@ -640,6 +655,10 @@ public class LocalController implements Closeable {
         }
 
         protected void writeResponse(HttpExchange request, Object data) throws IOException {
+            writeResponse(request, data, true);
+        }
+
+        protected void writeResponse(HttpExchange request, Object data, boolean autoType) throws IOException {
             request.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
             if (isKeepAlive(request)) {
                 request.getResponseHeaders().set("Connection", "keep-alive");
@@ -649,7 +668,9 @@ public class LocalController implements Closeable {
 
             Response body = new Response();
             body.setData(data);
-            body.autoCastClassName(true);
+            if (autoType) {
+                body.autoCastClassName(true);
+            }
 
             request.sendResponseHeaders(200, 0L);
             OutputStream out = request.getResponseBody();

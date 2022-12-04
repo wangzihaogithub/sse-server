@@ -45,7 +45,7 @@ public class CompletableFuture<T> extends java.util.concurrent.CompletableFuture
         try {
             return super.get();
         } catch (InterruptedException | ExecutionException e) {
-            SpringUtil.sneakyThrows(e);
+            LambdaUtil.sneakyThrows(e);
             return null;
         }
     }

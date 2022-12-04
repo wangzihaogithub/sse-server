@@ -8,12 +8,13 @@ import java.util.List;
 
 public interface ServiceDiscoveryService {
 
-    static NacosServiceDiscoveryService newInstance(String groupName,
+    static NacosServiceDiscoveryService newInstance(String groupName, String applicationName,
                                                     SseServerProperties.Remote remote) {
         SseServerProperties.Remote.Nacos nacos = remote.getNacos();
         if (nacos != null) {
             return new NacosServiceDiscoveryService(
                     groupName,
+                    applicationName,
                     nacos.getServiceName(),
                     nacos.getClusterName(),
                     nacos.buildProperties());

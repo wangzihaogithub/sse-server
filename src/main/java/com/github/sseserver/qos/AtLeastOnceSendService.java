@@ -4,14 +4,20 @@ import com.github.sseserver.SendService;
 import com.github.sseserver.local.LocalConnectionService;
 import com.github.sseserver.local.SseChangeEvent;
 import com.github.sseserver.local.SseEmitter;
+import com.github.sseserver.remote.ClusterCompletableFuture;
+import com.github.sseserver.remote.ClusterConnectionService;
 import com.github.sseserver.remote.ClusterMessageRepository;
 import com.github.sseserver.remote.RemoteResponseMessage;
+import com.github.sseserver.util.LambdaUtil;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * 推送
@@ -20,15 +26,21 @@ import java.util.function.Consumer;
  * @param <ACCESS_USER>
  * @author wangzihaogithub 2022-11-12
  */
-public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompletableFuture<List<SseEmitter<ACCESS_USER>>>> {
+public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompletableFuture<Integer>> {
     protected final LocalConnectionService localConnectionService;
     protected final MessageRepository messageRepository;
-    protected final Map<String, QosCompletableFuture<List<SseEmitter<ACCESS_USER>>>> futureMap = new ConcurrentHashMap<>(32);
+    protected final Map<String, QosCompletableFuture<Integer>> futureMap = new ConcurrentHashMap<>(32);
     protected final Set<String> sendingSet = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
     public AtLeastOnceSendService(LocalConnectionService localConnectionService, MessageRepository messageRepository) {
         this.localConnectionService = localConnectionService;
         this.messageRepository = messageRepository;
+        this.messageRepository.addDeleteListener(message -> {
+            QosCompletableFuture<Integer> future = futureMap.remove(message.getId());
+            if (future != null) {
+                complete(future, 1);
+            }
+        });
         localConnectionService.<ACCESS_USER>addConnectListener(this::resend);
         localConnectionService.addListeningChangeWatch((Consumer<SseChangeEvent<ACCESS_USER, Set<String>>>) event -> {
             if (SseEmitter.EVENT_ADD_LISTENER.equals(event.getEventName())) {
@@ -37,285 +49,176 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
         });
     }
 
-    @Override
-    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendAll(String eventName, Serializable body) {
-        List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
-        for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionAll()) {
-            if (connection.isActive() && connection.isWriteable()) {
-                try {
-                    connection.send(eventName, body);
-                    succeedList.add(connection);
-                } catch (IOException ignored) {
-                }
-            }
-        }
+    public QosCompletableFuture<Integer> qosSend(Function<SendService, ?> sendFunction, Supplier<AtLeastOnceMessage> messageSupplier) {
+        QosCompletableFuture<Integer> future = new QosCompletableFuture<>("qos" + Message.newId());
+        if (localConnectionService.isEnableCluster()) {
+            ClusterConnectionService cluster = localConnectionService.getCluster();
 
-        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
-        if (succeedList.isEmpty()) {
-            AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
-                    0);
-            enqueue(message, future);
+            ClusterCompletableFuture<Integer, ClusterConnectionService> clusterFuture = cluster.scopeOnWriteable(
+                    () -> (ClusterCompletableFuture<Integer, ClusterConnectionService>) sendFunction.apply(cluster));
+            clusterFuture.whenComplete((succeedCount, throwable) -> {
+                if (succeedCount != null && succeedCount > 0) {
+                    complete(future, succeedCount);
+                } else {
+                    AtLeastOnceMessage message = messageSupplier.get();
+                    enqueue(message, future);
+                }
+            });
         } else {
-            complete(future, succeedList);
+            Integer succeedCount = localConnectionService.scopeOnWriteable(
+                    () -> (Integer) sendFunction.apply(localConnectionService));
+            if (succeedCount != null && succeedCount > 0) {
+                complete(future, succeedCount);
+            } else {
+                AtLeastOnceMessage message = messageSupplier.get();
+                enqueue(message, future);
+            }
         }
         return future;
     }
 
     @Override
-    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendAllListening(String eventName, Serializable body) {
-        List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
-        for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionAll()) {
-            if (connection.isActive() && connection.isWriteable() && connection.existListener(eventName)) {
-                try {
-                    connection.send(eventName, body);
-                    succeedList.add(connection);
-                } catch (IOException ignored) {
-                }
-            }
+    public <T> T scopeOnWriteable(Callable<T> runnable) {
+        try {
+            return runnable.call();
+        } catch (Exception e) {
+            LambdaUtil.sneakyThrows(e);
+            return null;
         }
-
-        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
-        if (succeedList.isEmpty()) {
-            AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
-                    Message.FILTER_LISTENER_NAME);
-            message.setListenerName(eventName);
-            enqueue(message, future);
-        } else {
-            complete(future, succeedList);
-        }
-        return future;
     }
 
     @Override
-    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByChannel(Collection<String> channels, String eventName, Serializable body) {
-        List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
-        for (String channel : channels) {
-            for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByChannel(channel)) {
-                if (connection.isActive() && connection.isWriteable()) {
-                    try {
-                        connection.send(eventName, body);
-                        succeedList.add(connection);
-                    } catch (IOException ignored) {
-                    }
-                }
-            }
-        }
-
-        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
-        if (succeedList.isEmpty()) {
-            AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
-                    Message.FILTER_CHANNEL);
-            message.setChannelList(channels);
-            enqueue(message, future);
-        } else {
-            complete(future, succeedList);
-        }
-        return future;
+    public QosCompletableFuture<Integer> sendAll(String eventName, Object body) {
+        return qosSend(
+                e -> e.sendAll(eventName, body),
+                () -> {
+                    AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
+                            0);
+                    return message;
+                });
     }
 
     @Override
-    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByChannelListening(Collection<String> channels, String eventName, Serializable body) {
-        List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
-        for (String channel : channels) {
-            for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByChannel(channel)) {
-                if (connection.isActive() && connection.isWriteable() && connection.existListener(eventName)) {
-                    try {
-                        connection.send(eventName, body);
-                        succeedList.add(connection);
-                    } catch (IOException ignored) {
-                    }
-                }
-            }
-        }
-
-        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
-        if (succeedList.isEmpty()) {
-            AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
-                    Message.FILTER_CHANNEL | Message.FILTER_LISTENER_NAME);
-            message.setChannelList(channels);
-            enqueue(message, future);
-        } else {
-            complete(future, succeedList);
-        }
-        return future;
+    public QosCompletableFuture<Integer> sendAllListening(String eventName, Object body) {
+        return qosSend(
+                e -> e.sendAllListening(eventName, body),
+                () -> {
+                    AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
+                            Message.FILTER_LISTENER_NAME);
+                    message.setListenerName(eventName);
+                    return message;
+                });
     }
 
     @Override
-    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByAccessToken(Collection<String> accessTokens, String eventName, Serializable body) {
-        List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
-        for (String accessToken : accessTokens) {
-            for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByAccessToken(accessToken)) {
-                if (connection.isActive() && connection.isWriteable()) {
-                    try {
-                        connection.send(eventName, body);
-                        succeedList.add(connection);
-                    } catch (IOException ignored) {
-                    }
-                }
-            }
-        }
-
-        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
-        if (succeedList.isEmpty()) {
-            AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
-                    Message.FILTER_ACCESS_TOKEN);
-            message.setAccessTokenList(accessTokens);
-            enqueue(message, future);
-        } else {
-            complete(future, succeedList);
-        }
-        return future;
+    public QosCompletableFuture<Integer> sendByChannel(Collection<String> channels, String eventName, Object body) {
+        return qosSend(
+                e -> e.sendByChannel(channels, eventName, body),
+                () -> {
+                    AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
+                            Message.FILTER_CHANNEL);
+                    message.setChannelList(channels);
+                    message.setListenerName(eventName);
+                    return message;
+                });
     }
 
     @Override
-    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Serializable body) {
-        List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
-        for (String accessToken : accessTokens) {
-            for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByAccessToken(accessToken)) {
-                if (connection.isActive() && connection.isWriteable() && connection.existListener(eventName)) {
-                    try {
-                        connection.send(eventName, body);
-                        succeedList.add(connection);
-                    } catch (IOException ignored) {
-                    }
-                }
-            }
-        }
-
-        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
-        if (succeedList.isEmpty()) {
-            AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
-                    Message.FILTER_ACCESS_TOKEN | Message.FILTER_LISTENER_NAME);
-            message.setAccessTokenList(accessTokens);
-            message.setListenerName(eventName);
-            enqueue(message, future);
-        } else {
-            complete(future, succeedList);
-        }
-        return future;
+    public QosCompletableFuture<Integer> sendByChannelListening(Collection<String> channels, String eventName, Object body) {
+        return qosSend(
+                e -> e.sendByChannelListening(channels, eventName, body),
+                () -> {
+                    AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
+                            Message.FILTER_CHANNEL | Message.FILTER_LISTENER_NAME);
+                    message.setChannelList(channels);
+                    return message;
+                });
     }
 
     @Override
-    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByUserId(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
-        List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
-        for (Serializable userId : userIds) {
-            for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByUserId(userId)) {
-                if (connection.isActive() && connection.isWriteable()) {
-                    try {
-                        connection.send(eventName, body);
-                        succeedList.add(connection);
-                    } catch (IOException ignored) {
-                    }
-                }
-            }
-        }
-
-        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
-        if (succeedList.isEmpty()) {
-            AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
-                    Message.FILTER_USER_ID);
-            message.setUserIdList(userIds);
-            enqueue(message, future);
-        } else {
-            complete(future, succeedList);
-        }
-        return future;
+    public QosCompletableFuture<Integer> sendByAccessToken(Collection<String> accessTokens, String eventName, Object body) {
+        return qosSend(
+                e -> e.sendByAccessToken(accessTokens, eventName, body),
+                () -> {
+                    AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
+                            Message.FILTER_ACCESS_TOKEN);
+                    message.setAccessTokenList(accessTokens);
+                    return message;
+                });
     }
 
     @Override
-    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
-        List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(2);
-        for (Serializable userId : userIds) {
-            for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByUserId(userId)) {
-                if (connection.isActive() && connection.isWriteable() && connection.existListener(eventName)) {
-                    try {
-                        connection.send(eventName, body);
-                        succeedList.add(connection);
-                    } catch (IOException ignored) {
-                    }
-                }
-            }
-        }
-
-        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
-        if (succeedList.isEmpty()) {
-            AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
-                    Message.FILTER_USER_ID | Message.FILTER_LISTENER_NAME);
-            message.setUserIdList(userIds);
-            message.setListenerName(eventName);
-            enqueue(message, future);
-        } else {
-            complete(future, succeedList);
-        }
-        return future;
+    public QosCompletableFuture<Integer> sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Object body) {
+        return qosSend(
+                e -> e.sendByAccessTokenListening(accessTokens, eventName, body),
+                () -> {
+                    AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
+                            Message.FILTER_ACCESS_TOKEN | Message.FILTER_LISTENER_NAME);
+                    message.setAccessTokenList(accessTokens);
+                    message.setListenerName(eventName);
+                    return message;
+                });
     }
 
     @Override
-    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
-        List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(10);
-        for (Serializable tenantId : tenantIds) {
-            for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByTenantId(tenantId)) {
-                if (connection.isActive() && connection.isWriteable()) {
-                    try {
-                        connection.send(eventName, body);
-                        succeedList.add(connection);
-                    } catch (IOException ignored) {
-                    }
-                }
-            }
-        }
-
-        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
-        if (succeedList.isEmpty()) {
-            AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
-                    Message.FILTER_TENANT_ID);
-            message.setTenantIdList(tenantIds);
-            enqueue(message, future);
-        } else {
-            complete(future, succeedList);
-        }
-        return future;
+    public QosCompletableFuture<Integer> sendByUserId(Collection<? extends Serializable> userIds, String eventName, Object body) {
+        return qosSend(
+                e -> e.sendByUserId(userIds, eventName, body),
+                () -> {
+                    AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
+                            Message.FILTER_USER_ID);
+                    message.setUserIdList(userIds);
+                    return message;
+                });
     }
 
     @Override
-    public QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
-        List<SseEmitter<ACCESS_USER>> succeedList = new ArrayList<>(10);
-        for (Serializable tenantId : tenantIds) {
-            for (SseEmitter<ACCESS_USER> connection : localConnectionService.<ACCESS_USER>getConnectionByTenantId(tenantId)) {
-                if (connection.isActive() && connection.isWriteable() && connection.existListener(eventName)) {
-                    try {
-                        connection.send(eventName, body);
-                        succeedList.add(connection);
-                    } catch (IOException ignored) {
-                    }
-                }
-            }
-        }
-
-        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = new QosCompletableFuture<>();
-        if (succeedList.isEmpty()) {
-            AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
-                    Message.FILTER_TENANT_ID | Message.FILTER_LISTENER_NAME);
-            message.setTenantIdList(tenantIds);
-            message.setListenerName(eventName);
-            enqueue(message, future);
-        } else {
-            complete(future, succeedList);
-        }
-        return future;
+    public QosCompletableFuture<Integer> sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Object body) {
+        return qosSend(
+                e -> e.sendByUserIdListening(userIds, eventName, body),
+                () -> {
+                    AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
+                            Message.FILTER_USER_ID | Message.FILTER_LISTENER_NAME);
+                    message.setUserIdList(userIds);
+                    message.setListenerName(eventName);
+                    return message;
+                });
     }
 
-    protected void complete(QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future, List<SseEmitter<ACCESS_USER>> succeedList) {
-        if (future.getMessageId() == null) {
-            future.setMessageId(Message.newId());
-        }
-        future.complete(succeedList);
+    @Override
+    public QosCompletableFuture<Integer> sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Object body) {
+        return qosSend(
+                e -> e.sendByTenantId(tenantIds, eventName, body),
+                () -> {
+                    AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
+                            Message.FILTER_TENANT_ID);
+                    message.setTenantIdList(tenantIds);
+                    return message;
+                });
     }
 
-    protected void enqueue(Message message, QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future) {
-        String id = messageRepository.insert(message);
-        future.setMessageId(id);
-        futureMap.put(id, future);
+    @Override
+    public QosCompletableFuture<Integer> sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Object body) {
+        return qosSend(
+                e -> e.sendByTenantIdListening(tenantIds, eventName, body),
+                () -> {
+                    AtLeastOnceMessage message = new AtLeastOnceMessage(eventName, body,
+                            Message.FILTER_TENANT_ID | Message.FILTER_LISTENER_NAME);
+                    message.setTenantIdList(tenantIds);
+                    message.setListenerName(eventName);
+                    return message;
+                });
+    }
+
+    protected void complete(QosCompletableFuture<Integer> future, Integer succeedCount) {
+        future.complete(succeedCount);
+    }
+
+    protected void enqueue(Message message, QosCompletableFuture<Integer> future) {
+        String messageId = future.getMessageId();
+        message.setId(messageId);
+        messageRepository.insert(message);
+        futureMap.put(messageId, future);
     }
 
     protected void markSending(List<Message> messageList) {
@@ -343,7 +246,6 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
         }
         markSending(messageList);
 
-        List<SseEmitter<ACCESS_USER>> succeedList = Collections.singletonList(connection);
         IOException error = null;
         for (Message message : messageList) {
             if (message == null) {
@@ -370,11 +272,9 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
                     } else {
                         repositoryId = null;
                     }
-                    repository.deleteAsync(id, repositoryId)
-                            .thenAccept(e -> removeAndCompleteFuture(id, succeedList));
+                    repository.deleteAsync(id, repositoryId);
                 } else {
                     messageRepository.delete(id);
-                    removeAndCompleteFuture(id, succeedList);
                 }
             } catch (IOException e) {
                 error = e;
@@ -384,10 +284,4 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
         }
     }
 
-    protected void removeAndCompleteFuture(String messageId, List<SseEmitter<ACCESS_USER>> succeedList) {
-        QosCompletableFuture<List<SseEmitter<ACCESS_USER>>> future = futureMap.remove(messageId);
-        if (future != null) {
-            complete(future, succeedList);
-        }
-    }
 }

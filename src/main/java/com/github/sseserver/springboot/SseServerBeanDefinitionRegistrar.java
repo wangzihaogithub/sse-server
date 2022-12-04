@@ -31,9 +31,11 @@ import java.util.function.Supplier;
 
 /**
  * Registrar if not exist
- * 1.GithubSseEmitterReturnValueHandler.class
- * 2.LocalConnectionService.class
- * 3.ClusterConnectionService.class
+ * 1.GithubSseEmitterReturnValueHandler.class (if not exist)
+ * 2.LocalConnectionService.class  (if not exist)
+ * 3.MessageRepository (for support Qos used)
+ * 4.ClusterConnectionService.class  (if enabled)
+ * 5.Qos (qos atLeastOnce send)
  *
  * @author wangzihaogithub 2022-11-17
  */
@@ -197,7 +199,8 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
             BeanDefinitionBuilder builder = BeanDefinitionBuilder.rootBeanDefinition(ServiceDiscoveryService.class,
                     () -> {
                         SseServerProperties properties = beanFactory.getBean(SseServerProperties.class);
-                        return ServiceDiscoveryService.newInstance(localConnectionServiceBeanName, properties.getRemote());
+                        String applicationName = environment.getProperty("spring.application.name", String.class, "");
+                        return ServiceDiscoveryService.newInstance(localConnectionServiceBeanName, applicationName, properties.getRemote());
                     });
 
             String beanName = getServiceDiscoveryServiceBeanName(localConnectionServiceBeanName);

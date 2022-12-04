@@ -3,6 +3,7 @@ package com.github.sseserver.qos;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 
 public interface MessageRepository extends AutoCloseable {
     /**
@@ -27,11 +28,13 @@ public interface MessageRepository extends AutoCloseable {
      * @param id messageID
      * @return true=删除成功
      */
-    boolean delete(String id);
+    Message delete(String id);
 
     default void close() {
 
     }
+
+    void addDeleteListener(Consumer<Message> listener);
 
     interface Query {
         Serializable getTenantId();

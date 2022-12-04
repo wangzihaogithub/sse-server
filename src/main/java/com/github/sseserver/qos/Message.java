@@ -12,7 +12,7 @@ public interface Message extends Serializable {
     int FILTER_CHANNEL = (1 << 5);
 
     static String newId() {
-        return UUID.randomUUID().toString();
+        return UUID.randomUUID().toString().replace("-", "");
     }
 
     String getListenerName();
@@ -25,7 +25,7 @@ public interface Message extends Serializable {
 
     Collection<String> getChannelList();
 
-    Serializable getBody();
+    Object getBody();
 
     String getEventName();
 

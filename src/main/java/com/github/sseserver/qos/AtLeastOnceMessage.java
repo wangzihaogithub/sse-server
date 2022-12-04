@@ -7,7 +7,7 @@ public class AtLeastOnceMessage implements Message {
     private String id;
 
     private String eventName;
-    private Serializable body;
+    private Object body;
     private int filters;
 
     private String listenerName;
@@ -19,7 +19,7 @@ public class AtLeastOnceMessage implements Message {
     public AtLeastOnceMessage() {
     }
 
-    public AtLeastOnceMessage(String eventName, Serializable body, int filters) {
+    public AtLeastOnceMessage(String eventName, Object body, int filters) {
         this.eventName = eventName;
         this.body = body;
         this.filters = filters;
@@ -75,11 +75,11 @@ public class AtLeastOnceMessage implements Message {
     }
 
     @Override
-    public Serializable getBody() {
+    public Object getBody() {
         return body;
     }
 
-    public void setBody(Serializable body) {
+    public void setBody(Object body) {
         this.body = body;
     }
 

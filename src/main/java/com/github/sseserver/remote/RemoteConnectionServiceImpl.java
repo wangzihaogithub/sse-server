@@ -1,6 +1,7 @@
 package com.github.sseserver.remote;
 
 import com.github.sseserver.local.LocalController.Response;
+import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.SpringUtil;
 import com.github.sseserver.util.TypeUtil;
 import org.springframework.http.HttpEntity;
@@ -12,6 +13,7 @@ import java.io.Serializable;
 import java.net.URL;
 import java.nio.channels.ClosedChannelException;
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.function.Function;
 
 public class RemoteConnectionServiceImpl implements RemoteConnectionService {
@@ -24,6 +26,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     public static int threadsIfBlockRequest = Integer.getInteger("RemoteConnectionServiceImpl.threadsIfBlockRequest",
             Math.max(16, Runtime.getRuntime().availableProcessors() * 2));
 
+    private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
     private final AsyncRestTemplate restTemplate;
     private final URL url;
     private final String urlConnectionQueryService;
@@ -201,7 +204,20 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendAll(String eventName, Serializable body) {
+    public <T> T scopeOnWriteable(Callable<T> runnable) {
+        scopeOnWriteableThreadLocal.set(true);
+        try {
+            return runnable.call();
+        } catch (Exception e) {
+            LambdaUtil.sneakyThrows(e);
+            return null;
+        } finally {
+            scopeOnWriteableThreadLocal.remove();
+        }
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendAll(String eventName, Object body) {
         Map<String, Object> request = new HashMap<>(2);
         request.put("eventName", eventName);
         request.put("body", body);
@@ -209,7 +225,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendAllListening(String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendAllListening(String eventName, Object body) {
         Map<String, Object> request = new HashMap<>(2);
         request.put("eventName", eventName);
         request.put("body", body);
@@ -217,7 +233,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByChannel(Collection<String> channels, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByChannel(Collection<String> channels, String eventName, Object body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("channels", channels);
         request.put("eventName", eventName);
@@ -226,7 +242,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByChannelListening(Collection<String> channels, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByChannelListening(Collection<String> channels, String eventName, Object body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("channels", channels);
         request.put("eventName", eventName);
@@ -235,7 +251,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByAccessToken(Collection<String> accessTokens, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByAccessToken(Collection<String> accessTokens, String eventName, Object body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("accessTokens", accessTokens);
         request.put("eventName", eventName);
@@ -244,7 +260,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Object body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("accessTokens", accessTokens);
         request.put("eventName", eventName);
@@ -253,7 +269,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByUserId(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByUserId(Collection<? extends Serializable> userIds, String eventName, Object body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("userIds", userIds);
         request.put("eventName", eventName);
@@ -262,7 +278,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Object body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("userIds", userIds);
         request.put("eventName", eventName);
@@ -271,7 +287,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Object body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("tenantIds", tenantIds);
         request.put("eventName", eventName);
@@ -280,7 +296,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Object body) {
         Map<String, Object> request = new HashMap<>(3);
         request.put("tenantIds", tenantIds);
         request.put("eventName", eventName);
@@ -314,6 +330,10 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPostSendService(String uri, Function<ResponseEntity<Response>, T> extract, Map<String, Object> request) {
+        Boolean scopeOnWriteable = scopeOnWriteableThreadLocal.get();
+        if (scopeOnWriteable != null && scopeOnWriteable) {
+            request.put("scopeOnWriteable", true);
+        }
         return asyncPost(urlSendService + uri, extract, request);
     }
 
@@ -370,7 +390,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
 
     protected void checkClose() {
         if (closeFlag) {
-            SpringUtil.sneakyThrows(new ClosedChannelException());
+            LambdaUtil.sneakyThrows(new ClosedChannelException());
         }
     }
 

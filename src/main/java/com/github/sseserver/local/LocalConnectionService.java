@@ -45,6 +45,8 @@ public interface LocalConnectionService extends ConnectionQueryService, SendServ
 
     /* distributed 分布式接口 */
 
+    boolean isEnableCluster();
+
     ClusterConnectionService getCluster();
 
     ServiceDiscoveryService getDiscovery();

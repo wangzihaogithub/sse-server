@@ -76,15 +76,13 @@ public class SpringUtil {
         }
     }
 
-    public static <E extends Throwable> void sneakyThrows(Throwable t) throws E {
-        throw (E) t;
-    }
-
     public static String filterNonAscii(String str) {
         StringBuilder builder = new StringBuilder();
         for (int i = 0; i < str.length(); i++) {
             char c = str.charAt(i);
-            if (c == ':') {
+            if (c == '"') {
+                builder.append('\'');
+            } else if (c == ':') {
                 builder.append('-');
             } else if (c >= 32 && c <= 126) {
                 builder.append(c);

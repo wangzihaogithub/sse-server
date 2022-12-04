@@ -7,6 +7,7 @@ import com.github.sseserver.remote.ClusterConnectionService;
 import com.github.sseserver.remote.ClusterMessageRepository;
 import com.github.sseserver.remote.ServiceDiscoveryService;
 import com.github.sseserver.springboot.SseServerBeanDefinitionRegistrar;
+import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.TypeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,10 +19,7 @@ import org.springframework.beans.factory.BeanNameAware;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -69,6 +67,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     protected final Map<String, List<Predicate<SseEmitter>>> disconnectListenerMap = new ConcurrentHashMap<>();
     private BeanFactory beanFactory;
     private String beanName = getClass().getSimpleName();
+    private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
     private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
     private int reconnectTime = 5000;
 
@@ -99,6 +98,16 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     public MessageRepository getLocalMessageRepository() {
         String beanName = SseServerBeanDefinitionRegistrar.getLocalMessageRepositoryBeanName(this.beanName);
         return beanFactory.getBean(beanName, MessageRepository.class);
+    }
+
+    @Override
+    public boolean isEnableCluster() {
+        String beanName = SseServerBeanDefinitionRegistrar.getClusterConnectionServiceBeanName(this.beanName);
+        try {
+            return beanFactory.containsBean(beanName);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @Override
@@ -204,12 +213,14 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         }
         try {
             result.send(SseEmitter.event()
+                    .id(id.toString())
                     .reconnectTime(reconnectTime)
                     .name("connect-finish")
                     .data("{\"connectionId\":\"" + id + "\""
                             + ",\"serverTime\":" + System.currentTimeMillis()
                             + ",\"reconnectTime\":" + reconnectTime
                             + ",\"name\":\"" + beanName + "\""
+                            + ",\"enableCluster\":" + isEnableCluster()
                             + ",\"version\":\"" + SseEmitter.VERSION + "\""
                             + "}"));
             return result;
@@ -580,8 +591,25 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         }
     }
 
+    @Override
+    public <T> T scopeOnWriteable(Callable<T> runnable) {
+        scopeOnWriteableThreadLocal.set(true);
+        try {
+            return runnable.call();
+        } catch (Exception e) {
+            LambdaUtil.sneakyThrows(e);
+            return null;
+        } finally {
+            scopeOnWriteableThreadLocal.remove();
+        }
+    }
+
     public <ACCESS_USER> boolean send(SseEmitter<ACCESS_USER> emitter, String name, Object body) {
         if (emitter != null && emitter.isActive()) {
+            Boolean sendAtWriteable = scopeOnWriteableThreadLocal.get();
+            if (sendAtWriteable != null && sendAtWriteable && !emitter.isWriteable()) {
+                return false;
+            }
             try {
                 emitter.send(name, body);
                 return true;
@@ -611,7 +639,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendAll(String eventName, Serializable body) {
+    public Integer sendAll(String eventName, Object body) {
         int count = 0;
         for (SseEmitter value : connectionMap.values()) {
             if (send(value, eventName, body)) {
@@ -622,7 +650,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendAllListening(String eventName, Serializable body) {
+    public Integer sendAllListening(String eventName, Object body) {
         int count = 0;
         for (SseEmitter value : connectionMap.values()) {
             if (value.existListener(eventName) && send(value, eventName, body)) {
@@ -633,7 +661,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByChannel(Collection<String> channels, String eventName, Serializable body) {
+    public Integer sendByChannel(Collection<String> channels, String eventName, Object body) {
         int count = 0;
         for (String channel : channels) {
             for (SseEmitter value : getConnectionByChannel(channel)) {
@@ -646,7 +674,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByChannelListening(Collection<String> channels, String eventName, Serializable body) {
+    public Integer sendByChannelListening(Collection<String> channels, String eventName, Object body) {
         int count = 0;
         for (String channel : channels) {
             for (SseEmitter value : getConnectionByChannel(channel)) {
@@ -659,7 +687,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByAccessToken(Collection<String> accessTokens, String eventName, Serializable body) {
+    public Integer sendByAccessToken(Collection<String> accessTokens, String eventName, Object body) {
         int count = 0;
         for (String accessToken : accessTokens) {
             for (SseEmitter value : getConnectionByAccessToken(accessToken)) {
@@ -672,7 +700,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Serializable body) {
+    public Integer sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Object body) {
         int count = 0;
         for (String accessToken : accessTokens) {
             for (SseEmitter value : getConnectionByAccessToken(accessToken)) {
@@ -685,7 +713,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByUserId(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+    public Integer sendByUserId(Collection<? extends Serializable> userIds, String eventName, Object body) {
         int count = 0;
         for (Serializable userId : userIds) {
             for (SseEmitter value : getConnectionByUserId(userId)) {
@@ -698,7 +726,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+    public Integer sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Object body) {
         int count = 0;
         for (Serializable userId : userIds) {
             for (SseEmitter value : getConnectionByUserId(userId)) {
@@ -711,7 +739,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+    public Integer sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Object body) {
         int count = 0;
         for (Serializable tenantId : tenantIds) {
             for (SseEmitter value : getConnectionByTenantId(tenantId)) {
@@ -724,7 +752,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+    public Integer sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Object body) {
         int count = 0;
         for (Serializable tenantId : tenantIds) {
             for (SseEmitter value : getConnectionByTenantId(tenantId)) {
