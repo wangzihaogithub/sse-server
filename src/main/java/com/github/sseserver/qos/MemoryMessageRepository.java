@@ -33,12 +33,12 @@ public class MemoryMessageRepository implements MessageRepository {
     public Message delete(String id) {
         if (id != null) {
             Message remove = messageMap.remove(id);
-            if(remove != null) {
+            if (remove != null) {
                 for (Consumer<Message> messageConsumer : deleteListenerList) {
                     messageConsumer.accept(remove);
                 }
             }
-            return remove ;
+            return remove;
         } else {
             return null;
         }

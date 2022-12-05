@@ -5,21 +5,21 @@ import com.github.sseserver.util.ReferenceCounted;
 import com.sun.net.httpserver.HttpPrincipal;
 
 import java.util.List;
+import java.util.Objects;
 
 public interface ServiceDiscoveryService {
 
-    static NacosServiceDiscoveryService newInstance(String groupName, String applicationName,
-                                                    SseServerProperties.Remote remote) {
+    static ServiceDiscoveryService newInstance(String groupName,
+                                               SseServerProperties.Remote remote) {
         SseServerProperties.Remote.Nacos nacos = remote.getNacos();
-        if (nacos != null) {
+        if (Objects.toString(nacos.getServerAddr(), "").length() > 0) {
             return new NacosServiceDiscoveryService(
                     groupName,
-                    applicationName,
                     nacos.getServiceName(),
                     nacos.getClusterName(),
                     nacos.buildProperties());
         } else {
-            return null;
+            throw new IllegalArgumentException("ServiceDiscoveryService newInstance fail! remote discovery url is empty!");
         }
     }
 

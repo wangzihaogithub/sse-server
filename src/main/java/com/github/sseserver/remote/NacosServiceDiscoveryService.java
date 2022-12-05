@@ -35,8 +35,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     private final String account;
     private final String serviceName;
     private final String groupName;
-    private final String applicationName;
-    private final String clusterName;
+    private final List<String> clusterName;
     private volatile ReferenceCounted<List<RemoteConnectionService>> connectionServiceListRef;
     private volatile ReferenceCounted<List<RemoteMessageRepository>> messageRepositoryListRef;
     private List<Instance> instanceList;
@@ -44,14 +43,13 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     private EventListener onEvent;
 
     public NacosServiceDiscoveryService(String groupName,
-                                        String applicationName,
                                         String serviceName,
                                         String clusterName,
                                         Properties nacosProperties) {
         this.groupName = groupName;
-        this.applicationName = applicationName;
-        this.serviceName = serviceName == null || serviceName.isEmpty() ? applicationName : serviceName;
-        this.clusterName = clusterName;
+        this.serviceName = serviceName;
+        this.clusterName = clusterName == null || clusterName.isEmpty() ?
+                null : Arrays.asList(clusterName.split(","));
         this.account = SpringUtil.filterNonAscii((idIncr++) + "-" + groupName + "-" + METADATA_VALUE_DEVICE_ID);
 
         try {
@@ -73,10 +71,10 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
         boolean b = invokeNacosBefore();
         try {
             if (onEvent != null) {
-                namingService.unsubscribe(serviceName, groupName, Arrays.asList(clusterName), onEvent);
+                namingService.unsubscribe(serviceName, groupName, clusterName, onEvent);
             }
             onEvent = this::onEvent;
-            namingService.subscribe(serviceName, groupName, Arrays.asList(clusterName), onEvent);
+            namingService.subscribe(serviceName, groupName, clusterName, onEvent);
         } finally {
             invokeNacosAfter(b);
         }
@@ -121,8 +119,8 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     public synchronized NamingService createNamingService(Properties properties) throws NacosException {
         boolean b = invokeNacosBefore();
         try {
-            if (clusterName != null && clusterName.length() > 0) {
-                properties.put("clusterName", clusterName);
+            if (clusterName != null) {
+                properties.put("clusterName", String.join(",", clusterName));
             }
             return NamingFactory.createNamingService(properties);
         } finally {
@@ -155,7 +153,9 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
         instance.setIp(ip);
         instance.setPort(port);
         instance.setWeight(1.0D);
-        instance.setClusterName(clusterName);
+        if (clusterName != null) {
+            instance.setClusterName(String.join(",", clusterName));
+        }
         instance.setMetadata(metadata);
 
         boolean b = invokeNacosBefore();

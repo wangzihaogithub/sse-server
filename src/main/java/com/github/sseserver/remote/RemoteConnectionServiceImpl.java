@@ -384,7 +384,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
 
     @Override
     public void close() {
-        SpringUtil.close(this.restTemplate);
+        SpringUtil.close(restTemplate);
         this.closeFlag = true;
     }
 

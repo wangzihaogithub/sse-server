@@ -65,9 +65,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
      */
     protected final Map<String, List<Predicate<SseEmitter>>> connectListenerMap = new ConcurrentHashMap<>();
     protected final Map<String, List<Predicate<SseEmitter>>> disconnectListenerMap = new ConcurrentHashMap<>();
+    private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
     private BeanFactory beanFactory;
     private String beanName = getClass().getSimpleName();
-    private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
     private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
     private int reconnectTime = 5000;
 

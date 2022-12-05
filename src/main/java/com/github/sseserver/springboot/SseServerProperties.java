@@ -31,8 +31,8 @@ public class SseServerProperties {
     }
 
     public static class Remote {
+        private final Nacos nacos = new Nacos();
         private boolean enabled = false;
-        private Nacos nacos;
 
         public boolean isEnabled() {
             return enabled;
@@ -46,16 +46,11 @@ public class SseServerProperties {
             return nacos;
         }
 
-        public void setNacos(Nacos nacos) {
-            this.nacos = nacos;
-        }
-
         public static class Nacos {
-            private String serverAddr;
-            private String namespace;
-            private String serviceName;
-            private String clusterName = "DEFAULT";
-
+            private String serverAddr = "${nacos.discovery.server-addr:${nacos.config.server-addr:${spring.cloud.nacos.server-addr:${spring.cloud.nacos.discovery.server-addr:${spring.cloud.nacos.config.server-addr:}}}}}";
+            private String namespace = "${nacos.discovery.namespace:${nacos.config.namespace:${spring.cloud.nacos.namespace:${spring.cloud.nacos.discovery.namespace:${spring.cloud.nacos.config.namespace:}}}}}";
+            private String serviceName = "${spring.application.name:sse-server}";
+            private String clusterName = "${nacos.discovery.clusterName:${nacos.config.clusterName:${spring.cloud.nacos.clusterName:${spring.cloud.nacos.discovery.clusterName:${spring.cloud.nacos.config.clusterName:DEFAULT}}}}}";
             private Properties properties = new Properties();
 
             public Properties buildProperties() {
