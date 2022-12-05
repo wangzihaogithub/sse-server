@@ -19,6 +19,9 @@ import java.lang.reflect.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.TemporalAccessor;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -270,6 +273,10 @@ public class TypeUtil {
             if (date != null) {
                 return date;
             }
+        } else if (value instanceof LocalDateTime) {
+            return new Date(((LocalDateTime) value).atZone(ZoneOffset.of("+08:00")).toEpochSecond());
+        } else if (value instanceof LocalDate) {
+            return new Date(((LocalDate) value).atStartOfDay(ZoneOffset.of("+08:00")).toEpochSecond());
         }
         throw new IllegalArgumentException("can not cast to Date, value : " + value);
     }
@@ -460,6 +467,10 @@ public class TypeUtil {
             if (date != null) {
                 return new java.sql.Date(date.getTime());
             }
+        } else if (value instanceof LocalDateTime) {
+            return new java.sql.Date(((LocalDateTime) value).atZone(ZoneOffset.of("+08:00")).toEpochSecond());
+        } else if (value instanceof LocalDate) {
+            return new java.sql.Date(((LocalDate) value).atStartOfDay(ZoneOffset.of("+08:00")).toEpochSecond());
         }
         throw new IllegalArgumentException("can not cast to Date, value : " + value);
 
@@ -498,6 +509,10 @@ public class TypeUtil {
             if (date != null) {
                 return date;
             }
+        } else if (value instanceof LocalDateTime) {
+            return Timestamp.from(((LocalDateTime) value).atZone(ZoneOffset.of("+08:00")).toInstant());
+        } else if (value instanceof LocalDate) {
+            return Timestamp.from(((LocalDate) value).atStartOfDay(ZoneOffset.of("+08:00")).toInstant());
         }
         throw new IllegalArgumentException("can not cast to Timestamp, value : " + value);
     }
