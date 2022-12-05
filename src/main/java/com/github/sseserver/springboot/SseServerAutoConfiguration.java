@@ -51,9 +51,13 @@ public class SseServerAutoConfiguration {
         };
         for (String prop : props) {
             String placeholder = "${nacos.discovery." + prop + ":${nacos.config." + prop + ":${spring.cloud.nacos." + prop + ":${spring.cloud.nacos.discovery." + prop + ":${spring.cloud.nacos.config." + prop + ":}}}}}";
-            String placeholderValue = environment.resolvePlaceholders(placeholder);
-            if (placeholderValue.length() > 0 && !Objects.equals(placeholderValue, placeholder)) {
-                nacos.getProperties().put(prop, placeholderValue);
+            try {
+                String placeholderValue = environment.resolvePlaceholders(placeholder);
+                if (placeholderValue.length() > 0 && !Objects.equals(placeholderValue, placeholder)) {
+                    nacos.getProperties().put(prop, placeholderValue);
+                }
+            } catch (Exception ignored) {
+
             }
         }
     }
