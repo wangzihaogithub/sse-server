@@ -100,7 +100,11 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
             WebAsyncUtils.getAsyncManager(webRequest).startDeferredResultProcessing(deferredResult, mavContainer);
             handler = new HttpMessageConvertingHandler(outputMessage, deferredResult);
         } catch (Throwable ex) {
-            emitter.initializeWithError(ex);
+            try {
+                emitter.initializeWithError(ex);
+            } catch (LinkageError e) {
+                emitter.completeWithError(ex);
+            }
             throw ex;
         }
 
@@ -119,7 +123,6 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
     private class HttpMessageConvertingHandler implements ResponseBodyEmitter.Handler {
         private boolean complete = false;
         private final ServerHttpResponse outputMessage;
-
         private final DeferredResult deferredResult;
 
         public HttpMessageConvertingHandler(ServerHttpResponse outputMessage, DeferredResult deferredResult) {
