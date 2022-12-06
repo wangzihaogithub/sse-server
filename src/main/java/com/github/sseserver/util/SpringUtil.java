@@ -8,6 +8,8 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.client.AsyncRestTemplate;
 
 import java.nio.charset.Charset;
+import java.util.Base64;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class SpringUtil {
     public static final HttpHeaders EMPTY_HEADERS = new HttpHeaders();
@@ -39,13 +41,26 @@ public class SpringUtil {
                                                          int threadsIfAsyncRequest, int threadsIfBlockRequest,
                                                          String threadName,
                                                          String account, String password) {
-        String authorization = "Basic " + HttpHeaders.encodeBasicAuth(account, password, Charset.forName("ISO-8859-1"));
+        String authorization = "Basic " + encodeBasicAuth(account, password, Charset.forName("ISO-8859-1"));
+        AsyncClientHttpRequestFactory factory = newAsyncClientHttpRequestFactory(connectTimeout, readTimeout,
+                threadsIfAsyncRequest, threadsIfBlockRequest, threadName);
 
-        AsyncRestTemplate restTemplate;
+        CloseAsyncRestTemplate restTemplate = new CloseAsyncRestTemplate(factory);
+        restTemplate.getInterceptors().add((request, body, execution) -> {
+            request.getHeaders().set("Authorization", authorization);
+            return execution.executeAsync(request, body);
+        });
+        return restTemplate;
+    }
+
+    public static AsyncClientHttpRequestFactory newAsyncClientHttpRequestFactory(int connectTimeout, int readTimeout,
+                                                                                 int threadsIfAsyncRequest, int threadsIfBlockRequest,
+                                                                                 String threadName) {
+        AsyncClientHttpRequestFactory result;
         if (SUPPORT_NETTY4) {
-            restTemplate = new AsyncRestTemplate(NettyUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName));
+            result = NettyUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName);
         } else if (SUPPORT_OKHTTP3) {
-            restTemplate = new AsyncRestTemplate(OkhttpUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName));
+            result = OkhttpUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName);
         } else {
             ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
             executor.setDaemon(true);
@@ -54,26 +69,29 @@ public class SpringUtil {
             executor.setKeepAliveSeconds(60);
             executor.setMaxPoolSize(threadsIfBlockRequest);
             executor.setWaitForTasksToCompleteOnShutdown(true);
+
             ClientHttpRequestFactory factory = new ClientHttpRequestFactory(executor);
             factory.setConnectTimeout(connectTimeout);
             factory.setReadTimeout(readTimeout);
-            restTemplate = new AsyncRestTemplate(factory);
+
+            result = factory;
         }
-        restTemplate.getInterceptors().add((request, body, execution) -> {
-            request.getHeaders().set("Authorization", authorization);
-            return execution.executeAsync(request, body);
-        });
-        return restTemplate;
+        return result;
     }
 
     public static void close(AsyncRestTemplate restTemplate) {
-        AsyncClientHttpRequestFactory factory = restTemplate.getAsyncRequestFactory();
-        if (factory instanceof DisposableBean) {
+        if (restTemplate instanceof AutoCloseable) {
             try {
-                ((DisposableBean) factory).destroy();
+                ((AutoCloseable) restTemplate).close();
             } catch (Exception ignored) {
             }
         }
+    }
+
+    public static String encodeBasicAuth(String username, String password,Charset charset) {
+        String credentialsString = username + ":" + password;
+        byte[] encodedBytes = Base64.getEncoder().encode(credentialsString.getBytes(charset));
+        return new String(encodedBytes, charset);
     }
 
     public static String filterNonAscii(String str) {
@@ -89,6 +107,33 @@ public class SpringUtil {
             }
         }
         return builder.toString();
+    }
+
+    public static class CloseAsyncRestTemplate extends AsyncRestTemplate implements AutoCloseable {
+        private final AsyncClientHttpRequestFactory factory;
+        private final AtomicBoolean close = new AtomicBoolean(false);
+
+        public CloseAsyncRestTemplate(AsyncClientHttpRequestFactory factory) {
+            super(factory);
+            this.factory = factory;
+        }
+
+        @Override
+        public void close() {
+            if (this.close.compareAndSet(false, true)) {
+                if (factory instanceof DisposableBean) {
+                    try {
+                        ((DisposableBean) factory).destroy();
+                    } catch (Exception ignored) {
+                    }
+                } else if (factory instanceof AutoCloseable) {
+                    try {
+                        ((AutoCloseable) factory).close();
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
     }
 
     public static class ClientHttpRequestFactory extends SimpleClientHttpRequestFactory implements DisposableBean {
