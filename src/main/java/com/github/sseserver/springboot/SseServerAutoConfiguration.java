@@ -17,7 +17,7 @@ import java.util.Objects;
  */
 @AutoConfigureOrder(Integer.MAX_VALUE - 9)
 @Import(SseServerBeanDefinitionRegistrar.class)
-@Configuration(proxyBeanMethods = false)
+@Configuration
 public class SseServerAutoConfiguration {
 
     public static void bindNacos(SseServerProperties.Remote.Nacos nacos, Environment environment) throws URISyntaxException {
