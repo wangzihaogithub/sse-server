@@ -78,10 +78,6 @@ public class MemoryMessageRepository implements MessageRepository {
         return true;
     }
 
-    protected String newId() {
-        return Message.newId();
-    }
-
     protected boolean exist(Serializable v1, Collection<? extends Serializable> v2) {
         for (Serializable v : v2) {
             if (equals(v1, v)) {
