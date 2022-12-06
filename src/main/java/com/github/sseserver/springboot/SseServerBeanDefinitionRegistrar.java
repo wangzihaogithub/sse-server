@@ -109,7 +109,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
 
     protected void registerBeanDefinitionsGithubSseEmitterReturnValueHandler() {
         BeanDefinitionBuilder builder = BeanDefinitionBuilder
-                .rootBeanDefinition(GithubSseEmitterReturnValueHandler.class, () -> {
+                .genericBeanDefinition(GithubSseEmitterReturnValueHandler.class, () -> {
                     RequestMappingHandlerAdapter requestMappingHandler = beanFactory.getBean(RequestMappingHandlerAdapter.class);
                     GithubSseEmitterReturnValueHandler sseHandler = new GithubSseEmitterReturnValueHandler(requestMappingHandler::getMessageConverters);
 
@@ -129,13 +129,13 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
 
     protected void registerBeanDefinitionsLocalConnectionService() {
         BeanDefinitionBuilder builder = BeanDefinitionBuilder
-                .rootBeanDefinition(LocalConnectionService.class, LocalConnectionServiceImpl::new);
+                .genericBeanDefinition(LocalConnectionService.class, LocalConnectionServiceImpl::new);
         definitionRegistry.registerBeanDefinition(DEFAULT_BEAN_NAME_LOCAL_CONNECTION_SERVICE, builder.getBeanDefinition());
     }
 
     protected void registerBeanDefinitionsClusterConnectionService(String[] localConnectionServiceBeanNames) {
         for (String localConnectionServiceBeanName : localConnectionServiceBeanNames) {
-            BeanDefinitionBuilder builder = BeanDefinitionBuilder.rootBeanDefinition(ClusterConnectionService.class,
+            BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(ClusterConnectionService.class,
                     () -> {
                         Supplier<LocalConnectionService> localSupplier = () -> beanFactory.getBean(localConnectionServiceBeanName, LocalConnectionService.class);
                         Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier =
@@ -151,7 +151,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
 
     protected void registerBeanDefinitionsLocalMessageRepository(String[] localConnectionServiceBeanNames) {
         for (String localConnectionServiceBeanName : localConnectionServiceBeanNames) {
-            BeanDefinitionBuilder builder = BeanDefinitionBuilder.rootBeanDefinition(
+            BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(
                     MessageRepository.class,
                     MemoryMessageRepository::new);
             String beanName = getLocalMessageRepositoryBeanName(localConnectionServiceBeanName);
@@ -161,7 +161,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
 
     protected void registerBeanDefinitionsClusterMessageRepository(String[] localConnectionServiceBeanNames) {
         for (String localConnectionServiceBeanName : localConnectionServiceBeanNames) {
-            BeanDefinitionBuilder builder = BeanDefinitionBuilder.rootBeanDefinition(ClusterMessageRepository.class,
+            BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(ClusterMessageRepository.class,
                     () -> {
                         Supplier<MessageRepository> localSupplier =
                                 () -> beanFactory.getBean(getLocalMessageRepositoryBeanName(localConnectionServiceBeanName), MessageRepository.class);
@@ -177,7 +177,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
 
     protected void registerBeanDefinitionsAtLeastOnce(String[] localConnectionServiceBeanNames, Boolean remoteEnabled) {
         for (String localConnectionServiceBeanName : localConnectionServiceBeanNames) {
-            BeanDefinitionBuilder builder = BeanDefinitionBuilder.rootBeanDefinition(SendService.class,
+            BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(SendService.class,
                     () -> {
                         String repositoryBeanName;
                         if (remoteEnabled) {
@@ -196,7 +196,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
 
     protected void registerBeanDefinitionsServiceDiscoveryService(String[] localConnectionServiceBeanNames) {
         for (String localConnectionServiceBeanName : localConnectionServiceBeanNames) {
-            BeanDefinitionBuilder builder = BeanDefinitionBuilder.rootBeanDefinition(ServiceDiscoveryService.class,
+            BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(ServiceDiscoveryService.class,
                     () -> {
                         SseServerProperties properties = beanFactory.getBean(SseServerProperties.class);
                         return ServiceDiscoveryService.newInstance(localConnectionServiceBeanName, properties.getRemote());
@@ -209,7 +209,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
 
     protected void registerBeanDefinitionsLocalConnectionController(String[] localConnectionServiceBeanNames) {
         for (String localConnectionServiceBeanName : localConnectionServiceBeanNames) {
-            BeanDefinitionBuilder builder = BeanDefinitionBuilder.rootBeanDefinition(LocalController.class,
+            BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(LocalController.class,
                     () -> {
                         Supplier<LocalConnectionService> localConnectionServiceSupplier = () -> beanFactory.getBean(localConnectionServiceBeanName, LocalConnectionService.class);
                         Supplier<MessageRepository> localMessageRepositorySupplier = () -> beanFactory.getBean(getLocalMessageRepositoryBeanName(localConnectionServiceBeanName), MessageRepository.class);
