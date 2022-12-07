@@ -1,12 +1,20 @@
-package com.github.sseserver;
+package com.github.sseserver.local;
 
+import com.github.sseserver.ConnectionQueryService;
+import com.github.sseserver.SendService;
+import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.qos.QosCompletableFuture;
+import com.github.sseserver.remote.ClusterConnectionService;
+import com.github.sseserver.remote.ClusterMessageRepository;
+import com.github.sseserver.remote.ServiceDiscoveryService;
 
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.function.Consumer;
 
 /**
  * 单机长连接(非分布式)
@@ -20,13 +28,30 @@ import java.util.concurrent.ScheduledExecutorService;
  *
  * @author hao 2021年12月7日19:27:41
  */
-public interface LocalConnectionService extends Sender<Integer>, EventBus {
+public interface LocalConnectionService extends ConnectionQueryService, SendService<Integer> {
 
     ScheduledExecutorService getScheduled();
 
-    /* QOS */
+    /**
+     * QOS 保证发送质量接口，支持分布式
+     * 目前实现的级别是至少收到一次 {@link com.github.sseserver.qos.AtLeastOnceSendService}
+     *
+     * @param <ACCESS_USER> 用户
+     * @return 消息保障，至少收到一次
+     */
+    <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> qos();
 
-    <ACCESS_USER> Sender<QosCompletableFuture<ACCESS_USER>> atLeastOnce();
+    MessageRepository getLocalMessageRepository();
+
+    /* distributed 分布式接口 */
+
+    boolean isEnableCluster();
+
+    ClusterConnectionService getCluster();
+
+    ServiceDiscoveryService getDiscovery();
+
+    ClusterMessageRepository getClusterMessageRepository();
 
     /* connect */
 
@@ -35,10 +60,9 @@ public interface LocalConnectionService extends Sender<Integer>, EventBus {
      *
      * @param accessUser    用户令牌
      * @param keepaliveTime 链接最大保持时间 ，0表示不过期。默认30秒，超过时间未完成会抛出异常：AsyncRequestTimeoutException
+     * @param attributeMap  {@link SseEmitter#getAttributeMap()}
      * @return SseEmitter
      */
-    <ACCESS_USER> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime);
-
     <ACCESS_USER> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap);
 
     /* disconnect */
@@ -49,6 +73,9 @@ public interface LocalConnectionService extends Sender<Integer>, EventBus {
 
     <ACCESS_USER> SseEmitter<ACCESS_USER> disconnectByConnectionId(Long connectionId);
 
+    /* getConnectionId */
+
+    Collection<Long> getConnectionIds();
 
     /* getConnection */
 
@@ -66,58 +93,23 @@ public interface LocalConnectionService extends Sender<Integer>, EventBus {
 
     <ACCESS_USER> List<SseEmitter<ACCESS_USER>> getConnectionByTenantId(Serializable tenantId);
 
-    /* getUser */
+    /* ConnectListener */
 
-    boolean isOnline(Serializable userId);
+    <ACCESS_USER> void addConnectListener(String accessToken, String channel, Consumer<SseEmitter<ACCESS_USER>> consumer);
 
-    <ACCESS_USER> ACCESS_USER getUser(Serializable userId);
+    <ACCESS_USER> void addConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer);
 
-    <ACCESS_USER> List<ACCESS_USER> getUsers();
+    <ACCESS_USER> void addConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer);
 
-    <ACCESS_USER> List<ACCESS_USER> getUsersByListening(String sseListenerName);
+    /* DisConnectListener */
 
-    <ACCESS_USER> List<ACCESS_USER> getUsersByTenantIdListening(Serializable tenantId, String sseListenerName);
+    <ACCESS_USER> void addDisConnectListener(Consumer<SseEmitter<ACCESS_USER>> consumer);
 
-    /* getUserIds */
+    <ACCESS_USER> void addDisConnectListener(String accessToken, Consumer<SseEmitter<ACCESS_USER>> consumer);
 
-    <T> Collection<T> getUserIds(Class<T> type);
+    /* ListeningChangeWatch */
 
-    <T> List<T> getUserIdsByListening(String sseListenerName, Class<T> type);
-
-    <T> List<T> getUserIdsByTenantIdListening(Serializable tenantId, String sseListenerName, Class<T> type);
-
-    /* getConnectionId */
-
-    Collection<Long> getConnectionIds();
-
-    /* getAccessToken */
-
-    Collection<String> getAccessTokens();
-
-    /* getTenantId */
-
-    <T> List<T> getTenantIds(Class<T> type);
-
-    /* getChannels */
-
-    List<String> getChannels();
-
-    /* count */
-
-    /**
-     * 获取当前登录端数量
-     */
-    int getAccessTokenCount();
-
-    /**
-     * 获取当前用户数量
-     */
-    int getUserCount();
-
-    /**
-     * 获取当前连接数量
-     */
-    int getConnectionCount();
+    <ACCESS_USER> void addListeningChangeWatch(Consumer<SseChangeEvent<ACCESS_USER, Set<String>>> watch);
 
     /**
      * 可以在spring里多实例 （例如：HR系统的用户链接，猎头系统的用户链接）

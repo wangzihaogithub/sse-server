@@ -1,25 +1,22 @@
-package com.github.sseserver.qos.impl;
-
-import com.github.sseserver.SseEmitter;
-import com.github.sseserver.qos.Message;
-import com.github.sseserver.qos.MessageRepository;
+package com.github.sseserver.qos;
 
 import java.io.Serializable;
 import java.util.*;
+import java.util.function.Consumer;
 
 public class MemoryMessageRepository implements MessageRepository {
     protected final Map<String, Message> messageMap = Collections.synchronizedMap(new LinkedHashMap<>(6));
+    protected final List<Consumer<Message>> deleteListenerList = new LinkedList<>();
 
     @Override
     public String insert(Message message) {
-        String id = newId();
+        String id = message.getId();
         messageMap.put(id, message);
-        message.setId(id);
         return id;
     }
 
     @Override
-    public <ACCESS_USER> List<Message> select(SseEmitter<ACCESS_USER> query) {
+    public List<Message> select(Query query) {
         if (messageMap.isEmpty()) {
             return Collections.emptyList();
         }
@@ -33,11 +30,17 @@ public class MemoryMessageRepository implements MessageRepository {
     }
 
     @Override
-    public boolean delete(String id) {
+    public Message delete(String id) {
         if (id != null) {
-            return messageMap.remove(id) != null;
+            Message remove = messageMap.remove(id);
+            if (remove != null) {
+                for (Consumer<Message> messageConsumer : deleteListenerList) {
+                    messageConsumer.accept(remove);
+                }
+            }
+            return remove;
         } else {
-            return false;
+            return null;
         }
     }
 
@@ -46,7 +49,12 @@ public class MemoryMessageRepository implements MessageRepository {
         messageMap.clear();
     }
 
-    protected <ACCESS_USER> boolean match(SseEmitter<ACCESS_USER> query, Message message) {
+    @Override
+    public void addDeleteListener(Consumer<Message> listener) {
+        deleteListenerList.add(listener);
+    }
+
+    protected boolean match(Query query, Message message) {
         if (message.isFilter(Message.FILTER_TENANT_ID)
                 && !exist(query.getTenantId(), message.getTenantIdList())) {
             return false;
@@ -68,10 +76,6 @@ public class MemoryMessageRepository implements MessageRepository {
             return false;
         }
         return true;
-    }
-
-    protected String newId() {
-        return Message.newId();
     }
 
     protected boolean exist(Serializable v1, Collection<? extends Serializable> v2) {

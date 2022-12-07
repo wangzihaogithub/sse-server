@@ -1,0 +1,397 @@
+package com.github.sseserver.remote;
+
+import com.github.sseserver.local.LocalController.Response;
+import com.github.sseserver.util.LambdaUtil;
+import com.github.sseserver.util.SpringUtil;
+import com.github.sseserver.util.TypeUtil;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.ResponseEntity;
+import org.springframework.util.concurrent.ListenableFuture;
+import org.springframework.web.client.AsyncRestTemplate;
+
+import java.io.Serializable;
+import java.net.URL;
+import java.nio.channels.ClosedChannelException;
+import java.util.*;
+import java.util.concurrent.Callable;
+import java.util.function.Function;
+
+public class RemoteConnectionServiceImpl implements RemoteConnectionService {
+    public static int connectTimeout = Integer.getInteger("RemoteConnectionServiceImpl.connectTimeout",
+            2000);
+    public static int readTimeout = Integer.getInteger("RemoteConnectionServiceImpl.readTimeout",
+            10000);
+    public static int threadsIfAsyncRequest = Integer.getInteger("RemoteConnectionServiceImpl.threadsIfAsyncRequest",
+            1);
+    public static int threadsIfBlockRequest = Integer.getInteger("RemoteConnectionServiceImpl.threadsIfBlockRequest",
+            Math.max(16, Runtime.getRuntime().availableProcessors() * 2));
+
+    private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
+    private final AsyncRestTemplate restTemplate;
+    private final URL url;
+    private final String urlConnectionQueryService;
+    private final String urlSendService;
+    private final String urlRemoteConnectionService;
+    private boolean closeFlag = false;
+
+    public RemoteConnectionServiceImpl(URL url, String account, String password) {
+        this.url = url;
+        this.urlConnectionQueryService = url + "/ConnectionQueryService";
+        this.urlSendService = url + "/SendService";
+        this.urlRemoteConnectionService = url + "/RemoteConnectionService";
+        this.restTemplate = SpringUtil.newAsyncRestTemplate(
+                connectTimeout, readTimeout,
+                threadsIfAsyncRequest, threadsIfBlockRequest,
+                account, account, password);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Boolean, RemoteConnectionService> isOnlineAsync(Serializable userId) {
+        return asyncGetConnectionQueryService("/isOnline?userId={userId}", this::extract,
+                userId);
+    }
+
+    @Override
+    public <ACCESS_USER> RemoteCompletableFuture<ACCESS_USER, RemoteConnectionService> getUserAsync(Serializable userId) {
+        return asyncGetConnectionQueryService("/getUser?userId={userId}", this::extract,
+                userId);
+    }
+
+    @Override
+    public <ACCESS_USER> RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> getUsersAsync() {
+        return asyncGetConnectionQueryService("/getUsers", this::extract);
+    }
+
+    @Override
+    public <ACCESS_USER> RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> getUsersByListeningAsync(String sseListenerName) {
+        return asyncGetConnectionQueryService("/getUsersByListening?sseListenerName={sseListenerName}", this::extract,
+                sseListenerName);
+    }
+
+    @Override
+    public <ACCESS_USER> RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> getUsersByTenantIdListeningAsync(Serializable tenantId, String sseListenerName) {
+        return asyncGetConnectionQueryService("/getUsersByTenantIdListening?tenantId={tenantId}&sseListenerName={sseListenerName}", this::extract,
+                tenantId, sseListenerName);
+    }
+
+    @Override
+    public <T> RemoteCompletableFuture<Collection<T>, RemoteConnectionService> getUserIdsAsync(Class<T> type) {
+        return asyncGetConnectionQueryService("/getUserIds", entity -> {
+            Collection<?> result = extract(entity);
+            return castBasic(result, type);
+        });
+    }
+
+    @Override
+    public <T> RemoteCompletableFuture<List<T>, RemoteConnectionService> getUserIdsByListeningAsync(String sseListenerName, Class<T> type) {
+        return asyncGetConnectionQueryService("/getUserIdsByListening?sseListenerName={sseListenerName}", entity -> {
+            Collection<?> result = extract(entity);
+            return castBasic(result, type);
+        }, sseListenerName);
+    }
+
+    @Override
+    public <T> RemoteCompletableFuture<List<T>, RemoteConnectionService> getUserIdsByTenantIdListeningAsync(Serializable tenantId, String sseListenerName, Class<T> type) {
+        return asyncGetConnectionQueryService("/getUserIdsByTenantIdListening?tenantId={tenantId}&sseListenerName={sseListenerName}", entity -> {
+            Collection<?> result = extract(entity);
+            return castBasic(result, type);
+        }, tenantId, sseListenerName);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Collection<String>, RemoteConnectionService> getAccessTokensAsync() {
+        return asyncGetConnectionQueryService("/getAccessTokens", this::extract);
+    }
+
+    @Override
+    public <T> RemoteCompletableFuture<List<T>, RemoteConnectionService> getTenantIdsAsync(Class<T> type) {
+        return asyncGetConnectionQueryService("/getTenantIds", entity -> {
+            Collection<?> result = extract(entity);
+            return castBasic(result, type);
+        });
+    }
+
+    @Override
+    public RemoteCompletableFuture<List<String>, RemoteConnectionService> getChannelsAsync() {
+        return asyncGetConnectionQueryService("/getChannels", this::extract);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> getConnectionCountAsync() {
+        return asyncGetConnectionQueryService("/getConnectionCount", this::extract);
+    }
+
+    @Override
+    public boolean isOnline(Serializable userId) {
+        Boolean result = isOnlineAsync(userId).block();
+        Objects.requireNonNull(result,
+                "RemoteConnectionServiceImpl -> public boolean isOnline(userId) result is Null");
+        return result;
+    }
+
+    @Override
+    public <ACCESS_USER> ACCESS_USER getUser(Serializable userId) {
+        return (ACCESS_USER) getUserAsync(userId).block();
+    }
+
+    @Override
+    public <ACCESS_USER> List<ACCESS_USER> getUsers() {
+        return (List<ACCESS_USER>) getUsersAsync().block();
+    }
+
+    @Override
+    public <ACCESS_USER> List<ACCESS_USER> getUsersByListening(String sseListenerName) {
+        return (List<ACCESS_USER>) getUsersByListeningAsync(sseListenerName).block();
+    }
+
+    @Override
+    public <ACCESS_USER> List<ACCESS_USER> getUsersByTenantIdListening(Serializable tenantId, String sseListenerName) {
+        return (List<ACCESS_USER>) getUsersByTenantIdListeningAsync(tenantId, sseListenerName).block();
+    }
+
+    @Override
+    public <T> Collection<T> getUserIds(Class<T> type) {
+        return getUserIdsAsync(type).block();
+    }
+
+    @Override
+    public <T> List<T> getUserIdsByListening(String sseListenerName, Class<T> type) {
+        return getUserIdsByListeningAsync(sseListenerName, type).block();
+    }
+
+    @Override
+    public <T> List<T> getUserIdsByTenantIdListening(Serializable tenantId, String sseListenerName, Class<T> type) {
+        return getUserIdsByTenantIdListeningAsync(tenantId, sseListenerName, type).block();
+    }
+
+    @Override
+    public Collection<String> getAccessTokens() {
+        return getAccessTokensAsync().block();
+    }
+
+    @Override
+    public <T> List<T> getTenantIds(Class<T> type) {
+        return getTenantIdsAsync(type).block();
+    }
+
+    @Override
+    public List<String> getChannels() {
+        return getChannelsAsync().block();
+    }
+
+    @Override
+    public int getAccessTokenCount() {
+        Integer result = (Integer) asyncGetConnectionQueryService("/getAccessTokenCount", this::extract).block();
+        Objects.requireNonNull(result,
+                "RemoteConnectionServiceImpl -> public int getAccessTokenCount() result is Null");
+        return result;
+    }
+
+    @Override
+    public int getUserCount() {
+        Integer result = (Integer) asyncGetConnectionQueryService("/getUserCount", this::extract).block();
+        Objects.requireNonNull(result,
+                "RemoteConnectionServiceImpl -> public int getUserCount() result is Null");
+        return result;
+    }
+
+    @Override
+    public int getConnectionCount() {
+        Integer result = (Integer) asyncGetConnectionQueryService("/getConnectionCount", this::extract).block();
+        Objects.requireNonNull(result,
+                "RemoteConnectionServiceImpl -> public boolean getConnectionCount() result is Null");
+        return result;
+    }
+
+    @Override
+    public <T> T scopeOnWriteable(Callable<T> runnable) {
+        scopeOnWriteableThreadLocal.set(true);
+        try {
+            return runnable.call();
+        } catch (Exception e) {
+            LambdaUtil.sneakyThrows(e);
+            return null;
+        } finally {
+            scopeOnWriteableThreadLocal.remove();
+        }
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendAll(String eventName, Object body) {
+        Map<String, Object> request = new HashMap<>(2);
+        request.put("eventName", eventName);
+        request.put("body", body);
+        return asyncPostSendService("/sendAll", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendAllListening(String eventName, Object body) {
+        Map<String, Object> request = new HashMap<>(2);
+        request.put("eventName", eventName);
+        request.put("body", body);
+        return asyncPostSendService("/sendAllListening", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByChannel(Collection<String> channels, String eventName, Object body) {
+        Map<String, Object> request = new HashMap<>(3);
+        request.put("channels", channels);
+        request.put("eventName", eventName);
+        request.put("body", body);
+        return asyncPostSendService("/sendByChannel", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByChannelListening(Collection<String> channels, String eventName, Object body) {
+        Map<String, Object> request = new HashMap<>(3);
+        request.put("channels", channels);
+        request.put("eventName", eventName);
+        request.put("body", body);
+        return asyncPostSendService("/sendByChannelListening", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByAccessToken(Collection<String> accessTokens, String eventName, Object body) {
+        Map<String, Object> request = new HashMap<>(3);
+        request.put("accessTokens", accessTokens);
+        request.put("eventName", eventName);
+        request.put("body", body);
+        return asyncPostSendService("/sendByAccessToken", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Object body) {
+        Map<String, Object> request = new HashMap<>(3);
+        request.put("accessTokens", accessTokens);
+        request.put("eventName", eventName);
+        request.put("body", body);
+        return asyncPostSendService("/sendByAccessTokenListening", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByUserId(Collection<? extends Serializable> userIds, String eventName, Object body) {
+        Map<String, Object> request = new HashMap<>(3);
+        request.put("userIds", userIds);
+        request.put("eventName", eventName);
+        request.put("body", body);
+        return asyncPostSendService("/sendByUserId", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Object body) {
+        Map<String, Object> request = new HashMap<>(3);
+        request.put("userIds", userIds);
+        request.put("eventName", eventName);
+        request.put("body", body);
+        return asyncPostSendService("/sendByUserIdListening", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Object body) {
+        Map<String, Object> request = new HashMap<>(3);
+        request.put("tenantIds", tenantIds);
+        request.put("eventName", eventName);
+        request.put("body", body);
+        return asyncPostSendService("/sendByTenantId", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Object body) {
+        Map<String, Object> request = new HashMap<>(3);
+        request.put("tenantIds", tenantIds);
+        request.put("eventName", eventName);
+        request.put("body", body);
+        return asyncPostSendService("/sendByTenantIdListening", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByUserId(Serializable userId) {
+        Map<String, Object> request = new HashMap<>(1);
+        request.put("userId", userId);
+        return asyncPostRemoteConnectionService("/disconnectByUserId", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByAccessToken(String accessToken) {
+        Map<String, Object> request = new HashMap<>(1);
+        request.put("accessToken", accessToken);
+        return asyncPostRemoteConnectionService("/disconnectByAccessToken", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByConnectionId(Long connectionId) {
+        Map<String, Object> request = new HashMap<>(1);
+        request.put("connectionId", connectionId);
+        return asyncPostRemoteConnectionService("/disconnectByConnectionId", this::extract, request);
+    }
+
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncGetConnectionQueryService(String uri, Function<ResponseEntity<Response>, T> extract, Object... uriVariables) {
+        return asyncGet(urlConnectionQueryService + uri, extract, uriVariables);
+    }
+
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPostSendService(String uri, Function<ResponseEntity<Response>, T> extract, Map<String, Object> request) {
+        Boolean scopeOnWriteable = scopeOnWriteableThreadLocal.get();
+        if (scopeOnWriteable != null && scopeOnWriteable) {
+            request.put("scopeOnWriteable", true);
+        }
+        return asyncPost(urlSendService + uri, extract, request);
+    }
+
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPostRemoteConnectionService(String uri, Function<ResponseEntity<Response>, T> extract, Map<String, Object> request) {
+        return asyncPost(urlRemoteConnectionService + uri, extract, request);
+    }
+
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncGet(String url, Function<ResponseEntity<Response>, T> extract, Object... uriVariables) {
+        checkClose();
+        ListenableFuture<ResponseEntity<Response>> future = restTemplate.getForEntity(url, Response.class, uriVariables);
+        return completable(future, extract);
+    }
+
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPost(String url, Function<ResponseEntity<Response>, T> extract, Map<String, Object> request) {
+        checkClose();
+        ListenableFuture<ResponseEntity<Response>> future = restTemplate.postForEntity(
+                url, new HttpEntity(request, SpringUtil.EMPTY_HEADERS), Response.class);
+        return completable(future, extract);
+    }
+
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> completable(ListenableFuture<ResponseEntity<Response>> future, Function<ResponseEntity<Response>, T> extract) {
+        RemoteCompletableFuture<T, RemoteConnectionService> result = new RemoteCompletableFuture<>();
+        result.setClient(this);
+        future.addCallback(response -> result.complete(extract.apply(response)), result::completeExceptionally);
+        return result;
+    }
+
+    protected <T> T extract(ResponseEntity<Response> response) {
+        Response body = response.getBody();
+        body.autoCastClassName(false);
+        Object data = body.getData();
+        return (T) data;
+    }
+
+    protected <SOURCE extends Collection<?>, T> List<T> castBasic(SOURCE source, Class<T> type) {
+        return TypeUtil.castBasic(source, type);
+    }
+
+    @Override
+    public URL getRemoteUrl() {
+        return url;
+    }
+
+    @Override
+    public String toString() {
+        return url == null ? "null" : url.toString();
+    }
+
+    @Override
+    public void close() {
+        SpringUtil.close(restTemplate);
+        this.closeFlag = true;
+    }
+
+    protected void checkClose() {
+        if (closeFlag) {
+            LambdaUtil.sneakyThrows(new ClosedChannelException());
+        }
+    }
+
+}

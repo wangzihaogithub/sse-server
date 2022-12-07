@@ -1,22 +1,25 @@
-package com.github.sseserver;
+package com.github.sseserver.local;
 
+import com.github.sseserver.SendService;
 import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.qos.QosCompletableFuture;
-import com.github.sseserver.qos.impl.AtLeastOnceSender;
-import com.github.sseserver.qos.impl.MemoryMessageRepository;
+import com.github.sseserver.remote.ClusterConnectionService;
+import com.github.sseserver.remote.ClusterMessageRepository;
+import com.github.sseserver.remote.ServiceDiscoveryService;
+import com.github.sseserver.springboot.SseServerBeanDefinitionRegistrar;
+import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.TypeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanFactory;
+import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.BeanNameAware;
-import org.springframework.beans.factory.DisposableBean;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -34,7 +37,7 @@ import java.util.stream.Collectors;
  *
  * @author hao 2021年12月7日19:27:41
  */
-public class LocalConnectionServiceImpl implements LocalConnectionService, BeanNameAware, DisposableBean {
+public class LocalConnectionServiceImpl implements LocalConnectionService, BeanNameAware, BeanFactoryAware {
     private final static Logger log = LoggerFactory.getLogger(LocalConnectionServiceImpl.class);
     private final static AtomicInteger SCHEDULED_INDEX = new AtomicInteger();
     /**
@@ -55,20 +58,18 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
      */
     protected final List<Consumer<SseEmitter>> connectListenerList = new ArrayList<>();
     protected final List<Consumer<SseEmitter>> disconnectListenerList = new ArrayList<>();
-    protected final List<Consumer<ChangeEvent<?, Set<String>>>> listeningChangeWatchList = new ArrayList<>();
+    protected final List<Consumer<SseChangeEvent<?, Set<String>>>> listeningChangeWatchList = new ArrayList<>();
     /**
      * 如果 {@link Predicate#test(Object)} 返回true，则是只监听一次事件的一次性listener。 否则永久事件监听。
      * {@link #connectListenerMap,#disconnectListenerMap}
      */
     protected final Map<String, List<Predicate<SseEmitter>>> connectListenerMap = new ConcurrentHashMap<>();
     protected final Map<String, List<Predicate<SseEmitter>>> disconnectListenerMap = new ConcurrentHashMap<>();
-
-    private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
+    private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
+    private BeanFactory beanFactory;
     private String beanName = getClass().getSimpleName();
+    private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
     private int reconnectTime = 5000;
-    private boolean destroyFlag;
-    private volatile AtLeastOnceSender atLeastOnceSender;
-    private MessageRepository messageRepository;
 
     @Override
     public ScheduledExecutorService getScheduled() {
@@ -76,44 +77,48 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public <ACCESS_USER> Sender<QosCompletableFuture<ACCESS_USER>> atLeastOnce() {
-        if (atLeastOnceSender == null) {
-            synchronized (this) {
-                if (atLeastOnceSender == null) {
-                    if (messageRepository == null) {
-                        messageRepository = new MemoryMessageRepository();
-                    }
-                    atLeastOnceSender = new AtLeastOnceSender(this, messageRepository);
-                }
-            }
-        }
-        return atLeastOnceSender;
+    public <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> qos() {
+        String beanName = SseServerBeanDefinitionRegistrar.getAtLeastOnceBeanName(this.beanName);
+        return beanFactory.getBean(beanName, SendService.class);
     }
 
-    public MessageRepository getMessageRepository() {
-        return messageRepository;
-    }
-
-    public void setMessageRepository(MessageRepository messageRepository) {
-        this.messageRepository = messageRepository;
-    }
-
-    /**
-     * 创建用户连接并返回 SseEmitter
-     *
-     * @param accessUser 用户accessToken
-     * @return SseEmitter
-     */
     @Override
-    public <ACCESS_USER> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime) {
-        return connect(accessUser, keepaliveTime, null);
+    public ClusterConnectionService getCluster() {
+        String beanName = SseServerBeanDefinitionRegistrar.getClusterConnectionServiceBeanName(this.beanName);
+        return beanFactory.getBean(beanName, ClusterConnectionService.class);
     }
+
+    @Override
+    public ServiceDiscoveryService getDiscovery() {
+        String beanName = SseServerBeanDefinitionRegistrar.getServiceDiscoveryServiceBeanName(this.beanName);
+        return beanFactory.getBean(beanName, ServiceDiscoveryService.class);
+    }
+
+    @Override
+    public MessageRepository getLocalMessageRepository() {
+        String beanName = SseServerBeanDefinitionRegistrar.getLocalMessageRepositoryBeanName(this.beanName);
+        return beanFactory.getBean(beanName, MessageRepository.class);
+    }
+
+    @Override
+    public boolean isEnableCluster() {
+        String beanName = SseServerBeanDefinitionRegistrar.getClusterConnectionServiceBeanName(this.beanName);
+        try {
+            return beanFactory.containsBean(beanName);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @Override
+    public ClusterMessageRepository getClusterMessageRepository() {
+        String beanName = SseServerBeanDefinitionRegistrar.getClusterMessageRepositoryBeanName(this.beanName);
+        return beanFactory.getBean(beanName, ClusterMessageRepository.class);
+    }
+
 
     @Override
     public <ACCESS_USER> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap) {
-        if (destroyFlag) {
-            throw new IllegalStateException("destroy");
-        }
         if (keepaliveTime == null) {
             keepaliveTime = 900_000L;
         }
@@ -133,7 +138,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         String tenantId = wrapStringKey(result.getTenantId());
 
         result.addDisConnectListener(e -> {
-            log.debug("sse {} connection disconnect : {}", beanName, e);
+            if (log.isDebugEnabled()) {
+                log.debug("sse {} connection disconnect : {}", beanName, e);
+            }
 
             String channel = wrapStringKey(e.getChannel());
 
@@ -180,11 +187,13 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                 channel2ConnectionIdMap.computeIfAbsent(channel, o -> Collections.newSetFromMap(new ConcurrentHashMap<>(3)))
                         .add(e.getId());
             }
-            log.debug("sse {} connection create : {}", beanName, e);
+            if (log.isDebugEnabled()) {
+                log.debug("sse {} connection create : {}", beanName, e);
+            }
             notifyListener(e, connectListenerList, connectListenerMap);
         });
         result.addListeningWatch(e -> {
-            for (Consumer<ChangeEvent<?, Set<String>>> changeEventConsumer : new ArrayList<>(listeningChangeWatchList)) {
+            for (Consumer<SseChangeEvent<?, Set<String>>> changeEventConsumer : new ArrayList<>(listeningChangeWatchList)) {
                 changeEventConsumer.accept(e);
             }
         });
@@ -204,17 +213,21 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         }
         try {
             result.send(SseEmitter.event()
+                    .id(id.toString())
                     .reconnectTime(reconnectTime)
                     .name("connect-finish")
-                    .data("{\"connectionId\":" + id
+                    .data("{\"connectionId\":\"" + id + "\""
                             + ",\"serverTime\":" + System.currentTimeMillis()
                             + ",\"reconnectTime\":" + reconnectTime
                             + ",\"name\":\"" + beanName + "\""
+                            + ",\"enableCluster\":" + isEnableCluster()
                             + ",\"version\":\"" + SseEmitter.VERSION + "\""
                             + "}"));
             return result;
         } catch (IOException e) {
-            log.error("sse {} send {} IOException:{}", beanName, result, e, e);
+            if (log.isErrorEnabled()) {
+                log.error("sse {} send {} IOException:{}", beanName, result, e, e);
+            }
             return null;
         }
     }
@@ -377,7 +390,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public <ACCESS_USER> void addListeningChangeWatch(Consumer<ChangeEvent<ACCESS_USER, Set<String>>> watch) {
+    public <ACCESS_USER> void addListeningChangeWatch(Consumer<SseChangeEvent<ACCESS_USER, Set<String>>> watch) {
         listeningChangeWatchList.add((Consumer) watch);
     }
 
@@ -524,7 +537,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     protected Runnable completionCallBack(SseEmitter sseEmitter) {
         return () -> {
             sseEmitter.disconnect();
-            log.debug("sse {} completion 结束连接：{}", beanName, sseEmitter);
+            if (log.isDebugEnabled()) {
+                log.debug("sse {} completion 结束连接：{}", beanName, sseEmitter);
+            }
         };
     }
 
@@ -538,7 +553,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     protected Consumer<Throwable> errorCallBack(SseEmitter sseEmitter) {
         return throwable -> {
             sseEmitter.disconnect();
-            log.debug("sse {} {} error 发生错误：{}, {}", beanName, sseEmitter, throwable, throwable);
+            if (log.isDebugEnabled()) {
+                log.debug("sse {} {} error 发生错误：{}", beanName, sseEmitter, throwable, throwable);
+            }
         };
     }
 
@@ -553,7 +570,9 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             try {
                 listener.accept(emitter);
             } catch (Exception e) {
-                log.error("notifyListener error = {}. listener = {}, emitter = {}", e.toString(), listener, emitter, e);
+                if (log.isErrorEnabled()) {
+                    log.error("notifyListener error = {}. listener = {}, emitter = {}", e.toString(), listener, emitter, e);
+                }
             }
         }
         List<Predicate<SseEmitter>> consumerList = listenerMap.get(wrapStringKey(emitter.getAccessToken()));
@@ -564,14 +583,33 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                         consumerList.remove(listener);
                     }
                 } catch (Exception e) {
-                    log.error("notifyListener error = {}. predicate = {}, emitter = {}", e.toString(), listener, emitter, e);
+                    if (log.isErrorEnabled()) {
+                        log.error("notifyListener error = {}. predicate = {}, emitter = {}", e.toString(), listener, emitter, e);
+                    }
                 }
             }
         }
     }
 
+    @Override
+    public <T> T scopeOnWriteable(Callable<T> runnable) {
+        scopeOnWriteableThreadLocal.set(true);
+        try {
+            return runnable.call();
+        } catch (Exception e) {
+            LambdaUtil.sneakyThrows(e);
+            return null;
+        } finally {
+            scopeOnWriteableThreadLocal.remove();
+        }
+    }
+
     public <ACCESS_USER> boolean send(SseEmitter<ACCESS_USER> emitter, String name, Object body) {
         if (emitter != null && emitter.isActive()) {
+            Boolean sendAtWriteable = scopeOnWriteableThreadLocal.get();
+            if (sendAtWriteable != null && sendAtWriteable && !emitter.isWriteable()) {
+                return false;
+            }
             try {
                 emitter.send(name, body);
                 return true;
@@ -601,17 +639,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public void destroy() {
-        destroyFlag = true;
-        connectionMap.values().forEach(SseEmitter::disconnect);
-        scheduled.shutdown();
-        if (messageRepository != null) {
-            messageRepository.close();
-        }
-    }
-
-    @Override
-    public Integer sendAll(String eventName, Serializable body) {
+    public Integer sendAll(String eventName, Object body) {
         int count = 0;
         for (SseEmitter value : connectionMap.values()) {
             if (send(value, eventName, body)) {
@@ -622,7 +650,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendAllListening(String eventName, Serializable body) {
+    public Integer sendAllListening(String eventName, Object body) {
         int count = 0;
         for (SseEmitter value : connectionMap.values()) {
             if (value.existListener(eventName) && send(value, eventName, body)) {
@@ -633,7 +661,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByChannel(Collection<String> channels, String eventName, Serializable body) {
+    public Integer sendByChannel(Collection<String> channels, String eventName, Object body) {
         int count = 0;
         for (String channel : channels) {
             for (SseEmitter value : getConnectionByChannel(channel)) {
@@ -646,7 +674,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByChannelListening(Collection<String> channels, String eventName, Serializable body) {
+    public Integer sendByChannelListening(Collection<String> channels, String eventName, Object body) {
         int count = 0;
         for (String channel : channels) {
             for (SseEmitter value : getConnectionByChannel(channel)) {
@@ -659,7 +687,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByAccessToken(Collection<String> accessTokens, String eventName, Serializable body) {
+    public Integer sendByAccessToken(Collection<String> accessTokens, String eventName, Object body) {
         int count = 0;
         for (String accessToken : accessTokens) {
             for (SseEmitter value : getConnectionByAccessToken(accessToken)) {
@@ -672,7 +700,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Serializable body) {
+    public Integer sendByAccessTokenListening(Collection<String> accessTokens, String eventName, Object body) {
         int count = 0;
         for (String accessToken : accessTokens) {
             for (SseEmitter value : getConnectionByAccessToken(accessToken)) {
@@ -685,7 +713,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByUserId(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+    public Integer sendByUserId(Collection<? extends Serializable> userIds, String eventName, Object body) {
         int count = 0;
         for (Serializable userId : userIds) {
             for (SseEmitter value : getConnectionByUserId(userId)) {
@@ -698,7 +726,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Serializable body) {
+    public Integer sendByUserIdListening(Collection<? extends Serializable> userIds, String eventName, Object body) {
         int count = 0;
         for (Serializable userId : userIds) {
             for (SseEmitter value : getConnectionByUserId(userId)) {
@@ -711,7 +739,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+    public Integer sendByTenantId(Collection<? extends Serializable> tenantIds, String eventName, Object body) {
         int count = 0;
         for (Serializable tenantId : tenantIds) {
             for (SseEmitter value : getConnectionByTenantId(tenantId)) {
@@ -724,7 +752,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public Integer sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Serializable body) {
+    public Integer sendByTenantIdListening(Collection<? extends Serializable> tenantIds, String eventName, Object body) {
         int count = 0;
         for (Serializable tenantId : tenantIds) {
             for (SseEmitter value : getConnectionByTenantId(tenantId)) {
@@ -734,5 +762,10 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             }
         }
         return count;
+    }
+
+    @Override
+    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+        this.beanFactory = beanFactory;
     }
 }

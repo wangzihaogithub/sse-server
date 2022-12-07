@@ -1,5 +1,6 @@
 package org.springframework.web.servlet.mvc.method.annotation;
 
+import com.github.sseserver.local.SseEmitter;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.ResolvableType;
 import org.springframework.http.HttpHeaders;
@@ -22,7 +23,7 @@ import javax.servlet.ServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -43,7 +44,7 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
             }
         }
         List<HttpMessageConverter<?>> result = new ArrayList<>(converters.size() + 1);
-        result.add(new StringHttpMessageConverter(StandardCharsets.UTF_8));
+        result.add(new StringHttpMessageConverter(Charset.forName("UTF-8")));
         result.addAll(converters);
         return result;
     }
@@ -53,7 +54,7 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
         Class bodyType = ResponseEntity.class.isAssignableFrom(returnType.getParameterType()) ?
                 ResolvableType.forMethodParameter(returnType).getGeneric().resolve() :
                 returnType.getParameterType();
-        return (bodyType != null && (com.github.sseserver.SseEmitter.class.isAssignableFrom(bodyType)));
+        return (bodyType != null && (SseEmitter.class.isAssignableFrom(bodyType)));
     }
 
     @Override
@@ -99,15 +100,19 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
             WebAsyncUtils.getAsyncManager(webRequest).startDeferredResultProcessing(deferredResult, mavContainer);
             handler = new HttpMessageConvertingHandler(outputMessage, deferredResult);
         } catch (Throwable ex) {
-            emitter.initializeWithError(ex);
+            try {
+                emitter.initializeWithError(ex);
+            } catch (LinkageError e) {
+                emitter.completeWithError(ex);
+            }
             throw ex;
         }
 
         emitter.initialize(handler);
 
         // writeableReady
-        if (!handler.isComplete() && emitter instanceof com.github.sseserver.SseEmitter) {
-            ((com.github.sseserver.SseEmitter) emitter).writeableReady();
+        if (!handler.isComplete() && emitter instanceof SseEmitter) {
+            ((SseEmitter) emitter).writeableReady();
         }
     }
 
@@ -118,7 +123,6 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
     private class HttpMessageConvertingHandler implements ResponseBodyEmitter.Handler {
         private boolean complete = false;
         private final ServerHttpResponse outputMessage;
-
         private final DeferredResult deferredResult;
 
         public HttpMessageConvertingHandler(ServerHttpResponse outputMessage, DeferredResult deferredResult) {

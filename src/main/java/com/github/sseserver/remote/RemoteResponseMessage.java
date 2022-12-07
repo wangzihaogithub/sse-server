@@ -1,15 +1,16 @@
-package com.github.sseserver.qos.impl;
+package com.github.sseserver.remote;
 
 import com.github.sseserver.qos.Message;
 
 import java.io.Serializable;
 import java.util.Collection;
 
-public class AtLeastOnceMessage implements Message {
+public class RemoteResponseMessage implements Message {
     private String id;
+    private String remoteMessageRepositoryId;
 
     private String eventName;
-    private Serializable body;
+    private Object body;
     private int filters;
 
     private String listenerName;
@@ -18,13 +19,15 @@ public class AtLeastOnceMessage implements Message {
     private Collection<String> accessTokenList;
     private Collection<String> channelList;
 
-    public AtLeastOnceMessage() {
+    public RemoteResponseMessage() {
     }
 
-    public AtLeastOnceMessage(String eventName, Serializable body, int filters) {
-        this.eventName = eventName;
-        this.body = body;
-        this.filters = filters;
+    public String getRemoteMessageRepositoryId() {
+        return remoteMessageRepositoryId;
+    }
+
+    public void setRemoteMessageRepositoryId(String remoteMessageRepositoryId) {
+        this.remoteMessageRepositoryId = remoteMessageRepositoryId;
     }
 
     @Override
@@ -32,9 +35,17 @@ public class AtLeastOnceMessage implements Message {
         return eventName;
     }
 
+    public void setEventName(String eventName) {
+        this.eventName = eventName;
+    }
+
     @Override
     public int getFilters() {
         return filters;
+    }
+
+    public void setFilters(int filters) {
+        this.filters = filters;
     }
 
     @Override
@@ -63,13 +74,18 @@ public class AtLeastOnceMessage implements Message {
         return id;
     }
 
+    @Override
     public void setId(String id) {
         this.id = id;
     }
 
     @Override
-    public Serializable getBody() {
+    public Object getBody() {
         return body;
+    }
+
+    public void setBody(Object body) {
+        this.body = body;
     }
 
     @Override

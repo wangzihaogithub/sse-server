@@ -1,8 +1,9 @@
 package com.github.sseserver.qos;
 
-import com.github.sseserver.SseEmitter;
-
+import java.io.Serializable;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
 
 public interface MessageRepository extends AutoCloseable {
     /**
@@ -16,11 +17,10 @@ public interface MessageRepository extends AutoCloseable {
     /**
      * 查询满足条件的消息
      *
-     * @param query         条件
-     * @param <ACCESS_USER> ACCESS_USER
+     * @param query 条件
      * @return 满足条件的消息
      */
-    <ACCESS_USER> List<Message> select(SseEmitter<ACCESS_USER> query);
+    List<Message> select(Query query);
 
     /**
      * 删除
@@ -28,9 +28,27 @@ public interface MessageRepository extends AutoCloseable {
      * @param id messageID
      * @return true=删除成功
      */
-    boolean delete(String id);
+    Message delete(String id);
 
     default void close() {
 
+    }
+
+    void addDeleteListener(Consumer<Message> listener);
+
+    interface Query {
+        Serializable getTenantId();
+
+        String getChannel();
+
+        String getAccessToken();
+
+        Serializable getUserId();
+
+        Set<String> getListeners();
+
+        default boolean existListener(String listener) {
+            return getListeners().contains(listener);
+        }
     }
 }

@@ -1,30 +1,22 @@
 package com.github.sseserver.qos;
 
-import java.util.concurrent.CompletableFuture;
+import com.github.sseserver.util.CompletableFuture;
 
-public class QosCompletableFuture<ACCESS_USER> extends CompletableFuture<Delivered<ACCESS_USER>> {
+import java.util.Objects;
+
+public class QosCompletableFuture<T> extends CompletableFuture<T> {
     /**
      * 消息ID
      * {@link Message#newId()}
      */
-    private String messageId;
-    private final Delivered<ACCESS_USER> delivered;
+    private final String messageId;
 
-    public QosCompletableFuture() {
-        delivered = new Delivered<>();
-        delivered.setStartTimestamp(System.currentTimeMillis());
+    public QosCompletableFuture(String messageId) {
+        this.messageId = Objects.requireNonNull(messageId);
     }
 
     public String getMessageId() {
         return messageId;
-    }
-
-    public void setMessageId(String messageId) {
-        this.messageId = messageId;
-    }
-
-    public Delivered<ACCESS_USER> getDelivered() {
-        return delivered;
     }
 
 }
