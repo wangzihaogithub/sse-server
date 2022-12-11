@@ -9,11 +9,11 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.1.7</version>
+ *      <version>1.1.8</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.1.7'
+  static version = '1.1.8'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,

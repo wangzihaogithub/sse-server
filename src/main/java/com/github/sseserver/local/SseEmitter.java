@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
  * @author wangzihaogithub 2022-11-12
  */
 public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc.method.annotation.SseEmitter implements MessageRepository.Query {
-    public static final String VERSION = "1.1.7";
+    public static final String VERSION = "1.1.8";
     public static final String EVENT_ADD_LISTENER = "addListener";
     public static final String EVENT_REMOVE_LISTENER = "removeListener";
 
