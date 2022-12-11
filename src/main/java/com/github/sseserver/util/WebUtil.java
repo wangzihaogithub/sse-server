@@ -1,7 +1,5 @@
 package com.github.sseserver.util;
 
-import io.netty.util.internal.PlatformDependent;
-
 import javax.servlet.http.HttpServletRequest;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
@@ -237,7 +235,10 @@ public class WebUtil {
 
         // Each encoded byte takes 3 characters (e.g. "%20")
         int decodedCapacity = (toExcluded - firstEscaped) / 3;
-        byte[] buf = PlatformDependent.allocateUninitializedArray(decodedCapacity);
+        if (decodedCapacity == 0) {
+            return s.substring(from, toExcluded);
+        }
+        byte[] buf = new byte[decodedCapacity];
         int bufIdx;
 
         StringBuilder strBuf = new StringBuilder(len);

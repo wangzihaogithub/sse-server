@@ -44,7 +44,7 @@ public class RemoteMessageRepository implements MessageRepository {
         this.restTemplate = SpringUtil.newAsyncRestTemplate(
                 connectTimeout, readTimeout,
                 threadsIfAsyncRequest, threadsIfBlockRequest,
-                account, account, password);
+                account + "RemoteMessageRepository", account, password);
     }
 
     @Override

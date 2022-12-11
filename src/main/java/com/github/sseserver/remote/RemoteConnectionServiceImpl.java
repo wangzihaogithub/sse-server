@@ -42,7 +42,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
         this.restTemplate = SpringUtil.newAsyncRestTemplate(
                 connectTimeout, readTimeout,
                 threadsIfAsyncRequest, threadsIfBlockRequest,
-                account, account, password);
+                account + "RemoteConnectionService", account, password);
     }
 
     @Override

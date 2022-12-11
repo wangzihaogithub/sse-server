@@ -8,7 +8,6 @@ import com.alibaba.nacos.api.naming.listener.EventListener;
 import com.alibaba.nacos.api.naming.listener.NamingEvent;
 import com.alibaba.nacos.api.naming.pojo.Instance;
 import com.github.sseserver.util.ReferenceCounted;
-import com.github.sseserver.util.SnowflakeIdWorker;
 import com.github.sseserver.util.SpringUtil;
 import com.github.sseserver.util.WebUtil;
 import com.sun.net.httpserver.HttpPrincipal;
@@ -27,8 +26,8 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     public static final String PROJECT_NAME = USER_DIRS[USER_DIRS.length - 1];
 
     public static final String METADATA_VALUE_DEVICE_ID = SpringUtil.filterNonAscii(
-            PROJECT_NAME + "-" + WebUtil.getIPAddress(WebUtil.port)
-                    + "(" + new Timestamp(System.currentTimeMillis()) + SnowflakeIdWorker.INSTANCE.nextId() + ")");
+            limit(PROJECT_NAME, 10) + "-" + WebUtil.getIPAddress(WebUtil.port)
+                    + "(" + new Timestamp(System.currentTimeMillis()) + ")");
 
     private static int idIncr = 0;
     private final NamingService namingService;
@@ -36,8 +35,8 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
     private final String serviceName;
     private final String groupName;
     private final List<String> clusterName;
-    private volatile ReferenceCounted<List<RemoteConnectionService>> connectionServiceListRef;
-    private volatile ReferenceCounted<List<RemoteMessageRepository>> messageRepositoryListRef;
+    private volatile ReferenceCounted<List<RemoteConnectionService>> connectionServiceListRef = new ReferenceCounted<>(Collections.emptyList());
+    private volatile ReferenceCounted<List<RemoteMessageRepository>> messageRepositoryListRef = new ReferenceCounted<>(Collections.emptyList());
     private List<Instance> instanceList;
     private Instance lastRegisterInstance;
     private EventListener onEvent;
@@ -50,7 +49,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
         this.serviceName = serviceName;
         this.clusterName = clusterName == null || clusterName.isEmpty() ?
                 null : Arrays.asList(clusterName.split(","));
-        this.account = SpringUtil.filterNonAscii((idIncr++) + "-" + groupName + "-" + METADATA_VALUE_DEVICE_ID);
+        this.account = SpringUtil.filterNonAscii(groupName + "-" + METADATA_VALUE_DEVICE_ID);
 
         try {
             this.namingService = createNamingService(nacosProperties);
@@ -280,6 +279,10 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
         if (missProjectName) {
             System.getProperties().remove("project.name");
         }
+    }
+
+    private static String limit(String string, int len) {
+        return string.length() > len ? string.substring(0, len) : string;
     }
 
 }

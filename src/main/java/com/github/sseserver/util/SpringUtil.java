@@ -16,6 +16,7 @@ public class SpringUtil {
 
     private static final boolean SUPPORT_NETTY4;
     private static final boolean SUPPORT_OKHTTP3;
+    private static final boolean SUPPORT_APACHE_HTTP;
 
     static {
         boolean supportNetty4;
@@ -35,6 +36,15 @@ public class SpringUtil {
             supportOkhttp3 = false;
         }
         SUPPORT_OKHTTP3 = supportOkhttp3;
+
+        boolean supportApacheHttp;
+        try {
+            Class.forName("org.apache.http.impl.nio.client.HttpAsyncClients");
+            supportApacheHttp = true;
+        } catch (Throwable e) {
+            supportApacheHttp = false;
+        }
+        SUPPORT_APACHE_HTTP = supportApacheHttp;
     }
 
     public static AsyncRestTemplate newAsyncRestTemplate(int connectTimeout, int readTimeout,
@@ -57,7 +67,9 @@ public class SpringUtil {
                                                                                  int threadsIfAsyncRequest, int threadsIfBlockRequest,
                                                                                  String threadName) {
         AsyncClientHttpRequestFactory result;
-        if (SUPPORT_NETTY4) {
+        if (SUPPORT_APACHE_HTTP) {
+            result = ApacheHttpUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName);
+        } else if (SUPPORT_NETTY4) {
             result = NettyUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName);
         } else if (SUPPORT_OKHTTP3) {
             result = OkhttpUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName);
@@ -88,7 +100,7 @@ public class SpringUtil {
         }
     }
 
-    public static String encodeBasicAuth(String username, String password,Charset charset) {
+    public static String encodeBasicAuth(String username, String password, Charset charset) {
         String credentialsString = username + ":" + password;
         byte[] encodedBytes = Base64.getEncoder().encode(credentialsString.getBytes(charset));
         return new String(encodedBytes, charset);

@@ -21,7 +21,7 @@ import java.util.function.Supplier;
 
 public class LocalController implements Closeable {
     private static final Charset UTF_8 = Charset.forName("UTF-8");
-    private final com.sun.net.httpserver.HttpServer httpServer;
+    private final HttpServer httpServer;
     private final Supplier<LocalConnectionService> localConnectionServiceSupplier;
     private final Supplier<MessageRepository> localMessageRepositorySupplier;
     private final Supplier<? extends ServiceDiscoveryService> discoverySupplier;
@@ -53,7 +53,22 @@ public class LocalController implements Closeable {
 
     protected void registerInstance(Supplier<ServiceDiscoveryService> discoverySupplier, InetSocketAddress address) {
         ServiceDiscoveryService discoveryService = discoverySupplier.get();
-        discoveryService.registerInstance(address.getAddress().getHostAddress(), address.getPort());
+        for (int i = 0, retry = 3; i < retry; i++) {
+            try {
+                discoveryService.registerInstance(address.getAddress().getHostAddress(), address.getPort());
+                return;
+            } catch (Exception e) {
+                if (i == retry - 1) {
+                    throw e;
+                } else {
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException ex) {
+                        throw e;
+                    }
+                }
+            }
+        }
     }
 
     protected HttpServer createHttpServer(String ip) {
@@ -593,21 +608,21 @@ public class LocalController implements Closeable {
         }
 
         @Override
-        public Authenticator.Result authenticate(HttpExchange exchange) {
+        public Result authenticate(HttpExchange exchange) {
             String authorization = exchange.getRequestHeaders().getFirst("Authorization");
             ServiceDiscoveryService service = supplier.get();
             HttpPrincipal principal = service.login(authorization);
             if (principal != null) {
-                return new Authenticator.Success(principal);
+                return new Success(principal);
             } else {
-                return new Authenticator.Failure(401);
+                return new Failure(401);
             }
         }
     }
 
     public static class ErrorPageFilter extends Filter {
         @Override
-        public void doFilter(HttpExchange request, Filter.Chain chain) throws IOException {
+        public void doFilter(HttpExchange request, Chain chain) throws IOException {
             try {
                 chain.doFilter(request);
             } catch (Throwable e) {
@@ -667,10 +682,14 @@ public class LocalController implements Closeable {
 
         @Override
         public final void handle(HttpExchange request) throws IOException {
-            String contentLength = request.getRequestHeaders().getFirst("content-length");
+            Headers requestHeaders = request.getRequestHeaders();
+            String contentLength = requestHeaders.getFirst("content-length");
             if (contentLength != null && Long.parseLong(contentLength) > 0) {
-                Map body = objectMapper.readValue(request.getRequestBody(), Map.class);
-                BODY_THREAD_LOCAL.set(body);
+                String contentType = requestHeaders.getFirst("content-type");
+                if (contentType != null && contentType.startsWith("application/json")) {
+                    Map body = objectMapper.readValue(request.getRequestBody(), Map.class);
+                    BODY_THREAD_LOCAL.set(body);
+                }
             }
             try {
                 REQUEST_THREAD_LOCAL.set(request);
