@@ -1,7 +1,6 @@
 package com.github.sseserver.util;
 
 import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
 import org.apache.http.client.config.CookieSpecs;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.config.ConnectionConfig;
@@ -30,7 +29,6 @@ import org.apache.http.nio.reactor.ConnectingIOReactor;
 import org.apache.http.nio.reactor.IOReactorException;
 import org.apache.http.nio.util.HeapByteBufferAllocator;
 import org.apache.http.protocol.HttpContext;
-import org.springframework.beans.factory.DisposableBean;
 import org.springframework.http.client.AsyncClientHttpRequestFactory;
 import org.springframework.http.client.HttpComponentsAsyncClientHttpRequestFactory;
 
@@ -116,7 +114,8 @@ public class ApacheHttpUtil {
         // 创建全局请求配置
         RequestConfig defaultRequestConfig = RequestConfig.custom()
                 .setCookieSpec(CookieSpecs.IGNORE_COOKIES)
-                .setSocketTimeout(readTimeout)
+                .setConnectionRequestTimeout(readTimeout)
+                .setSocketTimeout((int) (keepaliveSeconds * 1000))
                 .setConnectTimeout(connectTimeout)
                 .setExpectContinueEnabled(true)
                 .build();
@@ -150,6 +149,7 @@ public class ApacheHttpUtil {
         connectionManager.setMaxTotal(maxTotal);
         connectionManager.setDefaultMaxPerRoute(defaultMaxPerRoute);
         CloseableHttpClient httpClient = HttpClients.custom()
+                .setDefaultRequestConfig(defaultRequestConfig)
                 .setConnectionManager(connectionManager)
                 .evictIdleConnections(keepaliveSeconds, TimeUnit.SECONDS)
 //                .setConnectionManagerShared(true)
