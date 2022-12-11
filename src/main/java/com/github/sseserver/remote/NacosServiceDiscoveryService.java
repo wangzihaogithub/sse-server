@@ -11,13 +11,14 @@ import com.github.sseserver.util.ReferenceCounted;
 import com.github.sseserver.util.SpringUtil;
 import com.github.sseserver.util.WebUtil;
 import com.sun.net.httpserver.HttpPrincipal;
+import org.springframework.beans.factory.DisposableBean;
 
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.sql.Timestamp;
 import java.util.*;
 
-public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
+public class NacosServiceDiscoveryService implements ServiceDiscoveryService, DisposableBean {
     public static final String METADATA_NAME_DEVICE_ID = "deviceId";
     public static final String METADATA_NAME_ACCOUNT = "account";
     public static final String METADATA_NAME_PASSWORD = "password";
@@ -29,7 +30,6 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
             limit(PROJECT_NAME, 10) + "-" + WebUtil.getIPAddress(WebUtil.port)
                     + "(" + new Timestamp(System.currentTimeMillis()) + ")");
 
-    private static int idIncr = 0;
     private final NamingService namingService;
     private final String account;
     private final String serviceName;
@@ -117,13 +117,34 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
 
     public synchronized NamingService createNamingService(Properties properties) throws NacosException {
         boolean b = invokeNacosBefore();
+        Properties systemProperties = System.getProperties();
+
+        String keyNacosGrpcCoreSize = "nacos.remote.client.grpc.pool.core.size";
+        String valueNacosGrpcCoreSize = systemProperties.getProperty(keyNacosGrpcCoreSize);
+        String keyNacosGrpcMaxSize = "nacos.remote.client.grpc.pool.max.size";
+        String valueNacosGrpcMaxSize = systemProperties.getProperty(keyNacosGrpcMaxSize);
+
         try {
             if (clusterName != null) {
                 properties.put("clusterName", String.join(",", clusterName));
             }
+            properties.put("namingPollingThreadCount", "1");
+            properties.put("namingClientBeatThreadCount", "1");
+            systemProperties.put(keyNacosGrpcCoreSize, "1");
+            systemProperties.put(keyNacosGrpcMaxSize, "1");
             return NamingFactory.createNamingService(properties);
         } finally {
             invokeNacosAfter(b);
+            if (valueNacosGrpcCoreSize == null) {
+                systemProperties.remove(keyNacosGrpcCoreSize);
+            } else {
+                systemProperties.put(keyNacosGrpcCoreSize, valueNacosGrpcCoreSize);
+            }
+            if (valueNacosGrpcMaxSize == null) {
+                systemProperties.remove(keyNacosGrpcMaxSize);
+            } else {
+                systemProperties.put(keyNacosGrpcMaxSize, valueNacosGrpcMaxSize);
+            }
         }
     }
 
@@ -275,8 +296,8 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
         return isProjectNameNull;
     }
 
-    protected void invokeNacosAfter(boolean missProjectName) {
-        if (missProjectName) {
+    protected void invokeNacosAfter(boolean isProjectNameNull) {
+        if (isProjectNameNull) {
             System.getProperties().remove("project.name");
         }
     }
@@ -285,4 +306,8 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService {
         return string.length() > len ? string.substring(0, len) : string;
     }
 
+    @Override
+    public void destroy() throws Exception {
+        namingService.shutDown();
+    }
 }
