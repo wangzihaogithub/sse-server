@@ -54,7 +54,8 @@ public class SseServerProperties {
             private Properties properties = new Properties();
 
             public Properties buildProperties() {
-                Properties properties = new Properties(this.properties);
+                Properties properties = new Properties();
+                properties.putAll(this.properties);
                 if (serverAddr != null && serverAddr.length() > 0) {
                     properties.put("serverAddr", serverAddr);
                 }
