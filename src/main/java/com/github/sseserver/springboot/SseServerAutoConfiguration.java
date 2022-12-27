@@ -28,14 +28,18 @@ public class SseServerAutoConfiguration {
 
         String serverAddr = nacos.getServerAddr();
         if (serverAddr != null && serverAddr.length() > 0) {
-            URI url = new URI(serverAddr);
-            String scheme = url.getScheme();
-            if ("nacos".equalsIgnoreCase(scheme) || "spring-cloud".equalsIgnoreCase(scheme)) {
-                String rawSchemeSpecificPart = url.getRawSchemeSpecificPart();
-                while (rawSchemeSpecificPart.startsWith("/")) {
-                    rawSchemeSpecificPart = rawSchemeSpecificPart.substring(1);
+            try {
+                URI url = new URI(serverAddr);
+                String scheme = url.getScheme();
+                if ("nacos".equalsIgnoreCase(scheme) || "spring-cloud".equalsIgnoreCase(scheme)) {
+                    String rawSchemeSpecificPart = url.getRawSchemeSpecificPart();
+                    while (rawSchemeSpecificPart.startsWith("/")) {
+                        rawSchemeSpecificPart = rawSchemeSpecificPart.substring(1);
+                    }
+                    nacos.setServerAddr(rawSchemeSpecificPart);
                 }
-                nacos.setServerAddr(rawSchemeSpecificPart);
+            } catch (Exception ignored) {
+
             }
         }
 
