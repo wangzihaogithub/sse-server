@@ -131,6 +131,8 @@ public class ApacheHttpUtil {
             }
         }
 
+        CustomConnectionKeepAliveStrategy keepAliveStrategy = new CustomConnectionKeepAliveStrategy();
+
         // Create an HttpClientUtils with the given custom dependencies and configuration.
         HttpAsyncClient asyncHttpClient = HttpAsyncClients.custom()
                 .setConnectionManager(asyncConnManager)
@@ -139,9 +141,9 @@ public class ApacheHttpUtil {
 //                .setConnectionManagerShared(true)
                 .setMaxConnTotal(maxThreads)
                 // 有 Keep-Alive 认里面的值，没有的话永久有效
-                .setKeepAliveStrategy(DefaultConnectionKeepAliveStrategy.INSTANCE)
+//                .setKeepAliveStrategy(DefaultConnectionKeepAliveStrategy.INSTANCE)
                 // 换成自定义的
-                .setKeepAliveStrategy(new CustomConnectionKeepAliveStrategy())
+                .setKeepAliveStrategy(keepAliveStrategy)
                 .build();
 
         PoolingHttpClientConnectionManager connectionManager =
@@ -155,9 +157,9 @@ public class ApacheHttpUtil {
 //                .setConnectionManagerShared(true)
                 .disableAutomaticRetries()
                 // 有 Keep-Alive 认里面的值，没有的话永久有效
-                .setKeepAliveStrategy(DefaultConnectionKeepAliveStrategy.INSTANCE)
+//                .setKeepAliveStrategy(DefaultConnectionKeepAliveStrategy.INSTANCE)
                 // 换成自定义的
-                .setKeepAliveStrategy(new CustomConnectionKeepAliveStrategy())
+                .setKeepAliveStrategy(keepAliveStrategy)
                 .build();
 
         HttpComponentsAsyncClientHttpRequestFactory factory = new HttpComponentsAsyncClientHttpRequestFactory(httpClient, asyncHttpClient);
