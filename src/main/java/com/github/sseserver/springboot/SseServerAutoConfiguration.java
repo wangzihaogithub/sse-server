@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.core.env.Environment;
 
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.Objects;
 
 /**
@@ -20,7 +19,14 @@ import java.util.Objects;
 @Configuration
 public class SseServerAutoConfiguration {
 
-    public static void bindNacos(SseServerProperties.Remote.Nacos nacos, Environment environment) throws URISyntaxException {
+    @Bean
+    public SseServerProperties sseServerProperties(Environment environment) {
+        SseServerProperties properties = new SseServerProperties();
+        bindNacos(properties.getRemote().getNacos(), environment);
+        return properties;
+    }
+
+    public void bindNacos(SseServerProperties.Remote.Nacos nacos, Environment environment) {
         nacos.setClusterName(environment.resolveRequiredPlaceholders(nacos.getClusterName()));
         nacos.setNamespace(environment.resolveRequiredPlaceholders(nacos.getNamespace()));
         nacos.setServerAddr(environment.resolveRequiredPlaceholders(nacos.getServerAddr()));
@@ -66,10 +72,4 @@ public class SseServerAutoConfiguration {
         }
     }
 
-    @Bean
-    public SseServerProperties sseServerProperties(Environment environment) throws URISyntaxException {
-        SseServerProperties properties = new SseServerProperties();
-        bindNacos(properties.getRemote().getNacos(), environment);
-        return properties;
-    }
 }
