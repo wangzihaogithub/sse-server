@@ -1,6 +1,8 @@
 package com.github.sseserver.remote;
 
+import com.alibaba.nacos.common.utils.ConcurrentHashSet;
 import com.github.sseserver.local.LocalController.Response;
+import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.SpringUtil;
 import com.github.sseserver.util.TypeUtil;
@@ -32,17 +34,27 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     private final String urlConnectionQueryService;
     private final String urlSendService;
     private final String urlRemoteConnectionService;
+    private final SseServerProperties.AutoType autoTypeEnum;
+    private final Set<String> classNotFoundSet = new ConcurrentHashSet<>();
+    private final String id;
     private boolean closeFlag = false;
 
-    public RemoteConnectionServiceImpl(URL url, String account, String password) {
+    public RemoteConnectionServiceImpl(URL url, String account, String password, SseServerProperties.AutoType autoTypeEnum) {
         this.url = url;
+        this.id = account;
         this.urlConnectionQueryService = url + "/ConnectionQueryService";
         this.urlSendService = url + "/SendService";
         this.urlRemoteConnectionService = url + "/RemoteConnectionService";
+        this.autoTypeEnum = autoTypeEnum;
         this.restTemplate = SpringUtil.newAsyncRestTemplate(
                 connectTimeout, readTimeout,
                 threadsIfAsyncRequest, threadsIfBlockRequest,
                 account + "RemoteConnectionService", account, password);
+    }
+
+    @Override
+    public String getId() {
+        return id;
     }
 
     @Override
@@ -357,13 +369,26 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     protected <T> RemoteCompletableFuture<T, RemoteConnectionService> completable(ListenableFuture<ResponseEntity<Response>> future, Function<ResponseEntity<Response>, T> extract) {
         RemoteCompletableFuture<T, RemoteConnectionService> result = new RemoteCompletableFuture<>();
         result.setClient(this);
-        future.addCallback(response -> result.complete(extract.apply(response)), result::completeExceptionally);
+        future.addCallback(response -> {
+            T data;
+            try {
+                data = extract.apply(response);
+            } catch (Throwable e) {
+                result.completeExceptionally(e);
+                return;
+            }
+            result.complete(data);
+        }, result::completeExceptionally);
         return result;
     }
 
     protected <T> T extract(ResponseEntity<Response> response) {
         Response body = response.getBody();
-        body.autoCastClassName(false);
+        try {
+            body.autoCastClassName(autoTypeEnum, classNotFoundSet);
+        } catch (ClassNotFoundException e) {
+            LambdaUtil.sneakyThrows(e);
+        }
         Object data = body.getData();
         return (T) data;
     }

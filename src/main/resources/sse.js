@@ -9,11 +9,11 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.1.9</version>
+ *      <version>1.2.0</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.1.9'
+  static version = '1.2.0'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,
@@ -97,24 +97,24 @@ class Sse {
     this.flush = () => {
       let task
       while ((task = this.retryQueue.shift())) {
-        switch (task.type){
-          case 'addListener':{
+        switch (task.type) {
+          case 'addListener': {
             this.addListener(task.eventListeners).then(task.resolve).catch(task.reject)
             break
           }
-          case 'removeListener':{
+          case 'removeListener': {
             this.removeListener(task.eventListeners).then(task.resolve).catch(task.reject)
             break
           }
-          case 'send':{
+          case 'send': {
             this.send(task.path, task.body, task.query, task.headers).then(task.resolve).catch(task.reject)
             break
           }
-          case 'upload':{
+          case 'upload': {
             this.upload(task.path, task.formData, task.query, task.headers).then(task.resolve).catch(task.reject)
             break
           }
-          default:{
+          default: {
             break
           }
         }
@@ -122,7 +122,7 @@ class Sse {
     }
 
     this.handleConnectionClose = (event) => {
-      if(this.isActive()){
+      if (this.isActive()) {
         this.flush()
       }
       this.state = Sse.STATE_CLOSED
@@ -189,8 +189,8 @@ class Sse {
 
       // 用户事件
       for (const eventName in this.options.eventListeners) {
-          const fn = this.options.eventListeners[eventName]
-          this._addEventListener(es,eventName,fn)
+        const fn = this.options.eventListeners[eventName]
+        this._addEventListener(es, eventName, fn)
       }
       this.es = es
     }
@@ -200,7 +200,7 @@ class Sse {
     }
 
     this._addEventListener = (es, eventName, fn) => {
-      if(!es){
+      if (!es) {
         return false
       }
       try {
@@ -218,13 +218,13 @@ class Sse {
     }
 
     this._removeEventListener = (es, eventName, fn) => {
-      if(!es){
+      if (!es) {
         return false
       }
       try {
-        try{
+        try {
           es.removeEventListener(eventName, fn)
-        } catch (e){
+        } catch (e) {
           console.warn(`removeEventListener(${eventName}) error`, e)
         }
         if (this.options.useWindowEventBus) {
@@ -251,21 +251,23 @@ class Sse {
       window.dispatchEvent(newEvent)
     }
 
-    this.addListener = (eventListeners) => {
-      if (!this.isActive()) {
-        return new Promise((resolve, reject) => {
-          this.retryQueue.push({ type: 'addListener', eventListeners, resolve, reject })
-        })
-      }
-
+    this.addListener = (eventListeners, fn) => {
       let eventListenersMap = {}
-      if(eventListeners instanceof Array){
+      if (typeof eventListeners === 'string' || typeof eventListeners === 'symbol') {
+        eventListenersMap[eventListeners] = fn
+      } else if (eventListeners instanceof Array) {
         eventListeners.forEach(name => {
           eventListenersMap[name] = null
         })
-      }else {
+      } else {
         eventListenersMap = eventListeners
       }
+      if (!this.isActive()) {
+        return new Promise((resolve, reject) => {
+          this.retryQueue.push({ type: 'addListener', eventListeners: eventListenersMap, resolve, reject })
+        })
+      }
+
       const body = {
         connectionId: this.connectionId,
         listener: Object.keys(eventListenersMap)
@@ -285,34 +287,36 @@ class Sse {
             'content-type': 'application/json;charset=UTF-8'
           }
         })
-        for(let eventName in eventListenersMap){
+        for (const eventName in eventListenersMap) {
           const fn = eventListenersMap[eventName]
           this.options.eventListeners[eventName] = fn
-          this._addEventListener(this.es,eventName,fn)
+          this._addEventListener(this.es, eventName, fn)
         }
         return responsePromise
       } catch (e) {
         return new Promise((resolve, reject) => {
-          this.retryQueue.push({ type: 'addListener', eventListeners, resolve, reject })
+          this.retryQueue.push({ type: 'addListener', eventListeners: eventListenersMap, resolve, reject })
         })
       }
     }
 
-    this.removeListener = (eventListeners) => {
-      if (!this.isActive()) {
-        return new Promise((resolve, reject) => {
-          this.retryQueue.push({ type: 'removeListener',eventListeners, resolve, reject })
-        })
-      }
-
+    this.removeListener = (eventListeners, fn) => {
       let eventListenersMap = {}
-      if(eventListeners instanceof Array){
+      if (typeof eventListeners === 'string' || typeof eventListeners === 'symbol') {
+        eventListenersMap[eventListeners] = fn
+      } else if (eventListeners instanceof Array) {
         eventListeners.forEach(name => {
           eventListenersMap[name] = null
         })
-      }else {
+      } else {
         eventListenersMap = eventListeners
       }
+      if (!this.isActive()) {
+        return new Promise((resolve, reject) => {
+          this.retryQueue.push({ type: 'removeListener', eventListeners: eventListenersMap, resolve, reject })
+        })
+      }
+
       const body = {
         connectionId: this.connectionId,
         listener: Object.keys(eventListenersMap)
@@ -331,15 +335,15 @@ class Sse {
             'content-type': 'application/json;charset=UTF-8'
           }
         })
-        for(let eventName in eventListenersMap){
+        for (const eventName in eventListenersMap) {
           const fn = eventListenersMap[eventName]
           this.options.eventListeners[eventName] = fn
-          this._removeEventListener(this.es,eventName,fn)
+          this._removeEventListener(this.es, eventName, fn)
         }
         return responsePromise
       } catch (e) {
         return new Promise((resolve, reject) => {
-          this.retryQueue.push({ type: 'removeListener', eventListeners, resolve, reject })
+          this.retryQueue.push({ type: 'removeListener', eventListeners: eventListenersMap, resolve, reject })
         })
       }
     }
@@ -409,7 +413,7 @@ class Sse {
     }
 
     this.isActive = () => {
-      return this.es && this.es.readyState === Sse.STATE_OPEN  && this.connectionId !== undefined
+      return Boolean(this.es && this.es.readyState === Sse.STATE_OPEN && this.connectionId !== undefined)
     }
 
     // 给后台发消息

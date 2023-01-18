@@ -7,6 +7,7 @@ import com.alibaba.nacos.api.naming.listener.Event;
 import com.alibaba.nacos.api.naming.listener.EventListener;
 import com.alibaba.nacos.api.naming.listener.NamingEvent;
 import com.alibaba.nacos.api.naming.pojo.Instance;
+import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.ReferenceCounted;
 import com.github.sseserver.util.SpringUtil;
 import com.github.sseserver.util.WebUtil;
@@ -35,6 +36,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
     private final String serviceName;
     private final String groupName;
     private final List<String> clusterName;
+    private final SseServerProperties.AutoType autoTypeEnum;
     private volatile ReferenceCounted<List<RemoteConnectionService>> connectionServiceListRef = new ReferenceCounted<>(Collections.emptyList());
     private volatile ReferenceCounted<List<RemoteMessageRepository>> messageRepositoryListRef = new ReferenceCounted<>(Collections.emptyList());
     private List<Instance> instanceList;
@@ -44,13 +46,14 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
     public NacosServiceDiscoveryService(String groupName,
                                         String serviceName,
                                         String clusterName,
-                                        Properties nacosProperties) {
+                                        Properties nacosProperties,
+                                        SseServerProperties.AutoType autoTypeEnum) {
         this.groupName = groupName;
         this.serviceName = serviceName;
         this.clusterName = clusterName == null || clusterName.isEmpty() ?
                 null : Arrays.asList(clusterName.split(","));
         this.account = SpringUtil.filterNonAscii(groupName + "-" + METADATA_VALUE_DEVICE_ID);
-
+        this.autoTypeEnum = autoTypeEnum;
         try {
             this.namingService = createNamingService(nacosProperties);
         } catch (NacosException e) {
@@ -233,7 +236,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
             String password = getPassword(instance);
             try {
                 URL url = new URL(String.format("http://%s:%s@%s:%d", account, password, instance.getIp(), instance.getPort()));
-                RemoteMessageRepository service = new RemoteMessageRepository(url, account, password);
+                RemoteMessageRepository service = new RemoteMessageRepository(url, account, password, autoTypeEnum);
                 list.add(service);
             } catch (MalformedURLException e) {
                 throw new IllegalStateException(
@@ -253,8 +256,8 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
             String account = getAccount(instance);
             String password = getPassword(instance);
             try {
-                URL url = new URL(String.format("http://%s:%s@%s:%d", account, password, instance.getIp(), instance.getPort()));
-                RemoteConnectionServiceImpl service = new RemoteConnectionServiceImpl(url, account, password);
+                URL url = new URL(String.format("http://%s:%d", instance.getIp(), instance.getPort()));
+                RemoteConnectionServiceImpl service = new RemoteConnectionServiceImpl(url, account, password, autoTypeEnum);
                 list.add(service);
             } catch (MalformedURLException e) {
                 throw new IllegalStateException(

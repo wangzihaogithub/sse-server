@@ -13,6 +13,7 @@ public class QosCompletableFuture<T> extends CompletableFuture<T> {
 
     public QosCompletableFuture(String messageId) {
         this.messageId = Objects.requireNonNull(messageId);
+        setExceptionallyPrefix("at qos messageId :" + messageId);
     }
 
     public String getMessageId() {

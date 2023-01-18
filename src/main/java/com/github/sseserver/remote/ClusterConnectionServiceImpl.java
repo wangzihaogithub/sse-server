@@ -376,7 +376,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
                     } catch (InterruptedException exception) {
                         interruptedException = exception;
                     } catch (ExecutionException exception) {
-                        handleRemoteException(remoteFuture, exception);
+                        handleRemoteException(remoteFuture, exception, future);
                     }
                 }
                 T end = reduce.apply(remotePart, localPart);
@@ -386,10 +386,20 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
         }
     }
 
-    protected void handleRemoteException(RemoteCompletableFuture<?, RemoteConnectionService> remoteFuture, ExecutionException exception) {
+    protected <R> void handleRemoteException(RemoteCompletableFuture<?, RemoteConnectionService> remoteFuture,
+                                             ExecutionException exception,
+                                             ClusterCompletableFuture<R, ClusterConnectionService> doneFuture) {
+        Throwable cause = exception.getCause();
+        if (cause == null) {
+            cause = exception;
+        }
+        boolean completeExceptionally = doneFuture.completeExceptionally(cause);
+        if (completeExceptionally) {
+            doneFuture.setExceptionallyPrefix("ClusterConnectionServiceImpl at remoteFuture " + remoteFuture.getClient().getId());
+        }
         if (log.isDebugEnabled()) {
-            log.debug("RemoteConnectionService {} , RemoteException {}",
-                    remoteFuture.getClient(), exception, exception);
+            log.debug("RemoteException: RemoteConnectionService {} , RemoteException {}, completeExceptionally {}",
+                    remoteFuture.getClient(), exception, completeExceptionally, exception);
         }
     }
 

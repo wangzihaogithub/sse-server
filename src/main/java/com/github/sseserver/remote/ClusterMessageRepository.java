@@ -134,7 +134,7 @@ public class ClusterMessageRepository implements MessageRepository {
                     } catch (InterruptedException exception) {
                         interruptedException = exception;
                     } catch (ExecutionException exception) {
-                        handleRemoteException(remoteFuture, exception);
+                        handleRemoteException(remoteFuture, exception, future);
                     }
                 }
                 T end = reduce.apply(remotePart, localPart);
@@ -144,11 +144,20 @@ public class ClusterMessageRepository implements MessageRepository {
         }
     }
 
-    protected void handleRemoteException(RemoteCompletableFuture<?, RemoteMessageRepository> remoteFuture,
-                                         ExecutionException exception) {
+    protected <R> void handleRemoteException(RemoteCompletableFuture<?, RemoteMessageRepository> remoteFuture,
+                                             ExecutionException exception,
+                                             ClusterCompletableFuture<R, ClusterMessageRepository> doneFuture) {
+        Throwable cause = exception.getCause();
+        if (cause == null) {
+            cause = exception;
+        }
+        boolean completeExceptionally = doneFuture.completeExceptionally(cause);
+        if (completeExceptionally) {
+            doneFuture.setExceptionallyPrefix("ClusterMessageRepository at remoteFuture " + remoteFuture.getClient().getId());
+        }
         if (log.isDebugEnabled()) {
-            log.debug("RemoteMessageRepository {} , RemoteException {}",
-                    remoteFuture.getClient(), exception, exception);
+            log.debug("RemoteException: RemoteMessageRepository {} , RemoteException {}, completeExceptionally {}",
+                    remoteFuture.getClient(), exception, completeExceptionally, exception);
         }
     }
 

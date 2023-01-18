@@ -3,12 +3,12 @@ package com.github.sseserver.util;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class CompletableFuture<T> extends java.util.concurrent.CompletableFuture<T> {
     private final long startTimestamp = System.currentTimeMillis();
-    private long endTimestamp;
+    private volatile long endTimestamp;
+    private volatile String exceptionallyPrefix;
 
     public static <R> void join(List<? extends java.util.concurrent.CompletableFuture> list, java.util.concurrent.CompletableFuture<R> end, Supplier<R> callback) {
         int size = list.size();
@@ -35,17 +35,44 @@ public class CompletableFuture<T> extends java.util.concurrent.CompletableFuture
     }
 
     @Override
-    public java.util.concurrent.CompletableFuture<T> exceptionally(Function<Throwable, ? extends T> fn) {
-        java.util.concurrent.CompletableFuture<T> future = super.exceptionally(fn);
-        this.endTimestamp = System.currentTimeMillis();
-        return future;
+    public boolean completeExceptionally(Throwable ex) {
+        boolean b = super.completeExceptionally(ex);
+        if (b) {
+            this.endTimestamp = System.currentTimeMillis();
+        }
+        return b;
+    }
+
+    public void setExceptionallyPrefix(String exceptionallyPrefix) {
+        this.exceptionallyPrefix = exceptionallyPrefix;
+    }
+
+    public String getExceptionallyPrefix() {
+        return exceptionallyPrefix;
     }
 
     public T block() {
         try {
             return super.get();
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (InterruptedException e) {
             LambdaUtil.sneakyThrows(e);
+            return null;
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause == null) {
+                LambdaUtil.sneakyThrows(e);
+            } else {
+                ExecutionException exception;
+                String exceptionallyPrefix = this.exceptionallyPrefix;
+                if (exceptionallyPrefix != null) {
+                    exception = new ExecutionException(
+                            exceptionallyPrefix + "\n" + cause,
+                            cause);
+                } else {
+                    exception = new ExecutionException(cause);
+                }
+                LambdaUtil.sneakyThrows(exception);
+            }
             return null;
         }
     }

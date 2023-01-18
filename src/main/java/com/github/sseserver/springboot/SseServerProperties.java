@@ -30,9 +30,16 @@ public class SseServerProperties {
 
     }
 
+    public enum AutoType {
+        DISABLED,
+        CLASS_NOT_FOUND_USE_MAP,
+        CLASS_NOT_FOUND_THROWS,
+    }
+
     public static class Remote {
         private final Nacos nacos = new Nacos();
         private boolean enabled = false;
+        private AutoType autoType = AutoType.CLASS_NOT_FOUND_THROWS;
 
         public boolean isEnabled() {
             return enabled;
@@ -40,6 +47,14 @@ public class SseServerProperties {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
+        }
+
+        public AutoType getAutoType() {
+            return autoType;
+        }
+
+        public void setAutoType(AutoType autoType) {
+            this.autoType = autoType;
         }
 
         public Nacos getNacos() {

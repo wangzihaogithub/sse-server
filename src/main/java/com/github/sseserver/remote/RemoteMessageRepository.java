@@ -1,8 +1,10 @@
 package com.github.sseserver.remote;
 
+import com.alibaba.nacos.common.utils.ConcurrentHashSet;
 import com.github.sseserver.local.LocalController;
 import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
+import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.SpringUtil;
 import org.springframework.http.HttpEntity;
@@ -13,10 +15,7 @@ import org.springframework.web.client.AsyncRestTemplate;
 import java.io.Serializable;
 import java.net.URL;
 import java.nio.channels.ClosedChannelException;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -35,12 +34,15 @@ public class RemoteMessageRepository implements MessageRepository {
     private final URL url;
     private final String urlMessageRepository;
     private final String id;
+    private final SseServerProperties.AutoType autoTypeEnum;
+    private final Set<String> classNotFoundSet = new ConcurrentHashSet<>();
     private boolean closeFlag = false;
 
-    public RemoteMessageRepository(URL url, String account, String password) {
+    public RemoteMessageRepository(URL url, String account, String password, SseServerProperties.AutoType autoTypeEnum) {
         this.url = url;
         this.urlMessageRepository = url + "/MessageRepository";
         this.id = account;
+        this.autoTypeEnum = autoTypeEnum;
         this.restTemplate = SpringUtil.newAsyncRestTemplate(
                 connectTimeout, readTimeout,
                 threadsIfAsyncRequest, threadsIfBlockRequest,
@@ -122,13 +124,26 @@ public class RemoteMessageRepository implements MessageRepository {
             Function<ResponseEntity<LocalController.Response>, T> extract) {
         RemoteCompletableFuture<T, RemoteMessageRepository> result = new RemoteCompletableFuture<>();
         result.setClient(this);
-        future.addCallback(response -> result.complete(extract.apply(response)), result::completeExceptionally);
+        future.addCallback(response -> {
+            T data;
+            try {
+                data = extract.apply(response);
+            } catch (Throwable e) {
+                result.completeExceptionally(e);
+                return;
+            }
+            result.complete(data);
+        }, result::completeExceptionally);
         return result;
     }
 
     protected <T> T extract(ResponseEntity<LocalController.Response> response) {
         LocalController.Response body = response.getBody();
-        body.autoCastClassName(false);
+        try {
+            body.autoCastClassName(autoTypeEnum, classNotFoundSet);
+        } catch (ClassNotFoundException e) {
+            LambdaUtil.sneakyThrows(e);
+        }
         Object data = body.getData();
         return (T) data;
     }

@@ -16,6 +16,8 @@ public interface RemoteConnectionService extends ConnectionQueryService, SendSer
     @Override
     void close();
 
+    String getId();
+
     RemoteCompletableFuture<Boolean, RemoteConnectionService> isOnlineAsync(Serializable userId);
 
     <ACCESS_USER> RemoteCompletableFuture<ACCESS_USER, RemoteConnectionService> getUserAsync(Serializable userId);

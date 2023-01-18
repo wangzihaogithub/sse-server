@@ -6,6 +6,7 @@ import com.github.sseserver.SendService;
 import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.remote.ServiceDiscoveryService;
+import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.TypeUtil;
 import com.github.sseserver.util.WebUtil;
 import com.sun.net.httpserver.*;
@@ -719,7 +720,7 @@ public class LocalController implements Closeable {
             Response body = new Response();
             body.setData(data);
             if (autoType) {
-                body.autoCastClassName(true);
+                body.autoSetClassName();
             }
 
             request.sendResponseHeaders(200, 0L);
@@ -758,53 +759,81 @@ public class LocalController implements Closeable {
             this.data = data;
         }
 
-        public void autoCastClassName(boolean server) {
-            if (server) {
-                if (data instanceof Collection) {
-                    int i = 0;
-                    Map<String, Collection<Integer>> classMap = new HashMap<>(1);
-                    for (Object item : (Collection) data) {
-                        if (!TypeUtil.isBasicType(item)) {
-                            classMap.computeIfAbsent(item.getClass().getName(), e -> new ArrayList<>())
-                                    .add(i);
-                        }
-                        i++;
+        public void autoSetClassName() {
+            if (data instanceof Collection) {
+                int i = 0;
+                Map<String, Collection<Integer>> classMap = new HashMap<>(1);
+                for (Object item : (Collection) data) {
+                    if (!TypeUtil.isBasicType(item)) {
+                        classMap.computeIfAbsent(item.getClass().getName(), e -> new ArrayList<>())
+                                .add(i);
                     }
-                    arrayClassName = classMap;
-                } else if (TypeUtil.isBasicType(data)) {
-
-                } else {
-                    objectClassName = data.getClass().getName();
+                    i++;
                 }
+                arrayClassName = classMap;
+            } else if (TypeUtil.isBasicType(data)) {
+
             } else {
-                if (objectClassName != null) {
-                    data = TypeUtil.castBean(data, objectClassName);
-                } else if (arrayClassName != null && data instanceof Collection) {
-                    for (Map.Entry<String, Collection<Integer>> entry : arrayClassName.entrySet()) {
-                        Collection<Integer> value = entry.getValue();
-                        if (!(value instanceof Set)) {
-                            entry.setValue(new HashSet<>(value));
+                objectClassName = data.getClass().getName();
+            }
+        }
+
+        public void autoCastClassName(SseServerProperties.AutoType autoTypeEnum, Set<String> classNotFoundCacheSet) throws ClassNotFoundException {
+            if (autoTypeEnum == SseServerProperties.AutoType.DISABLED) {
+                return;
+            }
+
+            if (objectClassName != null) {
+                if (autoTypeEnum == SseServerProperties.AutoType.CLASS_NOT_FOUND_USE_MAP
+                        && classNotFoundCacheSet.contains(objectClassName)) {
+                    // skip
+                } else {
+                    try {
+                        data = TypeUtil.castBean(data, objectClassName);
+                    } catch (ClassNotFoundException e) {
+                        classNotFoundCacheSet.add(objectClassName);
+                        if (autoTypeEnum == SseServerProperties.AutoType.CLASS_NOT_FOUND_THROWS) {
+                            throw e;
                         }
                     }
-                    List list = new ArrayList(((Collection<?>) data).size());
-                    int i = 0;
-                    for (Object item : (Collection) data) {
-                        String objectClassName = null;
-                        for (Map.Entry<String, Collection<Integer>> entry : arrayClassName.entrySet()) {
-                            if (entry.getValue().contains(i)) {
-                                objectClassName = entry.getKey();
-                                break;
+                }
+            } else if (arrayClassName != null && data instanceof Collection) {
+                for (Map.Entry<String, Collection<Integer>> entry : arrayClassName.entrySet()) {
+                    Collection<Integer> value = entry.getValue();
+                    if (!(value instanceof Set)) {
+                        entry.setValue(new HashSet<>(value));
+                    }
+                }
+                List list = new ArrayList(((Collection<?>) data).size());
+                int i = 0;
+                for (Object item : (Collection) data) {
+                    String objectClassName = null;
+                    for (Map.Entry<String, Collection<Integer>> entry : arrayClassName.entrySet()) {
+                        if (entry.getValue().contains(i)) {
+                            objectClassName = entry.getKey();
+                            break;
+                        }
+                    }
+                    if (objectClassName == null) {
+                        list.add(item);
+                    } else if (autoTypeEnum == SseServerProperties.AutoType.CLASS_NOT_FOUND_USE_MAP
+                            && classNotFoundCacheSet.contains(objectClassName)) {
+                        list.add(item);
+                    } else {
+                        try {
+                            list.add(TypeUtil.castBean(item, objectClassName));
+                        } catch (ClassNotFoundException e) {
+                            classNotFoundCacheSet.add(objectClassName);
+                            if (autoTypeEnum == SseServerProperties.AutoType.CLASS_NOT_FOUND_USE_MAP) {
+                                list.add(item);
+                            } else {
+                                throw e;
                             }
                         }
-                        if (objectClassName == null) {
-                            list.add(item);
-                        } else {
-                            list.add(TypeUtil.castBean(item, objectClassName));
-                        }
-                        i++;
                     }
-                    this.data = (T) list;
+                    i++;
                 }
+                this.data = (T) list;
             }
         }
     }

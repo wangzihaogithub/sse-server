@@ -52,16 +52,11 @@ public class TypeUtil {
         }
     }
 
-    public static <T> T castBean(Object obj, String typeString) {
+    public static <T> T castBean(Object obj, String typeString) throws ClassNotFoundException{
         if (obj == null || typeString == null) {
             return (T) obj;
         }
-        Class<T> type;
-        try {
-            type = (Class<T>) Class.forName(typeString);
-        } catch (Exception e) {
-            throw new IllegalStateException("castBean newInstance(" + typeString + ") fail : " + e, e);
-        }
+        Class<T> type = (Class<T>) Class.forName(typeString);
         return TypeUtil.cast(obj, type);
     }
 
