@@ -52,7 +52,7 @@ public class TypeUtil {
         }
     }
 
-    public static <T> T castBean(Object obj, String typeString) throws ClassNotFoundException{
+    public static <T> T castBean(Object obj, String typeString) throws ClassNotFoundException {
         if (obj == null || typeString == null) {
             return (T) obj;
         }

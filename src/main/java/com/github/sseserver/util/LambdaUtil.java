@@ -34,7 +34,7 @@ public class LambdaUtil {
         return (o1, o2) -> o1 != null ? o1 : o2;
     }
 
-    public static <T extends Collection> BiFunction<T, T, T> reduceList() {
+    public static <T extends Collection<E>, E> BiFunction<T, T, T> reduceList() {
         return (o1, o2) -> {
             o1.addAll(o2);
             return o1;

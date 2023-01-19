@@ -13,6 +13,7 @@ public class PageInfo<T> implements Serializable, Iterable<T> {
     private int pageNum;
     private int pageSize;
     private List<T> list;
+    private boolean timeout;
 
     public PageInfo() {
         this(new ArrayList<>());
@@ -20,11 +21,17 @@ public class PageInfo<T> implements Serializable, Iterable<T> {
 
     public PageInfo(List<T> list) {
         this.list = Objects.requireNonNull(list);
-        this.total = (long) list.size();
+        this.total = list.size();
     }
 
     public static <T> PageInfo<T> empty() {
         return PageInfo.of(Collections.emptyList());
+    }
+
+    public static <T> PageInfo<T> timeout() {
+        PageInfo<T> info = PageInfo.of(Collections.emptyList());
+        info.setTimeout(true);
+        return info;
     }
 
     public static <T> PageInfo<T> of(List<T> list, int pageNum, int pageSize) {
@@ -125,6 +132,14 @@ public class PageInfo<T> implements Serializable, Iterable<T> {
 
     public void setList(List<T> list) {
         this.list = list;
+    }
+
+    public boolean isTimeout() {
+        return timeout;
+    }
+
+    public void setTimeout(boolean timeout) {
+        this.timeout = timeout;
     }
 
     @Override

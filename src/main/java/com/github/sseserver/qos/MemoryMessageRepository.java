@@ -16,6 +16,11 @@ public class MemoryMessageRepository implements MessageRepository {
     }
 
     @Override
+    public List<Message> list() {
+        return new ArrayList<>(messageMap.values());
+    }
+
+    @Override
     public List<Message> select(Query query) {
         if (messageMap.isEmpty()) {
             return Collections.emptyList();

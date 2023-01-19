@@ -36,7 +36,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
     private final String serviceName;
     private final String groupName;
     private final List<String> clusterName;
-    private final SseServerProperties.AutoType autoTypeEnum;
+    private final SseServerProperties.Remote remoteConfig;
     private volatile ReferenceCounted<List<RemoteConnectionService>> connectionServiceListRef = new ReferenceCounted<>(Collections.emptyList());
     private volatile ReferenceCounted<List<RemoteMessageRepository>> messageRepositoryListRef = new ReferenceCounted<>(Collections.emptyList());
     private List<Instance> instanceList;
@@ -47,13 +47,13 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
                                         String serviceName,
                                         String clusterName,
                                         Properties nacosProperties,
-                                        SseServerProperties.AutoType autoTypeEnum) {
+                                        SseServerProperties.Remote remoteConfig) {
         this.groupName = groupName;
         this.serviceName = serviceName;
         this.clusterName = clusterName == null || clusterName.isEmpty() ?
                 null : Arrays.asList(clusterName.split(","));
         this.account = SpringUtil.filterNonAscii(groupName + "-" + METADATA_VALUE_DEVICE_ID);
-        this.autoTypeEnum = autoTypeEnum;
+        this.remoteConfig = remoteConfig;
         try {
             this.namingService = createNamingService(nacosProperties);
         } catch (NacosException e) {
@@ -67,6 +67,10 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
             throw new IllegalArgumentException(
                     "com.github.sseserver.remote.NacosServiceDiscoveryService subscribe fail : " + e, e);
         }
+    }
+
+    private static String limit(String string, int len) {
+        return string.length() > len ? string.substring(0, len) : string;
     }
 
     public synchronized void subscribe() throws NacosException {
@@ -235,8 +239,8 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
             String account = getAccount(instance);
             String password = getPassword(instance);
             try {
-                URL url = new URL(String.format("http://%s:%s@%s:%d", account, password, instance.getIp(), instance.getPort()));
-                RemoteMessageRepository service = new RemoteMessageRepository(url, account, password, autoTypeEnum);
+                URL url = new URL(String.format("http://%s:%d", instance.getIp(), instance.getPort()));
+                RemoteMessageRepository service = new RemoteMessageRepository(url, account, password, remoteConfig.getMessageRepository());
                 list.add(service);
             } catch (MalformedURLException e) {
                 throw new IllegalStateException(
@@ -257,7 +261,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
             String password = getPassword(instance);
             try {
                 URL url = new URL(String.format("http://%s:%d", instance.getIp(), instance.getPort()));
-                RemoteConnectionServiceImpl service = new RemoteConnectionServiceImpl(url, account, password, autoTypeEnum);
+                RemoteConnectionServiceImpl service = new RemoteConnectionServiceImpl(url, account, password, remoteConfig.getConnectionService());
                 list.add(service);
             } catch (MalformedURLException e) {
                 throw new IllegalStateException(
@@ -303,10 +307,6 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
         if (isProjectNameNull) {
             System.getProperties().remove("project.name");
         }
-    }
-
-    private static String limit(String string, int len) {
-        return string.length() > len ? string.substring(0, len) : string;
     }
 
     @Override

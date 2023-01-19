@@ -5,16 +5,20 @@ import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.qos.QosCompletableFuture;
 import com.github.sseserver.remote.ClusterConnectionService;
 import com.github.sseserver.remote.ClusterMessageRepository;
+import com.github.sseserver.remote.ConnectionDTO;
 import com.github.sseserver.remote.ServiceDiscoveryService;
 import com.github.sseserver.springboot.SseServerBeanDefinitionRegistrar;
 import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.TypeUtil;
+import com.github.sseserver.util.WebUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.BeanNameAware;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -70,6 +74,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     private String beanName = getClass().getSimpleName();
     private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
     private int reconnectTime = 5000;
+    private Integer serverPort;
 
     @Override
     public ScheduledExecutorService getScheduled() {
@@ -116,7 +121,6 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         return beanFactory.getBean(beanName, ClusterMessageRepository.class);
     }
 
-
     @Override
     public <ACCESS_USER> SseEmitter<ACCESS_USER> connect(ACCESS_USER accessUser, Long keepaliveTime, Map<String, Object> attributeMap) {
         if (keepaliveTime == null) {
@@ -124,6 +128,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         }
         // 设置超时时间，0表示不过期。servlet默认30秒，超过时间未完成会抛出异常：AsyncRequestTimeoutException
         SseEmitter<ACCESS_USER> result = new SseEmitter<>(keepaliveTime, accessUser);
+        result.setServerId(WebUtil.getIPAddress(serverPort));
         result.onCompletion(completionCallBack(result));
         result.onError(errorCallBack(result));
         result.onTimeout(timeoutCallBack(result));
@@ -398,6 +403,13 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> getConnectionByListening(String sseListenerName) {
         return (List) connectionMap.values().stream()
                 .filter(e -> e.existListener(sseListenerName))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public <ACCESS_USER> List<ConnectionDTO<ACCESS_USER>> getConnectionDTOAll() {
+        return this.<ACCESS_USER>getConnectionAll().stream()
+                .map(ConnectionDTO::convert)
                 .collect(Collectors.toList());
     }
 
@@ -768,4 +780,10 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
         this.beanFactory = beanFactory;
     }
+
+    @Autowired(required = false)
+    public void setServerPort(@Value("${server.port:8080}") Integer serverPort) {
+        this.serverPort = serverPort;
+    }
+
 }

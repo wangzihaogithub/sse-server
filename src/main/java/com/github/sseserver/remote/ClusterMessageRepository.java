@@ -47,18 +47,35 @@ public class ClusterMessageRepository implements MessageRepository {
     }
 
     @Override
+    public List<Message> list() {
+        ClusterCompletableFuture<List<Message>, ClusterMessageRepository> future = listAsync();
+        return future.block();
+    }
+
+    @Override
     public List<Message> select(Query query) {
-        return selectAsync(query).block();
+        ClusterCompletableFuture<List<Message>, ClusterMessageRepository> future = selectAsync(query);
+        return future.block();
     }
 
     @Override
     public Message delete(String id) {
-        return deleteAsync(id, null).block();
+        ClusterCompletableFuture<Message, ClusterMessageRepository> future = deleteAsync(id, null);
+        return future.block();
     }
 
     @Override
     public void addDeleteListener(Consumer<Message> listener) {
         getLocalRepository().addDeleteListener(listener);
+    }
+
+    public ClusterCompletableFuture<List<Message>, ClusterMessageRepository> listAsync() {
+        return mapReduce(
+                RemoteMessageRepository::listAsync,
+                MessageRepository::list,
+                LambdaUtil.reduceList(),
+                LambdaUtil.noop(),
+                ArrayList::new);
     }
 
     public ClusterCompletableFuture<List<Message>, ClusterMessageRepository> selectAsync(Query query) {
@@ -151,10 +168,10 @@ public class ClusterMessageRepository implements MessageRepository {
         if (cause == null) {
             cause = exception;
         }
-        boolean completeExceptionally = doneFuture.completeExceptionally(cause);
-        if (completeExceptionally) {
+        if (!doneFuture.isDone()) {
             doneFuture.setExceptionallyPrefix("ClusterMessageRepository at remoteFuture " + remoteFuture.getClient().getId());
         }
+        boolean completeExceptionally = doneFuture.completeExceptionally(cause);
         if (log.isDebugEnabled()) {
             log.debug("RemoteException: RemoteMessageRepository {} , RemoteException {}, completeExceptionally {}",
                     remoteFuture.getClient(), exception, completeExceptionally, exception);

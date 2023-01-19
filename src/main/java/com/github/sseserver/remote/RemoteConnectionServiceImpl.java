@@ -3,6 +3,7 @@ package com.github.sseserver.remote;
 import com.alibaba.nacos.common.utils.ConcurrentHashSet;
 import com.github.sseserver.local.LocalController.Response;
 import com.github.sseserver.springboot.SseServerProperties;
+import com.github.sseserver.util.AutoTypeBean;
 import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.SpringUtil;
 import com.github.sseserver.util.TypeUtil;
@@ -34,18 +35,19 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     private final String urlConnectionQueryService;
     private final String urlSendService;
     private final String urlRemoteConnectionService;
-    private final SseServerProperties.AutoType autoTypeEnum;
+    private final SseServerProperties.Remote.ConnectionService config;
     private final Set<String> classNotFoundSet = new ConcurrentHashSet<>();
     private final String id;
     private boolean closeFlag = false;
 
-    public RemoteConnectionServiceImpl(URL url, String account, String password, SseServerProperties.AutoType autoTypeEnum) {
+    public RemoteConnectionServiceImpl(URL url, String account, String password,
+                                       SseServerProperties.Remote.ConnectionService config) {
         this.url = url;
         this.id = account;
         this.urlConnectionQueryService = url + "/ConnectionQueryService";
         this.urlSendService = url + "/SendService";
         this.urlRemoteConnectionService = url + "/RemoteConnectionService";
-        this.autoTypeEnum = autoTypeEnum;
+        this.config = config;
         this.restTemplate = SpringUtil.newAsyncRestTemplate(
                 connectTimeout, readTimeout,
                 threadsIfAsyncRequest, threadsIfBlockRequest,
@@ -71,7 +73,12 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
 
     @Override
     public <ACCESS_USER> RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> getUsersAsync() {
-        return asyncGetConnectionQueryService("/getUsers", this::extract);
+        return getUsersAsync(null);
+    }
+
+    @Override
+    public <ACCESS_USER> RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> getUsersAsync(SseServerProperties.AutoType autoType) {
+        return asyncGetConnectionQueryService("/getUsers", (response) -> extract(response, null));
     }
 
     @Override
@@ -84,6 +91,25 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     public <ACCESS_USER> RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> getUsersByTenantIdListeningAsync(Serializable tenantId, String sseListenerName) {
         return asyncGetConnectionQueryService("/getUsersByTenantIdListening?tenantId={tenantId}&sseListenerName={sseListenerName}", this::extract,
                 tenantId, sseListenerName);
+    }
+
+    @Override
+    public <ACCESS_USER> RemoteCompletableFuture<List<ConnectionDTO<ACCESS_USER>>, RemoteConnectionService> getConnectionDTOAllAsync(SseServerProperties.AutoType autoTypeEnum) {
+        return asyncGetConnectionQueryService("/getConnectionDTOAll", (response) -> {
+            List<ConnectionDTO<ACCESS_USER>> list = extract(response, autoTypeEnum);
+            SseServerProperties.AutoType autoType = autoTypeEnum == null ? config.getAutoType() : autoTypeEnum;
+            for (ConnectionDTO<ACCESS_USER> item : list) {
+                try {
+                    ACCESS_USER cast = AutoTypeBean.cast(item.getAccessUser(),
+                            item.getArrayClassName(), item.getObjectClassName(),
+                            autoType, classNotFoundSet);
+                    item.setAccessUser(cast);
+                } catch (ClassNotFoundException e) {
+                    LambdaUtil.sneakyThrows(e);
+                }
+            }
+            return list;
+        });
     }
 
     @Override
@@ -135,65 +161,84 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
 
     @Override
     public boolean isOnline(Serializable userId) {
-        Boolean result = isOnlineAsync(userId).block();
+        RemoteCompletableFuture<Boolean, RemoteConnectionService> future = isOnlineAsync(userId);
+        Boolean result = future.block();
         Objects.requireNonNull(result,
                 "RemoteConnectionServiceImpl -> public boolean isOnline(userId) result is Null");
         return result;
     }
 
     @Override
+    public <ACCESS_USER> List<ConnectionDTO<ACCESS_USER>> getConnectionDTOAll() {
+        RemoteCompletableFuture<List<ConnectionDTO<ACCESS_USER>>, RemoteConnectionService> future
+                = getConnectionDTOAllAsync(null);
+        return future.block();
+    }
+
+    @Override
     public <ACCESS_USER> ACCESS_USER getUser(Serializable userId) {
-        return (ACCESS_USER) getUserAsync(userId).block();
+        RemoteCompletableFuture<ACCESS_USER, RemoteConnectionService> future = getUserAsync(userId);
+        return future.block();
     }
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsers() {
-        return (List<ACCESS_USER>) getUsersAsync().block();
+        RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> future = getUsersAsync();
+        return future.block();
     }
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsersByListening(String sseListenerName) {
-        return (List<ACCESS_USER>) getUsersByListeningAsync(sseListenerName).block();
+        RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> future = getUsersByListeningAsync(sseListenerName);
+        return future.block();
     }
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsersByTenantIdListening(Serializable tenantId, String sseListenerName) {
-        return (List<ACCESS_USER>) getUsersByTenantIdListeningAsync(tenantId, sseListenerName).block();
+        RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> future = getUsersByTenantIdListeningAsync(tenantId, sseListenerName);
+        return future.block();
     }
 
     @Override
     public <T> Collection<T> getUserIds(Class<T> type) {
-        return getUserIdsAsync(type).block();
+        RemoteCompletableFuture<Collection<T>, RemoteConnectionService> future = getUserIdsAsync(type);
+        return future.block();
     }
 
     @Override
     public <T> List<T> getUserIdsByListening(String sseListenerName, Class<T> type) {
-        return getUserIdsByListeningAsync(sseListenerName, type).block();
+        RemoteCompletableFuture<List<T>, RemoteConnectionService> future = getUserIdsByListeningAsync(sseListenerName, type);
+        return future.block();
     }
 
     @Override
     public <T> List<T> getUserIdsByTenantIdListening(Serializable tenantId, String sseListenerName, Class<T> type) {
-        return getUserIdsByTenantIdListeningAsync(tenantId, sseListenerName, type).block();
+        RemoteCompletableFuture<List<T>, RemoteConnectionService> future = getUserIdsByTenantIdListeningAsync(tenantId, sseListenerName, type);
+        return future.block();
     }
 
     @Override
     public Collection<String> getAccessTokens() {
-        return getAccessTokensAsync().block();
+        RemoteCompletableFuture<Collection<String>, RemoteConnectionService> future = getAccessTokensAsync();
+        return future.block();
     }
 
     @Override
     public <T> List<T> getTenantIds(Class<T> type) {
-        return getTenantIdsAsync(type).block();
+        RemoteCompletableFuture<List<T>, RemoteConnectionService> future = getTenantIdsAsync(type);
+        return future.block();
     }
 
     @Override
     public List<String> getChannels() {
-        return getChannelsAsync().block();
+        RemoteCompletableFuture<List<String>, RemoteConnectionService> future = getChannelsAsync();
+        return future.block();
     }
 
     @Override
     public int getAccessTokenCount() {
-        Integer result = (Integer) asyncGetConnectionQueryService("/getAccessTokenCount", this::extract).block();
+        RemoteCompletableFuture<Integer, RemoteConnectionService> future = asyncGetConnectionQueryService("/getAccessTokenCount", this::extract);
+        Integer result = future.block();
         Objects.requireNonNull(result,
                 "RemoteConnectionServiceImpl -> public int getAccessTokenCount() result is Null");
         return result;
@@ -201,7 +246,8 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
 
     @Override
     public int getUserCount() {
-        Integer result = (Integer) asyncGetConnectionQueryService("/getUserCount", this::extract).block();
+        RemoteCompletableFuture<Integer, RemoteConnectionService> future = asyncGetConnectionQueryService("/getUserCount", this::extract);
+        Integer result = future.block();
         Objects.requireNonNull(result,
                 "RemoteConnectionServiceImpl -> public int getUserCount() result is Null");
         return result;
@@ -209,7 +255,8 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
 
     @Override
     public int getConnectionCount() {
-        Integer result = (Integer) asyncGetConnectionQueryService("/getConnectionCount", this::extract).block();
+        RemoteCompletableFuture<Integer, RemoteConnectionService> future = asyncGetConnectionQueryService("/getConnectionCount", this::extract);
+        Integer result = future.block();
         Objects.requireNonNull(result,
                 "RemoteConnectionServiceImpl -> public boolean getConnectionCount() result is Null");
         return result;
@@ -383,14 +430,22 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     protected <T> T extract(ResponseEntity<Response> response) {
+        return extract(response, null);
+    }
+
+    protected <T> T extract(ResponseEntity<Response> response, SseServerProperties.AutoType autoTypeEnum) {
+        if (autoTypeEnum == null) {
+            autoTypeEnum = config.getAutoType();
+        }
         Response body = response.getBody();
         try {
-            body.autoCastClassName(autoTypeEnum, classNotFoundSet);
+            return AutoTypeBean.cast(body.getData(),
+                    body.getArrayClassName(), body.getObjectClassName(),
+                    autoTypeEnum, classNotFoundSet);
         } catch (ClassNotFoundException e) {
             LambdaUtil.sneakyThrows(e);
+            return null;
         }
-        Object data = body.getData();
-        return (T) data;
     }
 
     protected <SOURCE extends Collection<?>, T> List<T> castBasic(SOURCE source, Class<T> type) {

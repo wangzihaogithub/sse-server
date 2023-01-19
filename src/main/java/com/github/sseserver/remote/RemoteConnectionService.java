@@ -2,6 +2,7 @@ package com.github.sseserver.remote;
 
 import com.github.sseserver.ConnectionQueryService;
 import com.github.sseserver.SendService;
+import com.github.sseserver.springboot.SseServerProperties;
 
 import java.io.Closeable;
 import java.io.Serializable;
@@ -24,9 +25,15 @@ public interface RemoteConnectionService extends ConnectionQueryService, SendSer
 
     <ACCESS_USER> RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> getUsersAsync();
 
+    <ACCESS_USER> RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> getUsersAsync(SseServerProperties.AutoType autoType);
+
     <ACCESS_USER> RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> getUsersByListeningAsync(String sseListenerName);
 
     <ACCESS_USER> RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> getUsersByTenantIdListeningAsync(Serializable tenantId, String sseListenerName);
+
+    /* getConnection */
+
+    <ACCESS_USER> RemoteCompletableFuture<List<ConnectionDTO<ACCESS_USER>>, RemoteConnectionService> getConnectionDTOAllAsync(SseServerProperties.AutoType autoTypeEnum);
 
     /* getUserIds */
 

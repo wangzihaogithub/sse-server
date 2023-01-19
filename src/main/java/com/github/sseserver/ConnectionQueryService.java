@@ -1,10 +1,16 @@
 package com.github.sseserver;
 
+import com.github.sseserver.remote.ConnectionDTO;
+
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
 
 public interface ConnectionQueryService {
+
+    /* getConnection */
+
+    <ACCESS_USER> List<ConnectionDTO<ACCESS_USER>> getConnectionDTOAll();
 
     /* getUser */
 

@@ -10,6 +10,12 @@ public class CompletableFuture<T> extends java.util.concurrent.CompletableFuture
     private volatile long endTimestamp;
     private volatile String exceptionallyPrefix;
 
+    public static <U> CompletableFuture<U> completedFuture(U value) {
+        CompletableFuture<U> future = new CompletableFuture<>();
+        future.complete(value);
+        return future;
+    }
+
     public static <R> void join(List<? extends java.util.concurrent.CompletableFuture> list, java.util.concurrent.CompletableFuture<R> end, Supplier<R> callback) {
         int size = list.size();
         if (size == 0) {
@@ -30,25 +36,27 @@ public class CompletableFuture<T> extends java.util.concurrent.CompletableFuture
     @Override
     public boolean complete(T value) {
         boolean complete = super.complete(value);
-        this.endTimestamp = System.currentTimeMillis();
+        if (complete) {
+            this.endTimestamp = System.currentTimeMillis();
+        }
         return complete;
     }
 
     @Override
     public boolean completeExceptionally(Throwable ex) {
-        boolean b = super.completeExceptionally(ex);
-        if (b) {
+        boolean complete = super.completeExceptionally(ex);
+        if (complete) {
             this.endTimestamp = System.currentTimeMillis();
         }
-        return b;
-    }
-
-    public void setExceptionallyPrefix(String exceptionallyPrefix) {
-        this.exceptionallyPrefix = exceptionallyPrefix;
+        return complete;
     }
 
     public String getExceptionallyPrefix() {
         return exceptionallyPrefix;
+    }
+
+    public void setExceptionallyPrefix(String exceptionallyPrefix) {
+        this.exceptionallyPrefix = exceptionallyPrefix;
     }
 
     public T block() {
@@ -56,25 +64,22 @@ public class CompletableFuture<T> extends java.util.concurrent.CompletableFuture
             return super.get();
         } catch (InterruptedException e) {
             LambdaUtil.sneakyThrows(e);
-            return null;
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
-            if (cause == null) {
-                LambdaUtil.sneakyThrows(e);
-            } else {
-                ExecutionException exception;
+            ExecutionException throwsException;
+            if (cause != null) {
                 String exceptionallyPrefix = this.exceptionallyPrefix;
                 if (exceptionallyPrefix != null) {
-                    exception = new ExecutionException(
-                            exceptionallyPrefix + "\n" + cause,
-                            cause);
+                    throwsException = new ExecutionException(exceptionallyPrefix + "\n" + cause, cause);
                 } else {
-                    exception = new ExecutionException(cause);
+                    throwsException = new ExecutionException(cause);
                 }
-                LambdaUtil.sneakyThrows(exception);
+            } else {
+                throwsException = e;
             }
-            return null;
+            LambdaUtil.sneakyThrows(throwsException);
         }
+        return null;
     }
 
     public long getCostMs() {

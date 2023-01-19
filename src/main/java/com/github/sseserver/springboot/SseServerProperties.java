@@ -22,6 +22,12 @@ public class SseServerProperties {
         return remote;
     }
 
+    public enum AutoType {
+        DISABLED,
+        CLASS_NOT_FOUND_USE_MAP,
+        CLASS_NOT_FOUND_THROWS,
+    }
+
     public static class Local {
 
     }
@@ -30,16 +36,11 @@ public class SseServerProperties {
 
     }
 
-    public enum AutoType {
-        DISABLED,
-        CLASS_NOT_FOUND_USE_MAP,
-        CLASS_NOT_FOUND_THROWS,
-    }
-
     public static class Remote {
-        private final Nacos nacos = new Nacos();
         private boolean enabled = false;
-        private AutoType autoType = AutoType.CLASS_NOT_FOUND_THROWS;
+        private final Nacos nacos = new Nacos();
+        private final MessageRepository messageRepository = new MessageRepository();
+        private final ConnectionService connectionService = new ConnectionService();
 
         public boolean isEnabled() {
             return enabled;
@@ -49,16 +50,40 @@ public class SseServerProperties {
             this.enabled = enabled;
         }
 
-        public AutoType getAutoType() {
-            return autoType;
+        public MessageRepository getMessageRepository() {
+            return messageRepository;
         }
 
-        public void setAutoType(AutoType autoType) {
-            this.autoType = autoType;
+        public ConnectionService getConnectionService() {
+            return connectionService;
         }
 
         public Nacos getNacos() {
             return nacos;
+        }
+
+        public static class MessageRepository {
+            private AutoType autoType = AutoType.CLASS_NOT_FOUND_USE_MAP;
+
+            public AutoType getAutoType() {
+                return autoType;
+            }
+
+            public void setAutoType(AutoType autoType) {
+                this.autoType = autoType;
+            }
+        }
+
+        public static class ConnectionService {
+            private AutoType autoType = AutoType.CLASS_NOT_FOUND_THROWS;
+
+            public AutoType getAutoType() {
+                return autoType;
+            }
+
+            public void setAutoType(AutoType autoType) {
+                this.autoType = autoType;
+            }
         }
 
         public static class Nacos {

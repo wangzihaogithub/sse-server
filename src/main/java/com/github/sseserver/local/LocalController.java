@@ -6,8 +6,7 @@ import com.github.sseserver.SendService;
 import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.remote.ServiceDiscoveryService;
-import com.github.sseserver.springboot.SseServerProperties;
-import com.github.sseserver.util.TypeUtil;
+import com.github.sseserver.util.AutoTypeBean;
 import com.github.sseserver.util.WebUtil;
 import com.sun.net.httpserver.*;
 
@@ -43,16 +42,17 @@ public class LocalController implements Closeable {
         this.httpServer = createHttpServer(ip);
         configHttpServer(httpServer);
         httpServer.start();
-        if (discoverySupplier != null) {
-            registerInstance(discoverySupplier, httpServer.getAddress());
-        }
     }
 
     public InetSocketAddress getAddress() {
         return httpServer.getAddress();
     }
 
-    protected void registerInstance(Supplier<ServiceDiscoveryService> discoverySupplier, InetSocketAddress address) {
+    public void registerInstance() {
+        if (discoverySupplier == null) {
+            return;
+        }
+        InetSocketAddress address = httpServer.getAddress();
         ServiceDiscoveryService discoveryService = discoverySupplier.get();
         for (int i = 0, retry = 3; i < retry; i++) {
             try {
@@ -423,6 +423,10 @@ public class LocalController implements Closeable {
                     ));
                     break;
                 }
+                case "getConnectionDTOAll": {
+                    writeResponse(request, service.getConnectionDTOAll());
+                    break;
+                }
                 case "getChannels": {
                     writeResponse(request, service.getChannels());
                     break;
@@ -465,6 +469,10 @@ public class LocalController implements Closeable {
                     ), false);
                     break;
                 }
+                case "list": {
+                    writeResponse(request, service.list(), false);
+                    break;
+                }
                 case "select": {
                     writeResponse(request, service.select(
                             new RequestQuery()
@@ -484,7 +492,7 @@ public class LocalController implements Closeable {
             }
         }
 
-        public static class RemoteRequestMessage implements Message {
+        public static class RemoteRequestMessage extends AutoTypeBean implements Message {
             private final HttpPrincipal principal;
 
             private final String listenerName;
@@ -508,6 +516,8 @@ public class LocalController implements Closeable {
                 this.eventName = body(body, "eventName");
                 this.id = body(body, "id");
                 this.filters = body(body, "filters");
+                setArrayClassName(body(body, "arrayClassName"));
+                setObjectClassName(body(body, "objectClassName"));
             }
 
             public static <T> T body(Map body, String name) {
@@ -720,7 +730,7 @@ public class LocalController implements Closeable {
             Response body = new Response();
             body.setData(data);
             if (autoType) {
-                body.autoSetClassName();
+                body.retainClassName(data);
             }
 
             request.sendResponseHeaders(200, 0L);
@@ -730,26 +740,8 @@ public class LocalController implements Closeable {
         }
     }
 
-    public static class Response<T> {
+    public static class Response<T> extends AutoTypeBean {
         private T data;
-        private Map<String, Collection<Integer>> arrayClassName;
-        private String objectClassName;
-
-        public Map<String, Collection<Integer>> getArrayClassName() {
-            return arrayClassName;
-        }
-
-        public void setArrayClassName(Map<String, Collection<Integer>> arrayClassName) {
-            this.arrayClassName = arrayClassName;
-        }
-
-        public String getObjectClassName() {
-            return objectClassName;
-        }
-
-        public void setObjectClassName(String objectClassName) {
-            this.objectClassName = objectClassName;
-        }
 
         public T getData() {
             return data;
@@ -757,84 +749,6 @@ public class LocalController implements Closeable {
 
         public void setData(T data) {
             this.data = data;
-        }
-
-        public void autoSetClassName() {
-            if (data instanceof Collection) {
-                int i = 0;
-                Map<String, Collection<Integer>> classMap = new HashMap<>(1);
-                for (Object item : (Collection) data) {
-                    if (!TypeUtil.isBasicType(item)) {
-                        classMap.computeIfAbsent(item.getClass().getName(), e -> new ArrayList<>())
-                                .add(i);
-                    }
-                    i++;
-                }
-                arrayClassName = classMap;
-            } else if (TypeUtil.isBasicType(data)) {
-
-            } else {
-                objectClassName = data.getClass().getName();
-            }
-        }
-
-        public void autoCastClassName(SseServerProperties.AutoType autoTypeEnum, Set<String> classNotFoundCacheSet) throws ClassNotFoundException {
-            if (autoTypeEnum == SseServerProperties.AutoType.DISABLED) {
-                return;
-            }
-
-            if (objectClassName != null) {
-                if (autoTypeEnum == SseServerProperties.AutoType.CLASS_NOT_FOUND_USE_MAP
-                        && classNotFoundCacheSet.contains(objectClassName)) {
-                    // skip
-                } else {
-                    try {
-                        data = TypeUtil.castBean(data, objectClassName);
-                    } catch (ClassNotFoundException e) {
-                        classNotFoundCacheSet.add(objectClassName);
-                        if (autoTypeEnum == SseServerProperties.AutoType.CLASS_NOT_FOUND_THROWS) {
-                            throw e;
-                        }
-                    }
-                }
-            } else if (arrayClassName != null && data instanceof Collection) {
-                for (Map.Entry<String, Collection<Integer>> entry : arrayClassName.entrySet()) {
-                    Collection<Integer> value = entry.getValue();
-                    if (!(value instanceof Set)) {
-                        entry.setValue(new HashSet<>(value));
-                    }
-                }
-                List list = new ArrayList(((Collection<?>) data).size());
-                int i = 0;
-                for (Object item : (Collection) data) {
-                    String objectClassName = null;
-                    for (Map.Entry<String, Collection<Integer>> entry : arrayClassName.entrySet()) {
-                        if (entry.getValue().contains(i)) {
-                            objectClassName = entry.getKey();
-                            break;
-                        }
-                    }
-                    if (objectClassName == null) {
-                        list.add(item);
-                    } else if (autoTypeEnum == SseServerProperties.AutoType.CLASS_NOT_FOUND_USE_MAP
-                            && classNotFoundCacheSet.contains(objectClassName)) {
-                        list.add(item);
-                    } else {
-                        try {
-                            list.add(TypeUtil.castBean(item, objectClassName));
-                        } catch (ClassNotFoundException e) {
-                            classNotFoundCacheSet.add(objectClassName);
-                            if (autoTypeEnum == SseServerProperties.AutoType.CLASS_NOT_FOUND_USE_MAP) {
-                                list.add(item);
-                            } else {
-                                throw e;
-                            }
-                        }
-                    }
-                    i++;
-                }
-                this.data = (T) list;
-            }
         }
     }
 }

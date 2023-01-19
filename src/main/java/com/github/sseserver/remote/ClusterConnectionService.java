@@ -3,6 +3,7 @@ package com.github.sseserver.remote;
 import com.github.sseserver.ConnectionQueryService;
 import com.github.sseserver.SendService;
 import com.github.sseserver.local.LocalConnectionService;
+import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.ReferenceCounted;
 
 import java.io.Serializable;
@@ -15,6 +16,14 @@ public interface ClusterConnectionService extends ConnectionQueryService, SendSe
                                                 Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier) {
         return new ClusterConnectionServiceImpl(localSupplier, remoteSupplier);
     }
+
+    /* getUsers */
+
+    <ACCESS_USER> ClusterCompletableFuture<List<ACCESS_USER>, ClusterConnectionService> getUsersAsync(SseServerProperties.AutoType autoType);
+
+    /* getConnection */
+
+    <ACCESS_USER> ClusterCompletableFuture<List<ConnectionDTO<ACCESS_USER>>, ClusterConnectionService> getConnectionDTOAllAsync(SseServerProperties.AutoType autoType);
 
     /* disconnect */
 
