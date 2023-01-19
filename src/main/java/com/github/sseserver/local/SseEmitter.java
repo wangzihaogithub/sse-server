@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
  * @author wangzihaogithub 2022-11-12
  */
 public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc.method.annotation.SseEmitter implements MessageRepository.Query {
-    public static final String VERSION = "1.2.0";
+    public static final String VERSION = "1.2.1";
     public static final String EVENT_ADD_LISTENER = "addListener";
     public static final String EVENT_REMOVE_LISTENER = "removeListener";
 
@@ -49,6 +49,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     private final long createTime = System.currentTimeMillis();
     private final Map<String, Object> httpParameters = new LinkedHashMap<>(6);
     private final Map<String, String> httpHeaders = new LinkedHashMap<>(6);
+    private String serverId;
     private boolean connect = false;
     private boolean complete = false;
     private boolean writeable = false;
@@ -116,6 +117,14 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
 
     public void addListeningWatch(Consumer<SseChangeEvent<ACCESS_USER, Set<String>>> watch) {
         listenersWatchList.add(watch);
+    }
+
+    public String getServerId() {
+        return serverId;
+    }
+
+    void setServerId(String serverId) {
+        this.serverId = serverId;
     }
 
     public IOException getSendError() {

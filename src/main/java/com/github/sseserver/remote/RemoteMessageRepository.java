@@ -5,6 +5,7 @@ import com.github.sseserver.local.LocalController;
 import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.springboot.SseServerProperties;
+import com.github.sseserver.util.AutoTypeBean;
 import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.SpringUtil;
 import org.springframework.http.HttpEntity;
@@ -34,15 +35,15 @@ public class RemoteMessageRepository implements MessageRepository {
     private final URL url;
     private final String urlMessageRepository;
     private final String id;
-    private final SseServerProperties.AutoType autoTypeEnum;
+    private final SseServerProperties.Remote.MessageRepository config;
     private final Set<String> classNotFoundSet = new ConcurrentHashSet<>();
     private boolean closeFlag = false;
 
-    public RemoteMessageRepository(URL url, String account, String password, SseServerProperties.AutoType autoTypeEnum) {
+    public RemoteMessageRepository(URL url, String account, String password, SseServerProperties.Remote.MessageRepository config) {
         this.url = url;
         this.urlMessageRepository = url + "/MessageRepository";
         this.id = account;
-        this.autoTypeEnum = autoTypeEnum;
+        this.config = config;
         this.restTemplate = SpringUtil.newAsyncRestTemplate(
                 connectTimeout, readTimeout,
                 threadsIfAsyncRequest, threadsIfBlockRequest,
@@ -51,17 +52,31 @@ public class RemoteMessageRepository implements MessageRepository {
 
     @Override
     public String insert(Message message) {
-        return insertAsync(message).block();
+        RemoteCompletableFuture<String, RemoteMessageRepository> future = insertAsync(message);
+        return future.block();
+    }
+
+    @Override
+    public List<Message> list() {
+        RemoteCompletableFuture<List<Message>, RemoteMessageRepository> future = listAsync();
+        return future.block();
     }
 
     @Override
     public List<Message> select(Query query) {
-        return selectAsync(query).block();
+        RemoteCompletableFuture<List<Message>, RemoteMessageRepository> future = selectAsync(query);
+        return future.block();
     }
 
     @Override
     public Message delete(String id) {
-        return deleteAsync(id).block();
+        RemoteCompletableFuture<Message, RemoteMessageRepository> future = deleteAsync(id);
+        return future.block();
+    }
+
+    public RemoteCompletableFuture<List<Message>, RemoteMessageRepository> listAsync() {
+        Map<String, Object> request = new HashMap<>(1);
+        return asyncPost("/list", request, this::extractListMessage);
     }
 
     public RemoteCompletableFuture<String, RemoteMessageRepository> insertAsync(Message message) {
@@ -140,12 +155,13 @@ public class RemoteMessageRepository implements MessageRepository {
     protected <T> T extract(ResponseEntity<LocalController.Response> response) {
         LocalController.Response body = response.getBody();
         try {
-            body.autoCastClassName(autoTypeEnum, classNotFoundSet);
+            return AutoTypeBean.cast(body.getData(),
+                    body.getArrayClassName(), body.getObjectClassName(),
+                    config.getAutoType(), classNotFoundSet);
         } catch (ClassNotFoundException e) {
             LambdaUtil.sneakyThrows(e);
+            return null;
         }
-        Object data = body.getData();
-        return (T) data;
     }
 
     protected List<Message> extractListMessage(ResponseEntity<LocalController.Response> response) {
@@ -164,7 +180,6 @@ public class RemoteMessageRepository implements MessageRepository {
         target.setFilters((Integer) source.get("filters"));
 
         target.setId((String) source.get("id"));
-        target.setBody(source.get("body"));
         target.setEventName((String) source.get("eventName"));
         target.setListenerName((String) source.get("listenerName"));
 
@@ -172,6 +187,16 @@ public class RemoteMessageRepository implements MessageRepository {
         target.setUserIdList((Collection<? extends Serializable>) source.get("userIdList"));
         target.setAccessTokenList((Collection<String>) source.get("accessTokenList"));
         target.setChannelList((Collection<String>) source.get("channelList"));
+
+        try {
+            Object castBody = AutoTypeBean.cast(source.get("body"),
+                    (Map<String, Collection<Integer>>) source.get("arrayClassName"),
+                    (String) source.get("objectClassName"),
+                    config.getAutoType(), classNotFoundSet);
+            target.setBody(castBody);
+        } catch (ClassNotFoundException e) {
+            LambdaUtil.sneakyThrows(e);
+        }
         return target;
     }
 

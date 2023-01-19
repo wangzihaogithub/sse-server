@@ -9,6 +9,8 @@ import com.github.sseserver.remote.ClusterConnectionService;
 import com.github.sseserver.remote.ClusterMessageRepository;
 import com.github.sseserver.remote.RemoteResponseMessage;
 import com.github.sseserver.util.LambdaUtil;
+import com.github.sseserver.util.SpringUtil;
+import com.github.sseserver.util.WebUtil;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -31,6 +33,7 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
     protected final MessageRepository messageRepository;
     protected final Map<String, QosCompletableFuture<Integer>> futureMap = new ConcurrentHashMap<>(32);
     protected final Set<String> sendingSet = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    protected final String serverId = SpringUtil.filterNonAscii(WebUtil.getIPAddress(WebUtil.port));
 
     public AtLeastOnceSendService(LocalConnectionService localConnectionService, MessageRepository messageRepository) {
         this.localConnectionService = localConnectionService;
@@ -50,7 +53,7 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
     }
 
     public QosCompletableFuture<Integer> qosSend(Function<SendService, ?> sendFunction, Supplier<AtLeastOnceMessage> messageSupplier) {
-        QosCompletableFuture<Integer> future = new QosCompletableFuture<>("qos" + Message.newId());
+        QosCompletableFuture<Integer> future = new QosCompletableFuture<>(Message.newId("qos", serverId));
         if (localConnectionService.isEnableCluster()) {
             ClusterConnectionService cluster = localConnectionService.getCluster();
 

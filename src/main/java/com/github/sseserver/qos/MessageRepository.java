@@ -15,6 +15,13 @@ public interface MessageRepository extends AutoCloseable {
     String insert(Message message);
 
     /**
+     * 返回全部的消息
+     *
+     * @return 全部的消息
+     */
+    List<Message> list();
+
+    /**
      * 查询满足条件的消息
      *
      * @param query 条件
@@ -48,7 +55,8 @@ public interface MessageRepository extends AutoCloseable {
         Set<String> getListeners();
 
         default boolean existListener(String listener) {
-            return getListeners().contains(listener);
+            Set<String> listeners = getListeners();
+            return listeners != null && listeners.contains(listener);
         }
     }
 }

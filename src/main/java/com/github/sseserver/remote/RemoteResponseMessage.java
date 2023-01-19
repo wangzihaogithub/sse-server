@@ -132,4 +132,20 @@ public class RemoteResponseMessage implements Message {
     public void setChannelList(Collection<String> channelList) {
         this.channelList = channelList;
     }
+
+    @Override
+    public String toString() {
+        return "RemoteResponseMessage{" +
+                "id='" + id + '\'' +
+                ", remoteMessageRepositoryId='" + remoteMessageRepositoryId + '\'' +
+                ", eventName='" + eventName + '\'' +
+                ", body=" + body +
+                ", filters=" + filters +
+                ", listenerName='" + listenerName + '\'' +
+                ", tenantIdList=" + tenantIdList +
+                ", userIdList=" + userIdList +
+                ", accessTokenList=" + accessTokenList +
+                ", channelList=" + channelList +
+                '}';
+    }
 }

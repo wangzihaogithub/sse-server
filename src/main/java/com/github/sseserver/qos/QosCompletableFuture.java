@@ -7,7 +7,7 @@ import java.util.Objects;
 public class QosCompletableFuture<T> extends CompletableFuture<T> {
     /**
      * 消息ID
-     * {@link Message#newId()}
+     * {@link Message#newId(String, String)}}
      */
     private final String messageId;
 

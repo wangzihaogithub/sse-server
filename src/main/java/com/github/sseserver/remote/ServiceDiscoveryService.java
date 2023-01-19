@@ -18,7 +18,7 @@ public interface ServiceDiscoveryService {
                     nacos.getServiceName(),
                     nacos.getClusterName(),
                     nacos.buildProperties(),
-                    remote.getAutoType());
+                    remote);
         } else {
             throw new IllegalArgumentException("ServiceDiscoveryService newInstance fail! remote discovery url is empty!");
         }

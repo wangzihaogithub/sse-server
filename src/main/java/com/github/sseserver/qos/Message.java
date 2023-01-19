@@ -1,8 +1,9 @@
 package com.github.sseserver.qos;
 
+import com.github.sseserver.util.SnowflakeIdWorker;
+
 import java.io.Serializable;
 import java.util.Collection;
-import java.util.UUID;
 
 public interface Message extends Serializable {
     int FILTER_TENANT_ID = (1 << 1);
@@ -11,8 +12,8 @@ public interface Message extends Serializable {
     int FILTER_LISTENER_NAME = (1 << 4);
     int FILTER_CHANNEL = (1 << 5);
 
-    static String newId() {
-        return UUID.randomUUID().toString().replace("-", "");
+    static String newId(String type, String serverId) {
+        return type + "" + serverId + "-" + SnowflakeIdWorker.INSTANCE.nextId();
     }
 
     String getListenerName();

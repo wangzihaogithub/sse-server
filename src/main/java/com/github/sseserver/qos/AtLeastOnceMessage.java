@@ -1,9 +1,11 @@
 package com.github.sseserver.qos;
 
+import com.github.sseserver.util.AutoTypeBean;
+
 import java.io.Serializable;
 import java.util.Collection;
 
-public class AtLeastOnceMessage implements Message {
+public class AtLeastOnceMessage extends AutoTypeBean implements Message {
     private String id;
 
     private String eventName;
@@ -21,8 +23,9 @@ public class AtLeastOnceMessage implements Message {
 
     public AtLeastOnceMessage(String eventName, Object body, int filters) {
         this.eventName = eventName;
-        this.body = body;
         this.filters = filters;
+        this.body = body;
+        retainClassName(body);
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.github.sseserver.remote;
 
 import com.github.sseserver.ConnectionQueryService;
 import com.github.sseserver.local.LocalConnectionService;
+import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.CompletableFuture;
 import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.ReferenceCounted;
@@ -54,6 +55,13 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
+    public <ACCESS_USER> List<ConnectionDTO<ACCESS_USER>> getConnectionDTOAll() {
+        ClusterCompletableFuture<List<ConnectionDTO<ACCESS_USER>>, ClusterConnectionService> future
+                = getConnectionDTOAllAsync(null);
+        return future.block();
+    }
+
+    @Override
     public <ACCESS_USER> ACCESS_USER getUser(Serializable userId) {
         ACCESS_USER result = getLocalService().getUser(userId);
         if (result != null) {
@@ -69,12 +77,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
 
     @Override
     public <ACCESS_USER> List<ACCESS_USER> getUsers() {
-        ClusterCompletableFuture<List<ACCESS_USER>, ClusterConnectionService> future = mapReduce(
-                RemoteConnectionService::getUsersAsync,
-                ConnectionQueryService::getUsers,
-                LambdaUtil.reduceList(),
-                LambdaUtil.distinct(),
-                ArrayList::new);
+        ClusterCompletableFuture<List<ACCESS_USER>, ClusterConnectionService> future = getUsersAsync(null);
         return future.block();
     }
 
@@ -290,6 +293,26 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
+    public <ACCESS_USER> ClusterCompletableFuture<List<ACCESS_USER>, ClusterConnectionService> getUsersAsync(SseServerProperties.AutoType autoType) {
+        return mapReduce(
+                e -> e.getUsersAsync(autoType),
+                ConnectionQueryService::getUsers,
+                LambdaUtil.reduceList(),
+                LambdaUtil.distinct(),
+                ArrayList::new);
+    }
+
+    @Override
+    public <ACCESS_USER> ClusterCompletableFuture<List<ConnectionDTO<ACCESS_USER>>, ClusterConnectionService> getConnectionDTOAllAsync(SseServerProperties.AutoType autoType) {
+        return mapReduce(
+                e -> e.getConnectionDTOAllAsync(autoType),
+                ConnectionQueryService::getConnectionDTOAll,
+                LambdaUtil.reduceList(),
+                LambdaUtil.noop(),
+                ArrayList::new);
+    }
+
+    @Override
     public ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByUserId(Serializable userId) {
         return mapReduce(
                 e -> e.disconnectByUserId(userId),
@@ -393,10 +416,10 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
         if (cause == null) {
             cause = exception;
         }
-        boolean completeExceptionally = doneFuture.completeExceptionally(cause);
-        if (completeExceptionally) {
+        if (!doneFuture.isDone()) {
             doneFuture.setExceptionallyPrefix("ClusterConnectionServiceImpl at remoteFuture " + remoteFuture.getClient().getId());
         }
+        boolean completeExceptionally = doneFuture.completeExceptionally(cause);
         if (log.isDebugEnabled()) {
             log.debug("RemoteException: RemoteConnectionService {} , RemoteException {}, completeExceptionally {}",
                     remoteFuture.getClient(), exception, completeExceptionally, exception);

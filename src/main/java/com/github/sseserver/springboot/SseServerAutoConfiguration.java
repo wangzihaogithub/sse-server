@@ -1,5 +1,9 @@
 package com.github.sseserver.springboot;
 
+import com.github.sseserver.local.LocalController;
+import org.springframework.beans.factory.ListableBeanFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.AutoConfigureOrder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,6 +28,23 @@ public class SseServerAutoConfiguration {
         SseServerProperties properties = new SseServerProperties();
         bindNacos(properties.getRemote().getNacos(), environment);
         return properties;
+    }
+
+    @Bean
+    public CommandLineRunner sseCommandLineRunner() {
+        return new CommandLineRunner() {
+            @Autowired
+            private ListableBeanFactory beanFactory;
+
+            @Override
+            public void run(String... args) {
+                String[] names = beanFactory.getBeanNamesForType(LocalController.class, false, true);
+                for (String name : names) {
+                    LocalController bean = beanFactory.getBean(name, LocalController.class);
+                    bean.registerInstance();
+                }
+            }
+        };
     }
 
     public void bindNacos(SseServerProperties.Remote.Nacos nacos, Environment environment) {

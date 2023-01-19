@@ -2,6 +2,11 @@ package com.github.sseserver.local;
 
 import com.github.sseserver.AccessToken;
 import com.github.sseserver.AccessUser;
+import com.github.sseserver.qos.Message;
+import com.github.sseserver.qos.MessageRepository;
+import com.github.sseserver.remote.ConnectionDTO;
+import com.github.sseserver.springboot.SseServerProperties;
+import com.github.sseserver.util.CompletableFuture;
 import com.github.sseserver.util.PageInfo;
 import com.github.sseserver.util.WebUtil;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +20,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.context.request.async.DeferredResult;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -24,6 +30,7 @@ import java.io.InputStream;
 import java.io.Serializable;
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 
 /**
@@ -198,7 +205,7 @@ public class SseWebController<ACCESS_USER> {
 
         // dump
         String channel = Objects.toString(attributeMap.get("channel"), null);
-        emitter.setChannel(isBlank(channel) ? null : channel);
+        emitter.setChannel(channel == null || channel.isEmpty() ? null : channel);
         emitter.setUserAgent(request.getHeader("User-Agent"));
         emitter.setRequestIp(WebUtil.getRequestIpAddr(request));
         emitter.setRequestDomain(WebUtil.getRequestDomain(request, false));
@@ -320,45 +327,86 @@ public class SseWebController<ACCESS_USER> {
     /**
      * 关闭连接
      */
-    @RequestMapping("/disconnect/{connectionId}")
-    public ResponseEntity disconnect(@PathVariable Long connectionId, @RequestParam Map query) {
-        SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
-        if (disconnect != null) {
+    @RequestMapping("/disconnect")
+    public Object disconnect(Long connectionId, @RequestParam Map query,
+                             Boolean cluster,
+                             @RequestParam(required = false, defaultValue = "5000") Long timeout) {
+        if (connectionId != null) {
+            return disconnectConnection(connectionId, query, cluster, timeout);
+        } else {
             ACCESS_USER currentUser = getAccessUser();
-            onDisconnect(Collections.singletonList(disconnect), currentUser, query);
+            if (currentUser instanceof AccessToken) {
+                String accessToken = ((AccessToken) currentUser).getAccessToken();
+                return disconnectAccessToken(accessToken, query, cluster, timeout, currentUser);
+            } else if (currentUser instanceof AccessUser) {
+                Serializable id = ((AccessUser) currentUser).getId();
+                return disconnectUser(Objects.toString(id, null), query, cluster, timeout);
+            } else {
+                return responseEntity(buildDisconnectResult(0, false));
+            }
         }
-        return responseEntity(Collections.singletonMap("count", disconnect != null ? 1 : 0));
     }
 
     /**
      * 关闭连接
      */
-    @RequestMapping("/disconnect")
-    public ResponseEntity disconnect0(Long connectionId, @RequestParam Map query) {
-        if (connectionId != null) {
-            SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
-            if (disconnect != null) {
-                ACCESS_USER currentUser = getAccessUser();
-                onDisconnect(Collections.singletonList(disconnect), currentUser, query);
-            }
-            return responseEntity(Collections.singletonMap("count", disconnect != null ? 1 : 0));
-        } else {
+    @RequestMapping("/disconnect/{connectionId}")
+    public Object disconnectConnection(@PathVariable Long connectionId, @RequestParam Map query,
+                                       Boolean cluster,
+                                       @RequestParam(required = false, defaultValue = "5000") Long timeout) {
+        SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
+        int localCount = disconnect != null ? 1 : 0;
+        if (disconnect != null) {
             ACCESS_USER currentUser = getAccessUser();
-            if (currentUser instanceof AccessToken) {
-                List<SseEmitter<ACCESS_USER>> count = localConnectionService.disconnectByAccessToken(((AccessToken) currentUser).getAccessToken());
-                if (count.size() > 0) {
-                    onDisconnect(count, currentUser, query);
+            onDisconnect(Collections.singletonList(disconnect), currentUser, query);
+        }
+        if (cluster == null || cluster) {
+            cluster = localConnectionService.isEnableCluster();
+        }
+        if (cluster) {
+            DeferredResult<ResponseEntity> result = new DeferredResult<>(timeout, responseEntity(buildDisconnectResult(localCount, true)));
+            localConnectionService.getCluster().disconnectByConnectionId(connectionId)
+                    .whenComplete((remoteCount, throwable) -> {
+                        if (throwable != null) {
+                            result.setErrorResult(throwable);
+                        } else {
+                            int count = remoteCount + localCount;
+                            result.setResult(responseEntity(buildDisconnectResult(count, false)));
+                        }
+                    });
+            return result;
+        } else {
+            return responseEntity(buildDisconnectResult(localCount, false));
+        }
+    }
+
+    /**
+     * 关闭连接
+     */
+    public Object disconnectAccessToken(String accessToken, Map query,
+                                        Boolean cluster,
+                                        Long timeout,
+                                        ACCESS_USER currentUser) {
+        List<SseEmitter<ACCESS_USER>> disconnectList = localConnectionService.disconnectByAccessToken(accessToken);
+        if (disconnectList.size() > 0) {
+            onDisconnect(disconnectList, currentUser, query);
+        }
+        if (cluster == null || cluster) {
+            cluster = localConnectionService.isEnableCluster();
+        }
+        if (cluster) {
+            DeferredResult<ResponseEntity> result = new DeferredResult<>(timeout, responseEntity(buildDisconnectResult(disconnectList.size(), true)));
+            localConnectionService.getCluster().disconnectByAccessToken(accessToken).whenComplete((remoteCount, throwable) -> {
+                if (throwable != null) {
+                    result.setErrorResult(throwable);
+                } else {
+                    int count = remoteCount + disconnectList.size();
+                    result.setResult(responseEntity(buildDisconnectResult(count, false)));
                 }
-                return responseEntity(Collections.singletonMap("count", count.size()));
-            } else if (currentUser instanceof AccessUser) {
-                List<SseEmitter<ACCESS_USER>> count = localConnectionService.disconnectByUserId(((AccessUser) currentUser).getId());
-                if (count.size() > 0) {
-                    onDisconnect(count, currentUser, query);
-                }
-                return responseEntity(Collections.singletonMap("count", count.size()));
-            } else {
-                return responseEntity(Collections.singletonMap("count", 0));
-            }
+            });
+            return result;
+        } else {
+            return responseEntity(buildDisconnectResult(disconnectList.size(), false));
         }
     }
 
@@ -366,7 +414,9 @@ public class SseWebController<ACCESS_USER> {
      * 关闭连接
      */
     @RequestMapping("/disconnectUser")
-    public ResponseEntity disconnectUser(String userId, @RequestParam Map query) {
+    public Object disconnectUser(String userId, @RequestParam Map query,
+                                 Boolean cluster,
+                                 @RequestParam(required = false, defaultValue = "5000") Long timeout) {
         ACCESS_USER currentUser = getAccessUser();
         if (currentUser == null) {
             return buildUnauthorizedResponse();
@@ -375,37 +425,119 @@ public class SseWebController<ACCESS_USER> {
         if (disconnectList.size() > 0) {
             onDisconnect(disconnectList, currentUser, query);
         }
-        return responseEntity(Collections.singletonMap("count", disconnectList.size()));
+        if (cluster == null || cluster) {
+            cluster = localConnectionService.isEnableCluster();
+        }
+        if (cluster) {
+            DeferredResult<ResponseEntity> result = new DeferredResult<>(timeout, () -> responseEntity(buildDisconnectResult(disconnectList.size(), true)));
+            localConnectionService.getCluster().disconnectByUserId(userId).whenComplete((remoteCount, throwable) -> {
+                if (throwable != null) {
+                    result.setErrorResult(throwable);
+                } else {
+                    int count = remoteCount + disconnectList.size();
+                    result.setResult(responseEntity(buildDisconnectResult(count, false)));
+                }
+            });
+            return result;
+        } else {
+            return responseEntity(buildDisconnectResult(disconnectList.size(), false));
+        }
     }
 
-    @RequestMapping("/users")
-    public ResponseEntity users(@RequestParam(required = false, defaultValue = "1") Integer pageNum,
-                                @RequestParam(required = false, defaultValue = "100") Integer pageSize,
-                                String name) {
+    @RequestMapping("/repositoryMessages")
+    public Object repositoryMessages(RepositoryMessagesReq req) {
         ACCESS_USER currentUser = getAccessUser();
         if (currentUser == null) {
             return buildUnauthorizedResponse();
         }
-        List list;
-        String nameTrim = name != null ? name.trim().toLowerCase() : null;
-        if (nameTrim != null && nameTrim.length() > 0) {
-            list = localConnectionService.getUsers().stream()
-                    .filter(e -> {
-                        if (e instanceof AccessUser) {
-                            String eachName = ((AccessUser) e).getName();
-                            if (eachName == null) {
-                                return false;
-                            }
-                            return eachName.toLowerCase().contains(nameTrim);
-                        }
-                        return false;
-                    })
-                    .collect(Collectors.toList());
-        } else {
-            list = localConnectionService.getUsers();
+        Integer pageNum = req.getPageNum();
+        Integer pageSize = req.getPageSize();
+        Long timeout = req.getTimeout();
+        Boolean cluster = req.getCluster();
+        if (cluster == null || cluster) {
+            cluster = localConnectionService.isEnableCluster();
         }
-        PageInfo<Object> pageInfo = PageInfo.of(list, pageNum, pageSize).map(e -> mapToUserVO((ACCESS_USER) e));
-        return responseEntity(pageInfo);
+
+        CompletableFuture<List<Message>> future;
+        if (req.isEmptyCondition()) {
+            if (cluster) {
+                future = localConnectionService.getClusterMessageRepository().listAsync();
+            } else {
+                future = CompletableFuture.completedFuture(localConnectionService.getLocalMessageRepository().list());
+            }
+        } else {
+            if (cluster) {
+                future = localConnectionService.getClusterMessageRepository().selectAsync(req);
+            } else {
+                future = CompletableFuture.completedFuture(localConnectionService.getLocalMessageRepository().select(req));
+            }
+        }
+
+        DeferredResult<ResponseEntity> result = new DeferredResult<>(timeout, () -> responseEntity(PageInfo.timeout()));
+        future.whenComplete((messages, throwable) -> {
+            if (throwable != null) {
+                result.setErrorResult(throwable);
+            } else {
+                List<Object> filterSortList = messages.stream()
+                        .filter(Objects::nonNull)
+                        .map(this::mapToMessageVO)
+                        .collect(Collectors.toList());
+                result.setResult(responseEntity(PageInfo.of(filterSortList, pageNum, pageSize)));
+            }
+        });
+        return result;
+    }
+
+    @RequestMapping("/users")
+    public Object users(@RequestParam(required = false, defaultValue = "1") Integer pageNum,
+                        @RequestParam(required = false, defaultValue = "100") Integer pageSize,
+                        String name,
+                        Boolean cluster,
+                        @RequestParam(required = false, defaultValue = "5000") Long timeout) {
+        ACCESS_USER currentUser = getAccessUser();
+        if (currentUser == null) {
+            return buildUnauthorizedResponse();
+        }
+        if (cluster == null || cluster) {
+            cluster = localConnectionService.isEnableCluster();
+        }
+        CompletableFuture<List<ACCESS_USER>> future;
+        if (cluster) {
+            future = localConnectionService.getCluster().getUsersAsync(SseServerProperties.AutoType.CLASS_NOT_FOUND_USE_MAP);
+        } else {
+            future = CompletableFuture.completedFuture(localConnectionService.getUsers());
+        }
+
+        DeferredResult<ResponseEntity> result = new DeferredResult<>(timeout, () -> responseEntity(PageInfo.timeout()));
+        future.whenComplete((users, throwable) -> {
+            if (throwable != null) {
+                result.setErrorResult(throwable);
+            } else {
+                String nameTrim = name != null ? name.trim().toLowerCase() : null;
+                List<Object> filterSortList = users.stream()
+                        .filter(Objects::nonNull)
+                        .filter(e -> {
+                            String eachName = null;
+                            if (e instanceof AccessUser) {
+                                eachName = ((AccessUser) e).getName();
+                            } else if (e instanceof Map) {
+                                eachName = Objects.toString(((Map<?, ?>) e).get("name"), null);
+                            }
+                            if (nameTrim != null && nameTrim.length() > 0) {
+                                if (eachName != null && eachName.length() > 0) {
+                                    return eachName.toLowerCase().contains(nameTrim);
+                                } else {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        })
+                        .map(this::mapToUserVO)
+                        .collect(Collectors.toList());
+                result.setResult(responseEntity(PageInfo.of(filterSortList, pageNum, pageSize)));
+            }
+        });
+        return result;
     }
 
     @RequestMapping("/connections")
@@ -413,46 +545,57 @@ public class SseWebController<ACCESS_USER> {
                               @RequestParam(required = false, defaultValue = "100") Integer pageSize,
                               String name,
                               String clientId,
-                              Long id) {
+                              Long id,
+                              Boolean cluster,
+                              @RequestParam(required = false, defaultValue = "5000") Long timeout) {
         ACCESS_USER currentUser = getAccessUser();
         if (currentUser == null) {
             return buildUnauthorizedResponse();
         }
+        if (cluster == null || cluster) {
+            cluster = localConnectionService.isEnableCluster();
+        }
+        CompletableFuture<List<ConnectionDTO<ACCESS_USER>>> future;
+        if (cluster) {
+            future = localConnectionService.getCluster().getConnectionDTOAllAsync(SseServerProperties.AutoType.CLASS_NOT_FOUND_USE_MAP);
+        } else {
+            future = CompletableFuture.completedFuture(localConnectionService.getConnectionDTOAll());
+        }
 
-        String nameTrim = name != null ? name.trim().toLowerCase() : null;
-        List<SseEmitter> list = localConnectionService.getConnectionAll().stream()
-                .filter(e -> {
-                    if (id != null) {
-                        return e.getId() == id;
-                    }
-                    if (clientId != null && clientId.length() > 0) {
-                        return clientId.equals(e.getClientId());
-                    }
-                    if (nameTrim == null || nameTrim.isEmpty()) {
-                        return true;
-                    }
-                    Object accessUser = e.getAccessUser();
-                    if (accessUser instanceof AccessUser) {
-                        String eachName = ((AccessUser) accessUser).getName();
-                        if (eachName == null) {
-                            return false;
-                        }
-                        return eachName.toLowerCase().contains(nameTrim);
-                    }
-                    return false;
-                })
-                .sorted(Comparator.comparing((Function<SseEmitter, String>)
-                                emitter -> Optional.ofNullable(emitter)
-                                        .map(SseEmitter::getAccessUser)
-                                        .filter(e -> e instanceof AccessUser)
-                                        .map(e -> (AccessUser) e)
-                                        .map(AccessUser::getName)
-                                        .orElse(""))
-                        .thenComparingLong(SseEmitter::getId))
-                .collect(Collectors.toList());
-        PageInfo<Object> pageInfo = PageInfo.of(list, pageNum, pageSize)
-                .map(e -> mapToConnectionVO((SseEmitter<ACCESS_USER>) e));
-        return responseEntity(pageInfo);
+        DeferredResult<ResponseEntity> result = new DeferredResult<>(timeout, () -> responseEntity(PageInfo.timeout()));
+        future.whenComplete((connectionDTOAll, throwable) -> {
+            if (throwable != null) {
+                result.setErrorResult(throwable);
+            } else {
+                String nameTrim = name != null ? name.trim().toLowerCase() : null;
+                List<Object> filterSortList = connectionDTOAll.stream()
+                        .filter(Objects::nonNull)
+                        .filter(e -> {
+                            if (id != null) {
+                                return id.equals(e.getId());
+                            }
+                            if (clientId != null && clientId.length() > 0) {
+                                return clientId.equals(e.getClientId());
+                            }
+                            if (nameTrim != null && nameTrim.length() > 0) {
+                                String eachName = e.getAccessUserName();
+                                if (eachName != null && eachName.length() > 0) {
+                                    return eachName.toLowerCase().contains(nameTrim);
+                                } else {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        })
+                        .sorted(Comparator.comparing((Function<ConnectionDTO, String>)
+                                        e -> Objects.toString(e.getAccessUserName(), ""))
+                                .thenComparing(ConnectionDTO::getCreateTime))
+                        .map(this::mapToConnectionVO)
+                        .collect(Collectors.toList());
+                result.setResult(responseEntity(PageInfo.of(filterSortList, pageNum, pageSize)));
+            }
+        });
+        return result;
     }
 
     protected ResponseEntity responseEntity(Object responseBody) {
@@ -479,7 +622,9 @@ public class SseWebController<ACCESS_USER> {
 
         List<SseEmitter> clientConnectionList = localConnectionService.getConnectionByUserId(userId).stream()
                 .filter(e -> Objects.equals(e.getClientId(), clientId))
-                .sorted(Comparator.comparing(SseEmitter::getId))
+                .sorted(Comparator.comparingLong((ToLongFunction<SseEmitter>)
+                                SseEmitter::getCreateTime)
+                        .thenComparing(SseEmitter::getId))
                 .collect(Collectors.toList());
 
         if (clientConnectionList.size() > clientIdMaxConnections) {
@@ -491,62 +636,27 @@ public class SseWebController<ACCESS_USER> {
         }
     }
 
+    protected Map<String, Object> buildDisconnectResult(Integer count, boolean timeout) {
+        if (timeout) {
+            Map<String, Object> map = new LinkedHashMap<>(2);
+            map.put("count", count);
+            map.put("timeout", true);
+            return map;
+        } else {
+            return Collections.singletonMap("count", count);
+        }
+    }
+
+    protected Object mapToMessageVO(Message message) {
+        return message;
+    }
+
     protected Object mapToUserVO(ACCESS_USER user) {
         return user;
     }
 
-    protected Object mapToConnectionVO(SseEmitter<ACCESS_USER> emitter) {
-        ConnectionVO<ACCESS_USER> vo = new ConnectionVO<>();
-        vo.setId(emitter.getId());
-        vo.setMessageCount(emitter.getCount());
-        vo.setTimeout(emitter.getTimeout());
-        vo.setChannel(emitter.getChannel());
-        vo.setCreateTime(new Date(emitter.getCreateTime()));
-        vo.setAccessTime(emitter.getAccessTime());
-
-        vo.setLocationHref(emitter.getLocationHref());
-        vo.setListeners(emitter.getListeners());
-        vo.setRequestMessageCount(emitter.getRequestMessageCount());
-        vo.setRequestUploadCount(emitter.getRequestUploadCount());
-        long lastRequestTimestamp = emitter.getLastRequestTimestamp();
-        if (lastRequestTimestamp > 0) {
-            vo.setLastRequestTime(new Date(lastRequestTimestamp));
-        }
-
-        vo.setAccessToken(emitter.getAccessToken());
-        vo.setAccessUserId(emitter.getUserId());
-        vo.setAccessUser(emitter.getAccessUser());
-
-        vo.setClientId(emitter.getClientId());
-        vo.setClientVersion(emitter.getClientVersion());
-        vo.setClientImportModuleTime(emitter.getClientImportModuleTime());
-        vo.setClientInstanceId(emitter.getClientInstanceId());
-        vo.setClientInstanceTime(emitter.getClientInstanceTime());
-
-        vo.setRequestIp(emitter.getRequestIp());
-        vo.setRequestDomain(emitter.getRequestDomain());
-        vo.setUserAgent(emitter.getUserAgent());
-        vo.setHttpHeaders(emitter.getHttpHeaders());
-        vo.setHttpParameters(emitter.getHttpParameters());
-
-        vo.setScreen(emitter.getScreen());
-        vo.setJsHeapSizeLimit(emitter.getJsHeapSizeLimit());
-        vo.setTotalJSHeapSize(emitter.getTotalJSHeapSize());
-        vo.setUsedJSHeapSize(emitter.getUsedJSHeapSize());
-        return vo;
-    }
-
-    public boolean isBlank(CharSequence str) {
-        int strLen;
-        if (str == null || (strLen = str.length()) == 0) {
-            return true;
-        }
-        for (int i = 0; i < strLen; i++) {
-            if ((!Character.isWhitespace(str.charAt(i)))) {
-                return false;
-            }
-        }
-        return true;
+    protected Object mapToConnectionVO(ConnectionDTO<ACCESS_USER> connectionDTO) {
+        return connectionDTO;
     }
 
     public static class ListenerReq {
@@ -571,6 +681,104 @@ public class SseWebController<ACCESS_USER> {
 
         public void setConnectionId(Long connectionId) {
             this.connectionId = connectionId;
+        }
+    }
+
+    public static class RepositoryMessagesReq implements MessageRepository.Query {
+        private Integer pageNum = 1;
+        private Integer pageSize = 100;
+        private Long timeout = 5000L;
+        private Boolean cluster;
+
+        private String tenantId;
+        private String channel;
+        private String accessToken;
+        private String userId;
+        private Set<String> listeners;
+
+        public boolean isEmptyCondition() {
+            return (tenantId == null || tenantId.isEmpty())
+                    && (channel == null || channel.isEmpty())
+                    && (accessToken == null || accessToken.isEmpty())
+                    && (userId == null || userId.isEmpty())
+                    && (listeners == null || listeners.isEmpty());
+        }
+
+        public Integer getPageNum() {
+            return pageNum;
+        }
+
+        public void setPageNum(Integer pageNum) {
+            this.pageNum = pageNum;
+        }
+
+        public Integer getPageSize() {
+            return pageSize;
+        }
+
+        public void setPageSize(Integer pageSize) {
+            this.pageSize = pageSize;
+        }
+
+        public Long getTimeout() {
+            return timeout;
+        }
+
+        public void setTimeout(Long timeout) {
+            this.timeout = timeout;
+        }
+
+        public Boolean getCluster() {
+            return cluster;
+        }
+
+        public void setCluster(Boolean cluster) {
+            this.cluster = cluster;
+        }
+
+        @Override
+        public String getTenantId() {
+            return tenantId;
+        }
+
+        public void setTenantId(String tenantId) {
+            this.tenantId = tenantId;
+        }
+
+        @Override
+        public String getChannel() {
+            return channel;
+        }
+
+        public void setChannel(String channel) {
+            this.channel = channel;
+        }
+
+        @Override
+        public String getAccessToken() {
+            return accessToken;
+        }
+
+        public void setAccessToken(String accessToken) {
+            this.accessToken = accessToken;
+        }
+
+        @Override
+        public String getUserId() {
+            return userId;
+        }
+
+        public void setUserId(String userId) {
+            this.userId = userId;
+        }
+
+        @Override
+        public Set<String> getListeners() {
+            return listeners;
+        }
+
+        public void setListeners(Set<String> listeners) {
+            this.listeners = listeners;
         }
     }
 
@@ -642,283 +850,6 @@ public class SseWebController<ACCESS_USER> {
 
         public void setErrorMessage(String errorMessage) {
             this.errorMessage = errorMessage;
-        }
-    }
-
-    public static class ConnectionVO<ACCESS_USER> {
-        // connection
-        private Long id;
-        private Date createTime;
-        private Long timeout;
-        private Date accessTime;
-        private Integer messageCount;
-        private String channel;
-
-        // request
-        private Date lastRequestTime;
-        private Integer requestMessageCount;
-        private Integer requestUploadCount;
-        private Set<String> listeners;
-        private String locationHref;
-
-        // user
-        private Object accessUserId;
-        private String accessToken;
-        private ACCESS_USER accessUser;
-
-        // client
-        private String clientId;
-        private String clientVersion;
-        private Long clientImportModuleTime;
-        private String clientInstanceId;
-        private Long clientInstanceTime;
-
-        // http
-        private String requestIp;
-        private String requestDomain;
-        private String userAgent;
-        private Map<String, Object> httpParameters;
-        private Map<String, String> httpHeaders;
-
-        // browser
-        private String screen;
-        private Long totalJSHeapSize;
-        private Long usedJSHeapSize;
-        private Long jsHeapSizeLimit;
-
-        public Long getClientImportModuleTime() {
-            return clientImportModuleTime;
-        }
-
-        public void setClientImportModuleTime(Long clientImportModuleTime) {
-            this.clientImportModuleTime = clientImportModuleTime;
-        }
-
-        public String getClientInstanceId() {
-            return clientInstanceId;
-        }
-
-        public void setClientInstanceId(String clientInstanceId) {
-            this.clientInstanceId = clientInstanceId;
-        }
-
-        public Long getClientInstanceTime() {
-            return clientInstanceTime;
-        }
-
-        public void setClientInstanceTime(Long clientInstanceTime) {
-            this.clientInstanceTime = clientInstanceTime;
-        }
-
-        public String getLocationHref() {
-            return locationHref;
-        }
-
-        public void setLocationHref(String locationHref) {
-            this.locationHref = locationHref;
-        }
-
-        public String getScreen() {
-            return screen;
-        }
-
-        public void setScreen(String screen) {
-            this.screen = screen;
-        }
-
-        public Long getTotalJSHeapSize() {
-            return totalJSHeapSize;
-        }
-
-        public void setTotalJSHeapSize(Long totalJSHeapSize) {
-            this.totalJSHeapSize = totalJSHeapSize;
-        }
-
-        public Long getUsedJSHeapSize() {
-            return usedJSHeapSize;
-        }
-
-        public void setUsedJSHeapSize(Long usedJSHeapSize) {
-            this.usedJSHeapSize = usedJSHeapSize;
-        }
-
-        public Long getJsHeapSizeLimit() {
-            return jsHeapSizeLimit;
-        }
-
-        public void setJsHeapSizeLimit(Long jsHeapSizeLimit) {
-            this.jsHeapSizeLimit = jsHeapSizeLimit;
-        }
-
-        public String getRequestIp() {
-            return requestIp;
-        }
-
-        public void setRequestIp(String requestIp) {
-            this.requestIp = requestIp;
-        }
-
-        public String getRequestDomain() {
-            return requestDomain;
-        }
-
-        public void setRequestDomain(String requestDomain) {
-            this.requestDomain = requestDomain;
-        }
-
-        public String getUserAgent() {
-            return userAgent;
-        }
-
-        public void setUserAgent(String userAgent) {
-            this.userAgent = userAgent;
-        }
-
-        public Map<String, Object> getHttpParameters() {
-            return httpParameters;
-        }
-
-        public void setHttpParameters(Map<String, Object> httpParameters) {
-            this.httpParameters = httpParameters;
-        }
-
-        public Map<String, String> getHttpHeaders() {
-            return httpHeaders;
-        }
-
-        public void setHttpHeaders(Map<String, String> httpHeaders) {
-            this.httpHeaders = httpHeaders;
-        }
-
-        public Date getAccessTime() {
-            return accessTime;
-        }
-
-        public void setAccessTime(Date accessTime) {
-            this.accessTime = accessTime;
-        }
-
-        public Date getLastRequestTime() {
-            return lastRequestTime;
-        }
-
-        public void setLastRequestTime(Date lastRequestTime) {
-            this.lastRequestTime = lastRequestTime;
-        }
-
-        public Integer getRequestMessageCount() {
-            return requestMessageCount;
-        }
-
-        public void setRequestMessageCount(Integer requestMessageCount) {
-            this.requestMessageCount = requestMessageCount;
-        }
-
-        public Integer getRequestUploadCount() {
-            return requestUploadCount;
-        }
-
-        public void setRequestUploadCount(Integer requestUploadCount) {
-            this.requestUploadCount = requestUploadCount;
-        }
-
-        public Set<String> getListeners() {
-            return listeners;
-        }
-
-        public void setListeners(Set<String> listeners) {
-            this.listeners = listeners;
-        }
-
-        public String getChannel() {
-            return channel;
-        }
-
-        public void setChannel(String channel) {
-            this.channel = channel;
-        }
-
-        public String getClientId() {
-            return clientId;
-        }
-
-        public void setClientId(String clientId) {
-            this.clientId = clientId;
-        }
-
-        public String getClientVersion() {
-            return clientVersion;
-        }
-
-        public void setClientVersion(String clientVersion) {
-            this.clientVersion = clientVersion;
-        }
-
-        public Date getCreateTime() {
-            return createTime;
-        }
-
-        public void setCreateTime(Date createTime) {
-            this.createTime = createTime;
-        }
-
-        public Integer getMessageCount() {
-            return messageCount;
-        }
-
-        public void setMessageCount(Integer messageCount) {
-            this.messageCount = messageCount;
-        }
-
-        public Long getTimeout() {
-            return timeout;
-        }
-
-        public void setTimeout(Long timeout) {
-            this.timeout = timeout;
-        }
-
-        public Date getExpireTime() {
-            if (timeout != null && timeout > 0) {
-                return new Date(createTime.getTime() + timeout);
-            }
-            return null;
-        }
-
-        public Long getId() {
-            return id;
-        }
-
-        public void setId(Long id) {
-            this.id = id;
-        }
-
-        public String getAccessUserName() {
-            return accessUser instanceof AccessUser ? ((AccessUser) accessUser).getName() : null;
-        }
-
-        public Object getAccessUserId() {
-            return accessUserId;
-        }
-
-        public void setAccessUserId(Object accessUserId) {
-            this.accessUserId = accessUserId;
-        }
-
-        public String getAccessToken() {
-            return accessToken;
-        }
-
-        public void setAccessToken(String accessToken) {
-            this.accessToken = accessToken;
-        }
-
-        public ACCESS_USER getAccessUser() {
-            return accessUser;
-        }
-
-        public void setAccessUser(ACCESS_USER accessUser) {
-            this.accessUser = accessUser;
         }
     }
 
