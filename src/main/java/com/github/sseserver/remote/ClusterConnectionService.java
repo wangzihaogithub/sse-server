@@ -8,11 +8,12 @@ import com.github.sseserver.util.ReferenceCounted;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 public interface ClusterConnectionService extends ConnectionQueryService, SendService<ClusterCompletableFuture<Integer, ClusterConnectionService>> {
 
-    static ClusterConnectionService newInstance(Supplier<LocalConnectionService> localSupplier,
+    static ClusterConnectionService newInstance(Supplier<Optional<LocalConnectionService>> localSupplier,
                                                 Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier) {
         return new ClusterConnectionServiceImpl(localSupplier, remoteSupplier);
     }

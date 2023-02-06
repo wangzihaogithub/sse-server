@@ -3,14 +3,7 @@ package com.github.sseserver.remote;
 import com.alibaba.nacos.common.utils.ConcurrentHashSet;
 import com.github.sseserver.local.LocalController.Response;
 import com.github.sseserver.springboot.SseServerProperties;
-import com.github.sseserver.util.AutoTypeBean;
-import com.github.sseserver.util.LambdaUtil;
-import com.github.sseserver.util.SpringUtil;
-import com.github.sseserver.util.TypeUtil;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.ResponseEntity;
-import org.springframework.util.concurrent.ListenableFuture;
-import org.springframework.web.client.AsyncRestTemplate;
+import com.github.sseserver.util.*;
 
 import java.io.Serializable;
 import java.net.URL;
@@ -30,7 +23,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
             Math.max(16, Runtime.getRuntime().availableProcessors() * 2));
 
     private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
-    private final AsyncRestTemplate restTemplate;
+    private final SpringUtil.AsyncRestTemplate restTemplate;
     private final URL url;
     private final String urlConnectionQueryService;
     private final String urlSendService;
@@ -384,11 +377,11 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
         return asyncPostRemoteConnectionService("/disconnectByConnectionId", this::extract, request);
     }
 
-    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncGetConnectionQueryService(String uri, Function<ResponseEntity<Response>, T> extract, Object... uriVariables) {
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncGetConnectionQueryService(String uri, Function<SpringUtil.HttpEntity<Response>, T> extract, Object... uriVariables) {
         return asyncGet(urlConnectionQueryService + uri, extract, uriVariables);
     }
 
-    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPostSendService(String uri, Function<ResponseEntity<Response>, T> extract, Map<String, Object> request) {
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPostSendService(String uri, Function<SpringUtil.HttpEntity<Response>, T> extract, Map<String, Object> request) {
         Boolean scopeOnWriteable = scopeOnWriteableThreadLocal.get();
         if (scopeOnWriteable != null && scopeOnWriteable) {
             request.put("scopeOnWriteable", true);
@@ -396,44 +389,48 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
         return asyncPost(urlSendService + uri, extract, request);
     }
 
-    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPostRemoteConnectionService(String uri, Function<ResponseEntity<Response>, T> extract, Map<String, Object> request) {
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPostRemoteConnectionService(String uri, Function<SpringUtil.HttpEntity<Response>, T> extract, Map<String, Object> request) {
         return asyncPost(urlRemoteConnectionService + uri, extract, request);
     }
 
-    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncGet(String url, Function<ResponseEntity<Response>, T> extract, Object... uriVariables) {
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncGet(String url, Function<SpringUtil.HttpEntity<Response>, T> extract, Object... uriVariables) {
         checkClose();
-        ListenableFuture<ResponseEntity<Response>> future = restTemplate.getForEntity(url, Response.class, uriVariables);
+        CompletableFuture<SpringUtil.HttpEntity<Response>> future = restTemplate.getForEntity(url, Response.class, uriVariables);
         return completable(future, extract);
     }
 
-    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPost(String url, Function<ResponseEntity<Response>, T> extract, Map<String, Object> request) {
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncPost(String url, Function<SpringUtil.HttpEntity<Response>, T> extract, Map<String, Object> request) {
         checkClose();
-        ListenableFuture<ResponseEntity<Response>> future = restTemplate.postForEntity(
-                url, new HttpEntity(request, SpringUtil.EMPTY_HEADERS), Response.class);
+        CompletableFuture<SpringUtil.HttpEntity<Response>> future = restTemplate.postForEntity(
+                url, request, Response.class);
         return completable(future, extract);
     }
 
-    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> completable(ListenableFuture<ResponseEntity<Response>> future, Function<ResponseEntity<Response>, T> extract) {
+    protected <T> RemoteCompletableFuture<T, RemoteConnectionService> completable(CompletableFuture<SpringUtil.HttpEntity<Response>> future, Function<SpringUtil.HttpEntity<Response>, T> extract) {
         RemoteCompletableFuture<T, RemoteConnectionService> result = new RemoteCompletableFuture<>();
         result.setClient(this);
-        future.addCallback(response -> {
-            T data;
-            try {
-                data = extract.apply(response);
-            } catch (Throwable e) {
-                result.completeExceptionally(e);
-                return;
+        future.whenComplete((response, throwable) -> {
+            if (throwable != null) {
+                result.completeExceptionally(throwable);
+            } else {
+                T data;
+                try {
+                    data = extract.apply(response);
+                } catch (Throwable e) {
+                    result.completeExceptionally(e);
+                    return;
+                }
+                result.complete(data);
             }
-            result.complete(data);
-        }, result::completeExceptionally);
+        });
         return result;
     }
 
-    protected <T> T extract(ResponseEntity<Response> response) {
+    protected <T> T extract(SpringUtil.HttpEntity<Response> response) {
         return extract(response, null);
     }
 
-    protected <T> T extract(ResponseEntity<Response> response, SseServerProperties.AutoType autoTypeEnum) {
+    protected <T> T extract(SpringUtil.HttpEntity<Response> response, SseServerProperties.AutoType autoTypeEnum) {
         if (autoTypeEnum == null) {
             autoTypeEnum = config.getAutoType();
         }

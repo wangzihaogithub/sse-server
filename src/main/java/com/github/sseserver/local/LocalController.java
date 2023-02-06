@@ -22,18 +22,18 @@ import java.util.function.Supplier;
 public class LocalController implements Closeable {
     private static final Charset UTF_8 = Charset.forName("UTF-8");
     private final HttpServer httpServer;
-    private final Supplier<LocalConnectionService> localConnectionServiceSupplier;
+    private final Supplier<Optional<LocalConnectionService>> localConnectionServiceSupplier;
     private final Supplier<MessageRepository> localMessageRepositorySupplier;
     private final Supplier<? extends ServiceDiscoveryService> discoverySupplier;
 
-    public LocalController(Supplier<LocalConnectionService> localConnectionServiceSupplier,
+    public LocalController(Supplier<Optional<LocalConnectionService>> localConnectionServiceSupplier,
                            Supplier<MessageRepository> localMessageRepositorySupplier,
                            Supplier<ServiceDiscoveryService> discoverySupplier) {
         this(WebUtil.getIPAddress(), localConnectionServiceSupplier, localMessageRepositorySupplier, discoverySupplier);
     }
 
     public LocalController(String ip,
-                           Supplier<LocalConnectionService> localConnectionServiceSupplier,
+                           Supplier<Optional<LocalConnectionService>> localConnectionServiceSupplier,
                            Supplier<MessageRepository> localMessageRepositorySupplier,
                            Supplier<ServiceDiscoveryService> discoverySupplier) {
         this.localMessageRepositorySupplier = localMessageRepositorySupplier;
@@ -85,12 +85,12 @@ public class LocalController implements Closeable {
 
     protected HttpContext configConnectionQueryService(HttpServer httpServer) {
         return httpServer.createContext("/ConnectionQueryService/",
-                new ConnectionQueryServiceHttpHandler(localConnectionServiceSupplier));
+                new ConnectionQueryServiceHttpHandler(localConnectionServiceSupplier::get));
     }
 
     protected HttpContext configSendService(HttpServer httpServer) {
         return httpServer.createContext("/SendService/",
-                new SendServiceHttpHandler(localConnectionServiceSupplier));
+                new SendServiceHttpHandler(localConnectionServiceSupplier::get));
     }
 
     protected HttpContext configRemoteConnectionService(HttpServer httpServer) {
@@ -133,33 +133,45 @@ public class LocalController implements Closeable {
     }
 
     public static class RemoteConnectionServiceHttpHandler extends AbstractHttpHandler {
-        private final Supplier<? extends LocalConnectionService> supplier;
+        private final Supplier<Optional<LocalConnectionService>> supplier;
 
-        public RemoteConnectionServiceHttpHandler(Supplier<? extends LocalConnectionService> supplier) {
+        public RemoteConnectionServiceHttpHandler(Supplier<Optional<LocalConnectionService>> supplier) {
             this.supplier = supplier;
         }
 
         @Override
         public void handle0(HttpExchange request) throws IOException {
             String rpcMethodName = getRpcMethodName();
-            LocalConnectionService service = supplier.get();
+            Optional<LocalConnectionService> service = supplier.get();
             switch (rpcMethodName) {
                 case "disconnectByUserId": {
-                    writeResponse(request, service.disconnectByUserId(
-                            body("userId")
-                    ).size());
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().disconnectByUserId(
+                                body("userId")
+                        ).size());
+                    } else {
+                        writeResponse(request, 0);
+                    }
                     break;
                 }
                 case "disconnectByAccessToken": {
-                    writeResponse(request, service.disconnectByAccessToken(
-                            body("accessToken")
-                    ).size());
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().disconnectByAccessToken(
+                                body("accessToken")
+                        ).size());
+                    } else {
+                        writeResponse(request, 0);
+                    }
                     break;
                 }
                 case "disconnectByConnectionId": {
-                    writeResponse(request, service.disconnectByConnectionId(
-                            body("connectionId")
-                    ) != null ? 1 : 0);
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().disconnectByConnectionId(
+                                body("connectionId")
+                        ) != null ? 1 : 0);
+                    } else {
+                        writeResponse(request, 0);
+                    }
                     break;
                 }
                 default: {
@@ -171,25 +183,29 @@ public class LocalController implements Closeable {
     }
 
     public static class SendServiceHttpHandler extends AbstractHttpHandler {
-        private final Supplier<? extends SendService<Integer>> supplier;
+        private final Supplier<Optional<? extends SendService<Integer>>> supplier;
 
-        public SendServiceHttpHandler(Supplier<? extends SendService<Integer>> supplier) {
+        public SendServiceHttpHandler(Supplier<Optional<? extends SendService<Integer>>> supplier) {
             this.supplier = supplier;
         }
 
         @Override
         public void handle0(HttpExchange request) throws IOException {
             String rpcMethodName = getRpcMethodName();
-            SendService<Integer> service = supplier.get();
+            Optional<? extends SendService<Integer>> service = supplier.get();
 
-            Object scopeOnWriteable = body("scopeOnWriteable");
-            if (Boolean.TRUE.equals(scopeOnWriteable)) {
-                service.scopeOnWriteable(() -> {
-                    handleCase(request, rpcMethodName, service);
-                    return null;
-                });
+            if (service.isPresent()) {
+                Object scopeOnWriteable = body("scopeOnWriteable");
+                if (Boolean.TRUE.equals(scopeOnWriteable)) {
+                    service.get().scopeOnWriteable(() -> {
+                        handleCase(request, rpcMethodName, service.get());
+                        return null;
+                    });
+                } else {
+                    handleCase(request, rpcMethodName, service.get());
+                }
             } else {
-                handleCase(request, rpcMethodName, service);
+                writeResponse(request, 0);
             }
         }
 
@@ -354,93 +370,153 @@ public class LocalController implements Closeable {
     }
 
     public static class ConnectionQueryServiceHttpHandler extends AbstractHttpHandler {
-        private final Supplier<? extends ConnectionQueryService> supplier;
+        private final Supplier<Optional<? extends ConnectionQueryService>> supplier;
 
-        public ConnectionQueryServiceHttpHandler(Supplier<? extends ConnectionQueryService> supplier) {
+        public ConnectionQueryServiceHttpHandler(Supplier<Optional<? extends ConnectionQueryService>> supplier) {
             this.supplier = supplier;
         }
 
         @Override
         public void handle0(HttpExchange request) throws IOException {
             String rpcMethodName = getRpcMethodName();
-            ConnectionQueryService service = supplier.get();
+            Optional<? extends ConnectionQueryService> service = supplier.get();
             switch (rpcMethodName) {
                 case "isOnline": {
-                    writeResponse(request, service.isOnline(
-                            query("userId")
-                    ));
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().isOnline(
+                                query("userId")
+                        ));
+                    } else {
+                        writeResponse(request, false);
+                    }
                     break;
                 }
                 case "getUser": {
-                    writeResponse(request, service.getUser(
-                            query("userId")
-                    ));
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getUser(
+                                query("userId")
+                        ));
+                    } else {
+                        writeResponse(request, null);
+                    }
                     break;
                 }
                 case "getUsers": {
-                    writeResponse(request, service.getUsers());
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getUsers());
+                    } else {
+                        writeResponse(request, Collections.emptyList());
+                    }
                     break;
                 }
                 case "getUsersByListening": {
-                    writeResponse(request, service.getUsersByListening(
-                            query("sseListenerName")
-                    ));
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getUsersByListening(
+                                query("sseListenerName")
+                        ));
+                    } else {
+                        writeResponse(request, Collections.emptyList());
+                    }
                     break;
                 }
                 case "getUsersByTenantIdListening": {
-                    writeResponse(request, service.getUsersByTenantIdListening(
-                            query("tenantId"),
-                            query("sseListenerName")
-                    ));
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getUsersByTenantIdListening(
+                                query("tenantId"),
+                                query("sseListenerName")
+                        ));
+                    } else {
+                        writeResponse(request, Collections.emptyList());
+                    }
                     break;
                 }
                 case "getUserIds": {
-                    writeResponse(request, service.getUserIds(String.class));
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getUserIds(String.class));
+                    } else {
+                        writeResponse(request, Collections.emptyList());
+                    }
                     break;
                 }
                 case "getUserIdsByListening": {
-                    writeResponse(request, service.getUserIdsByListening(
-                            query("sseListenerName"),
-                            String.class
-                    ));
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getUserIdsByListening(
+                                query("sseListenerName"),
+                                String.class
+                        ));
+                    } else {
+                        writeResponse(request, Collections.emptyList());
+                    }
                     break;
                 }
                 case "getUserIdsByTenantIdListening": {
-                    writeResponse(request, service.getUserIdsByTenantIdListening(
-                            query("tenantId"),
-                            query("sseListenerName"),
-                            String.class
-                    ));
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getUserIdsByTenantIdListening(
+                                query("tenantId"),
+                                query("sseListenerName"),
+                                String.class
+                        ));
+                    } else {
+                        writeResponse(request, Collections.emptyList());
+                    }
                     break;
                 }
                 case "getAccessTokens": {
-                    writeResponse(request, service.getAccessTokens());
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getAccessTokens());
+                    } else {
+                        writeResponse(request, Collections.emptyList());
+                    }
                     break;
                 }
                 case "getTenantIds": {
-                    writeResponse(request, service.getTenantIds(
-                            String.class
-                    ));
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getTenantIds(
+                                String.class
+                        ));
+                    } else {
+                        writeResponse(request, Collections.emptyList());
+                    }
                     break;
                 }
                 case "getConnectionDTOAll": {
-                    writeResponse(request, service.getConnectionDTOAll());
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getConnectionDTOAll());
+                    } else {
+                        writeResponse(request, Collections.emptyList());
+                    }
                     break;
                 }
                 case "getChannels": {
-                    writeResponse(request, service.getChannels());
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getChannels());
+                    } else {
+                        writeResponse(request, Collections.emptyList());
+                    }
                     break;
                 }
                 case "getAccessTokenCount": {
-                    writeResponse(request, service.getAccessTokenCount());
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getAccessTokenCount());
+                    } else {
+                        writeResponse(request, 0);
+                    }
                     break;
                 }
                 case "getUserCount": {
-                    writeResponse(request, service.getUserCount());
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getUserCount());
+                    } else {
+                        writeResponse(request, 0);
+                    }
                     break;
                 }
                 case "getConnectionCount": {
-                    writeResponse(request, service.getConnectionCount());
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getConnectionCount());
+                    } else {
+                        writeResponse(request, 0);
+                    }
                     break;
                 }
                 default: {

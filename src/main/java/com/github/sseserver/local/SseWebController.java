@@ -8,6 +8,7 @@ import com.github.sseserver.remote.ConnectionDTO;
 import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.CompletableFuture;
 import com.github.sseserver.util.PageInfo;
+import com.github.sseserver.util.PlatformDependentUtil;
 import com.github.sseserver.util.WebUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -609,7 +610,7 @@ public class SseWebController<ACCESS_USER> {
         if (sseServerIdHeaderName != null && sseServerIdHeaderName.length() > 0) {
             responseHeaders.set(sseServerIdHeaderName, getSseServerId());
         }
-        responseHeaders.set("Sse-Server-Version", SseEmitter.VERSION);
+        responseHeaders.set("Sse-Server-Version", PlatformDependentUtil.SSE_SERVER_VERSION);
     }
 
     protected String getSseServerId() {

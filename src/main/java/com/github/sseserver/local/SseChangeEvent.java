@@ -6,6 +6,9 @@ package com.github.sseserver.local;
  * @author wangzihaogithub 2022-11-12
  */
 public class SseChangeEvent<ACCESS_USER, VALUE> {
+    public static final String EVENT_ADD_LISTENER = "addListener";
+    public static final String EVENT_REMOVE_LISTENER = "removeListener";
+
     private final SseEmitter<ACCESS_USER> instance;
     private final String eventName;
     private final VALUE before;

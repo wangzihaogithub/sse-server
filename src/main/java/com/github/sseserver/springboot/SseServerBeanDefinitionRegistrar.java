@@ -1,5 +1,6 @@
 package com.github.sseserver.springboot;
 
+import com.github.sseserver.DistributedConnectionService;
 import com.github.sseserver.SendService;
 import com.github.sseserver.local.LocalConnectionService;
 import com.github.sseserver.local.LocalConnectionServiceImpl;
@@ -8,6 +9,7 @@ import com.github.sseserver.qos.AtLeastOnceSendService;
 import com.github.sseserver.qos.MemoryMessageRepository;
 import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.remote.*;
+import com.github.sseserver.util.PlatformDependentUtil;
 import com.github.sseserver.util.ReferenceCounted;
 import com.github.sseserver.util.WebUtil;
 import org.springframework.beans.BeansException;
@@ -20,13 +22,10 @@ import org.springframework.context.EnvironmentAware;
 import org.springframework.context.annotation.ImportBeanDefinitionRegistrar;
 import org.springframework.core.env.Environment;
 import org.springframework.core.type.AnnotationMetadata;
-import org.springframework.web.method.support.HandlerMethodReturnValueHandler;
-import org.springframework.web.servlet.mvc.method.annotation.GithubSseEmitterReturnValueHandler;
-import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -41,7 +40,7 @@ import java.util.function.Supplier;
  */
 public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionRegistrar, BeanFactoryAware, EnvironmentAware {
     public static final String DEFAULT_BEAN_NAME_GITHUB_SSE_EMITTER_RETURN_VALUE_HANDLER = "githubSseEmitterReturnValueHandler";
-    public static final String DEFAULT_BEAN_NAME_LOCAL_CONNECTION_SERVICE = "localConnectionService";
+    public static final String DEFAULT_BEAN_NAME_CONNECTION_SERVICE = "defaultConnectionService";
 
     private ListableBeanFactory beanFactory;
     private Environment environment;
@@ -80,18 +79,27 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
         Objects.requireNonNull(beanFactory);
         WebUtil.port = environment.getProperty("server.port", Integer.class, 8080);
 
+        boolean enableLocalConnectionService = PlatformDependentUtil.isSupportSpringframeworkWeb();
+
         // 1.GithubSseEmitterReturnValueHandler.class (if not exist)
-        if (beanFactory.getBeanNamesForType(GithubSseEmitterReturnValueHandler.class).length == 0) {
-            registerBeanDefinitionsGithubSseEmitterReturnValueHandler();
+        if (enableLocalConnectionService) {
+            SpringWebRegistrar.registerBeanDefinitionsGithubSseEmitterReturnValueHandler(beanFactory, definitionRegistry, DEFAULT_BEAN_NAME_GITHUB_SSE_EMITTER_RETURN_VALUE_HANDLER);
         }
 
         // 2.LocalConnectionService.class  (if not exist)
-        if (beanFactory.getBeanNamesForType(LocalConnectionService.class).length == 0) {
-            registerBeanDefinitionsLocalConnectionService();
+        if (beanFactory.getBeanNamesForType(LocalConnectionService.class).length == 0
+                && beanFactory.getBeanNamesForType(DistributedConnectionService.class).length == 0) {
+            BeanDefinitionBuilder builder;
+            if (enableLocalConnectionService) {
+                builder = BeanDefinitionBuilder.genericBeanDefinition(LocalConnectionService.class, LocalConnectionServiceImpl::new);
+            } else {
+                builder = BeanDefinitionBuilder.genericBeanDefinition(DistributedConnectionService.class, DistributedConnectionServiceImpl::new);
+            }
+            definitionRegistry.registerBeanDefinition(DEFAULT_BEAN_NAME_CONNECTION_SERVICE, builder.getBeanDefinition());
         }
 
         // 3.Qos used MessageRepository
-        String[] localConnectionServiceBeanNames = beanFactory.getBeanNamesForType(LocalConnectionService.class);
+        String[] localConnectionServiceBeanNames = beanFactory.getBeanNamesForType(SendService.class);
         registerBeanDefinitionsLocalMessageRepository(localConnectionServiceBeanNames);
 
         // 4.ClusterConnectionService.class  (if enabled)
@@ -107,37 +115,11 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
         registerBeanDefinitionsAtLeastOnce(localConnectionServiceBeanNames, remoteEnabled);
     }
 
-    protected void registerBeanDefinitionsGithubSseEmitterReturnValueHandler() {
-        BeanDefinitionBuilder builder = BeanDefinitionBuilder
-                .genericBeanDefinition(GithubSseEmitterReturnValueHandler.class, () -> {
-                    RequestMappingHandlerAdapter requestMappingHandler = beanFactory.getBean(RequestMappingHandlerAdapter.class);
-                    GithubSseEmitterReturnValueHandler sseHandler = new GithubSseEmitterReturnValueHandler(requestMappingHandler::getMessageConverters);
-
-                    List<HandlerMethodReturnValueHandler> newHandlers = new ArrayList<>();
-                    newHandlers.add(sseHandler);
-                    List<HandlerMethodReturnValueHandler> oldHandlers = requestMappingHandler.getReturnValueHandlers();
-                    if (oldHandlers != null) {
-                        newHandlers.addAll(oldHandlers);
-                    }
-                    requestMappingHandler.setReturnValueHandlers(newHandlers);
-                    return sseHandler;
-                })
-                .setLazyInit(false);
-
-        definitionRegistry.registerBeanDefinition(DEFAULT_BEAN_NAME_GITHUB_SSE_EMITTER_RETURN_VALUE_HANDLER, builder.getBeanDefinition());
-    }
-
-    protected void registerBeanDefinitionsLocalConnectionService() {
-        BeanDefinitionBuilder builder = BeanDefinitionBuilder
-                .genericBeanDefinition(LocalConnectionService.class, LocalConnectionServiceImpl::new);
-        definitionRegistry.registerBeanDefinition(DEFAULT_BEAN_NAME_LOCAL_CONNECTION_SERVICE, builder.getBeanDefinition());
-    }
-
     protected void registerBeanDefinitionsClusterConnectionService(String[] localConnectionServiceBeanNames) {
         for (String localConnectionServiceBeanName : localConnectionServiceBeanNames) {
             BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(ClusterConnectionService.class,
                     () -> {
-                        Supplier<LocalConnectionService> localSupplier = () -> beanFactory.getBean(localConnectionServiceBeanName, LocalConnectionService.class);
+                        Supplier<Optional<LocalConnectionService>> localSupplier = () -> getLocalConnectionService(localConnectionServiceBeanName, beanFactory);
                         Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier =
                                 () -> beanFactory.getBean(getServiceDiscoveryServiceBeanName(localConnectionServiceBeanName), ServiceDiscoveryService.class)
                                         .getConnectionServiceListRef();
@@ -186,8 +168,9 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
                             repositoryBeanName = getLocalMessageRepositoryBeanName(localConnectionServiceBeanName);
                         }
                         MessageRepository repository = beanFactory.getBean(repositoryBeanName, MessageRepository.class);
-                        LocalConnectionService localService = beanFactory.getBean(localConnectionServiceBeanName, LocalConnectionService.class);
-                        return new AtLeastOnceSendService(localService, repository);
+                        DistributedConnectionService distributedConnectionService = getDistributedConnectionService(localConnectionServiceBeanName, beanFactory);
+                        Optional<LocalConnectionService> localConnectionService = getLocalConnectionService(localConnectionServiceBeanName, beanFactory);
+                        return new AtLeastOnceSendService(localConnectionService, distributedConnectionService, repository);
                     });
             String beanName = getAtLeastOnceBeanName(localConnectionServiceBeanName);
             definitionRegistry.registerBeanDefinition(beanName, builder.getBeanDefinition());
@@ -211,7 +194,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
         for (String localConnectionServiceBeanName : localConnectionServiceBeanNames) {
             BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(LocalController.class,
                     () -> {
-                        Supplier<LocalConnectionService> localConnectionServiceSupplier = () -> beanFactory.getBean(localConnectionServiceBeanName, LocalConnectionService.class);
+                        Supplier<Optional<LocalConnectionService>> localConnectionServiceSupplier = () -> getLocalConnectionService(localConnectionServiceBeanName, beanFactory);
                         Supplier<MessageRepository> localMessageRepositorySupplier = () -> beanFactory.getBean(getLocalMessageRepositoryBeanName(localConnectionServiceBeanName), MessageRepository.class);
                         Supplier<ServiceDiscoveryService> discoverySupplier = () -> beanFactory.getBean(getServiceDiscoveryServiceBeanName(localConnectionServiceBeanName), ServiceDiscoveryService.class);
                         return new LocalController(localConnectionServiceSupplier, localMessageRepositorySupplier, discoverySupplier);
@@ -220,6 +203,15 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
             String beanName = getLocalConnectionControllerBeanName(localConnectionServiceBeanName);
             definitionRegistry.registerBeanDefinition(beanName, builder.getBeanDefinition());
         }
+    }
+
+    public static DistributedConnectionService getDistributedConnectionService(String localConnectionServiceBeanName, BeanFactory beanFactory) {
+        return beanFactory.getBean(localConnectionServiceBeanName, DistributedConnectionService.class);
+    }
+
+    public static Optional<LocalConnectionService> getLocalConnectionService(String localConnectionServiceBeanName, BeanFactory beanFactory) {
+        Object bean = beanFactory.getBean(localConnectionServiceBeanName);
+        return bean instanceof LocalConnectionService ? Optional.of((LocalConnectionService) bean) : Optional.empty();
     }
 
     @Override
