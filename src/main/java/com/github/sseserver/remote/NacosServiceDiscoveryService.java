@@ -24,12 +24,9 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
     public static final String METADATA_NAME_ACCOUNT = "account";
     public static final String METADATA_NAME_PASSWORD = "password";
 
-    public static final String[] USER_DIRS = System.getProperty("user.dir").split("[/\\\\]");
-    public static final String PROJECT_NAME = USER_DIRS[USER_DIRS.length - 1];
-
+    public static final String PROJECT_NAME = limit(SpringUtil.filterNonAscii(System.getProperty("user.dir")), 10);
     public static final String METADATA_VALUE_DEVICE_ID = SpringUtil.filterNonAscii(
-            limit(PROJECT_NAME, 10) + "-" + WebUtil.getIPAddress(WebUtil.port)
-                    + "(" + new Timestamp(System.currentTimeMillis()) + ")");
+            PROJECT_NAME + "-" + WebUtil.getIPAddress(WebUtil.port) + "(" + new Timestamp(System.currentTimeMillis()) + ")");
 
     private final NamingService namingService;
     private final String account;
@@ -70,7 +67,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
     }
 
     private static String limit(String string, int len) {
-        return string.length() > len ? string.substring(0, len) : string;
+        return string.length() > len ? string.substring(string.length() - len) : string;
     }
 
     public synchronized void subscribe() throws NacosException {
