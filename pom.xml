@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.github.wangzihaogithub</groupId>
     <artifactId>sse-server</artifactId>
-    <version>1.2.2</version>
+    <version>1.2.2-SNAPSHOT</version>
     <name>sse-server</name>
     <description>Sse server for Spring Boot</description>
     <url>https://github.com/wangzihaogithub/sse-server.git</url>
@@ -191,24 +191,16 @@
     </build>
 
     <distributionManagement>
-        <snapshotRepository>
-            <id>ossrh</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </snapshotRepository>
         <repository>
-            <id>ossrh</id>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+            <id>nexus-releases</id>
+            <name>lib release</name>
+            <url>http://m2.kanzhun-inc.com/nexus/content/repositories/releases/</url>
         </repository>
-        <!--        <repository>-->
-        <!--            <id>lechun-releases</id>-->
-        <!--            <name>releases repository</name>-->
-        <!--            <url>http://101.201.223.148:9099/nexus/content/repositories/releases</url>-->
-        <!--        </repository>-->
-        <!--        <snapshotRepository>-->
-        <!--            <id>lechun-snapshots</id>-->
-        <!--            <name>snapshots repository</name>-->
-        <!--            <url>http://101.201.223.148:9099/nexus/content/repositories/snapshots</url>-->
-        <!--        </snapshotRepository>-->
+        <snapshotRepository>
+            <id>nexus-snapshots</id>
+            <name>lib snapshot</name>
+            <url>http://m2.kanzhun-inc.com/nexus/content/repositories/snapshots/</url>
+        </snapshotRepository>
     </distributionManagement>
 
     <profiles>
@@ -297,14 +289,16 @@
                 </pluginManagement>
             </build>
             <distributionManagement>
-                <snapshotRepository>
-                    <id>ossrh</id>
-                    <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-                </snapshotRepository>
                 <repository>
-                    <id>ossrh</id>
-                    <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+                    <id>nexus-releases</id>
+                    <name>lib release</name>
+                    <url>http://m2.kanzhun-inc.com/nexus/content/repositories/releases/</url>
                 </repository>
+                <snapshotRepository>
+                    <id>nexus-snapshots</id>
+                    <name>lib snapshot</name>
+                    <url>http://m2.kanzhun-inc.com/nexus/content/repositories/snapshots/</url>
+                </snapshotRepository>
             </distributionManagement>
         </profile>
     </profiles>
