@@ -35,7 +35,7 @@ import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 
 /**
- * 消息事件推送 (非分布式)
+ * 消息事件推送 (分布式)
  * 注: !! 这里是示例代码, 根据自己项目封装的用户逻辑, 继承类或复制到自己项目里都行
  * <p>
  * 1. 如果用nginx代理, 要加下面的配置
@@ -52,7 +52,7 @@ import java.util.stream.Collectors;
 //@RequestMapping("/a/sse")
 //@RequestMapping("/b/sse")
 public class SseWebController<ACCESS_USER> {
-    @Autowired
+    @Autowired(required = false)
     protected HttpServletRequest request;
     protected LocalConnectionService localConnectionService;
 

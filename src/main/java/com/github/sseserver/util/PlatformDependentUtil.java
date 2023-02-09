@@ -6,12 +6,12 @@ public class PlatformDependentUtil {
     private static final boolean SUPPORT_OKHTTP3;
     private static final boolean SUPPORT_APACHE_HTTP;
     private static final boolean SUPPORT_SPRINGFRAMEWORK_WEB;
-    private static final String HTTP_REQUEST_FACTORY = "auto";
 
     static {
         boolean supportNetty4;
         try {
             Class.forName("io.netty.channel.ChannelHandler");
+            Class.forName("io.netty.handler.codec.http.FullHttpResponse");
             supportNetty4 = true;
         } catch (Throwable e) {
             supportNetty4 = false;

@@ -54,9 +54,9 @@ public class ApacheHttpUtil {
     private static final AtomicInteger acceptThreadId = new AtomicInteger();
     private static final AtomicInteger ioThreadId = new AtomicInteger();
 
-    public static long keepaliveSeconds = Long.getLong("ApacheHttpUtil.keepaliveSeconds",
+    public static long keepaliveSeconds = Long.getLong("sseserver.ApacheHttpUtil.keepaliveSeconds",
             60L);
-    public static int defaultMaxPerRoute = Integer.getInteger("ApacheHttpUtil.defaultMaxPerRoute",
+    public static int defaultMaxPerRoute = Integer.getInteger("sseserver.ApacheHttpUtil.defaultMaxPerRoute",
             100);
 
     public static SpringUtil.AsyncClientHttpRequestFactory newRequestFactory(int connectTimeout, int readTimeout, int maxThreads, String threadName) {

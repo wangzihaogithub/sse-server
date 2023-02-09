@@ -21,13 +21,13 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class RemoteMessageRepository implements MessageRepository {
-    public static int connectTimeout = Integer.getInteger("RemoteMessageRepository.connectTimeout",
+    public static int connectTimeout = Integer.getInteger("sseserver.RemoteMessageRepository.connectTimeout",
             2000);
-    public static int readTimeout = Integer.getInteger("RemoteMessageRepository.readTimeout",
+    public static int readTimeout = Integer.getInteger("sseserver.RemoteMessageRepository.readTimeout",
             10000);
-    public static int threadsIfAsyncRequest = Integer.getInteger("RemoteMessageRepository.threadsIfAsyncRequest",
+    public static int threadsIfAsyncRequest = Integer.getInteger("sseserver.RemoteMessageRepository.threadsIfAsyncRequest",
             1);
-    public static int threadsIfBlockRequest = Integer.getInteger("RemoteMessageRepository.threadsIfBlockRequest",
+    public static int threadsIfBlockRequest = Integer.getInteger("sseserver.RemoteMessageRepository.threadsIfBlockRequest",
             Math.max(16, Runtime.getRuntime().availableProcessors() * 2));
 
     private final AsyncRestTemplate restTemplate;

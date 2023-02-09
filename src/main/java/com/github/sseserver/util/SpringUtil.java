@@ -152,7 +152,6 @@ public class SpringUtil {
             ResponseEntityResponseExtractor<T> responseExtractor = new ResponseEntityResponseExtractor<>(responseType, objectMapper);
             String resolvingUrl = resolving(url, uriVariables);
             URI uri = URI.create(resolvingUrl);
-
             return doExecute(uri, "GET", null, responseExtractor);
         }
 
@@ -223,7 +222,7 @@ public class SpringUtil {
             public HttpEntity<T> extractData(HttpEntity<InputStream> response) throws IOException {
                 InputStream stream = response.getBody();
                 T body = objectMapper.readValue(stream, responseType);
-                return new HttpEntity(body, response.getHeaders(), response.getStatus());
+                return new HttpEntity<>(body, response.getHeaders(), response.getStatus());
             }
         }
     }
@@ -281,7 +280,6 @@ public class SpringUtil {
             connection.setRequestMethod(httpMethod);
             return new SimpleBufferingAsyncClientHttpRequest(connection, this.threadPool);
         }
-
     }
 
     public static class SimpleBufferingAsyncClientHttpRequest extends AbstractBufferingAsyncClientHttpRequest {
@@ -453,7 +451,6 @@ public class SpringUtil {
             if (executed) {
                 throw new IllegalStateException("ClientHttpRequest already executed");
             }
-
             byte[] bytes = this.bufferedOutput == null ? new byte[0] : this.bufferedOutput.toByteArray();
             if (headers.getContentLength() < 0) {
                 headers.setContentLength(bytes.length);

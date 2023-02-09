@@ -15,13 +15,13 @@ import java.util.concurrent.Callable;
 import java.util.function.Function;
 
 public class RemoteConnectionServiceImpl implements RemoteConnectionService {
-    public static int connectTimeout = Integer.getInteger("RemoteConnectionServiceImpl.connectTimeout",
+    public static int connectTimeout = Integer.getInteger("sseserver.RemoteConnectionServiceImpl.connectTimeout",
             2000);
-    public static int readTimeout = Integer.getInteger("RemoteConnectionServiceImpl.readTimeout",
+    public static int readTimeout = Integer.getInteger("sseserver.RemoteConnectionServiceImpl.readTimeout",
             10000);
-    public static int threadsIfAsyncRequest = Integer.getInteger("RemoteConnectionServiceImpl.threadsIfAsyncRequest",
+    public static int threadsIfAsyncRequest = Integer.getInteger("sseserver.RemoteConnectionServiceImpl.threadsIfAsyncRequest",
             1);
-    public static int threadsIfBlockRequest = Integer.getInteger("RemoteConnectionServiceImpl.threadsIfBlockRequest",
+    public static int threadsIfBlockRequest = Integer.getInteger("sseserver.RemoteConnectionServiceImpl.threadsIfBlockRequest",
             Math.max(16, Runtime.getRuntime().availableProcessors() * 2));
 
     private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
