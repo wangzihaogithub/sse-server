@@ -6,12 +6,11 @@ import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.AutoTypeBean;
+import com.github.sseserver.util.CompletableFuture;
 import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.SpringUtil;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.ResponseEntity;
-import org.springframework.util.concurrent.ListenableFuture;
-import org.springframework.web.client.AsyncRestTemplate;
+import com.github.sseserver.util.SpringUtil.AsyncRestTemplate;
+import com.github.sseserver.util.SpringUtil.HttpEntity;
 
 import java.io.Serializable;
 import java.net.URL;
@@ -116,7 +115,7 @@ public class RemoteMessageRepository implements MessageRepository {
 
     @Override
     public void close() {
-        SpringUtil.close(restTemplate);
+        restTemplate.close();
         this.closeFlag = true;
     }
 
@@ -127,32 +126,36 @@ public class RemoteMessageRepository implements MessageRepository {
 
     protected <T> RemoteCompletableFuture<T, RemoteMessageRepository> asyncPost(String url,
                                                                                 Object request,
-                                                                                Function<ResponseEntity<LocalController.Response>, T> extract) {
+                                                                                Function<HttpEntity<LocalController.Response>, T> extract) {
         checkClose();
-        ListenableFuture<ResponseEntity<LocalController.Response>> future = restTemplate.postForEntity(
-                urlMessageRepository + url, new HttpEntity(request, SpringUtil.EMPTY_HEADERS), LocalController.Response.class);
+        CompletableFuture<HttpEntity<LocalController.Response>> future = restTemplate.postForEntity(
+                urlMessageRepository + url, request, LocalController.Response.class);
         return completable(future, extract);
     }
 
     protected <T> RemoteCompletableFuture<T, RemoteMessageRepository> completable(
-            ListenableFuture<ResponseEntity<LocalController.Response>> future,
-            Function<ResponseEntity<LocalController.Response>, T> extract) {
+            CompletableFuture<HttpEntity<LocalController.Response>> future,
+            Function<HttpEntity<LocalController.Response>, T> extract) {
         RemoteCompletableFuture<T, RemoteMessageRepository> result = new RemoteCompletableFuture<>();
         result.setClient(this);
-        future.addCallback(response -> {
-            T data;
-            try {
-                data = extract.apply(response);
-            } catch (Throwable e) {
-                result.completeExceptionally(e);
-                return;
+        future.whenComplete((response, throwable) -> {
+            if (throwable != null) {
+                result.completeExceptionally(throwable);
+            } else {
+                T data;
+                try {
+                    data = extract.apply(response);
+                } catch (Throwable e) {
+                    result.completeExceptionally(e);
+                    return;
+                }
+                result.complete(data);
             }
-            result.complete(data);
-        }, result::completeExceptionally);
+        });
         return result;
     }
 
-    protected <T> T extract(ResponseEntity<LocalController.Response> response) {
+    protected <T> T extract(HttpEntity<LocalController.Response> response) {
         LocalController.Response body = response.getBody();
         try {
             return AutoTypeBean.cast(body.getData(),
@@ -164,7 +167,7 @@ public class RemoteMessageRepository implements MessageRepository {
         }
     }
 
-    protected List<Message> extractListMessage(ResponseEntity<LocalController.Response> response) {
+    protected List<Message> extractListMessage(HttpEntity<LocalController.Response> response) {
         List<Map> data = (List<Map>) response.getBody().getData();
         return data.stream()
                 .map(this::buildMessage)

@@ -18,6 +18,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Collection;
 import java.util.List;
 
 @EnableScheduling
@@ -44,7 +45,8 @@ public class SseServerApplicationTests {
                         ClusterMessageRepository clusterMessageRepository = service.getClusterMessageRepository();
 
                         List<Object> users = cluster.getUsers();
-                        System.out.println("users = " + users);
+                        Collection<Integer> userIds = cluster.getUserIds(Integer.class);
+                        System.out.println("users = " + users+" userIds = "+ userIds);
 
                         if(WebUtil.port == 80){
                             qos.sendAll("aa",users);

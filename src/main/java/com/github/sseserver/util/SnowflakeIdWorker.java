@@ -72,12 +72,12 @@ public class SnowflakeIdWorker {
     /**
      * Working machine ID(0~31)
      */
-    private long workerId;
+    private final long workerId;
 
     /**
      * Data center ID(0~31)
      */
-    private long datacenterId;
+    private final long datacenterId;
 
     /**
      * Millisecond sequence(0~4095)

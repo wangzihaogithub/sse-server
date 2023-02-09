@@ -7,6 +7,7 @@ import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.remote.ServiceDiscoveryService;
 import com.github.sseserver.util.AutoTypeBean;
+import com.github.sseserver.util.TypeUtil;
 import com.github.sseserver.util.WebUtil;
 import com.sun.net.httpserver.*;
 
@@ -167,7 +168,7 @@ public class LocalController implements Closeable {
                 case "disconnectByConnectionId": {
                     if (service.isPresent()) {
                         writeResponse(request, service.get().disconnectByConnectionId(
-                                body("connectionId")
+                                body("connectionId", Long.class)
                         ) != null ? 1 : 0);
                     } else {
                         writeResponse(request, 0);
@@ -557,7 +558,7 @@ public class LocalController implements Closeable {
                 }
                 case "delete": {
                     writeResponse(request, service.delete(
-                            body("id")
+                            body("id", String.class)
                     ), false);
                     break;
                 }
@@ -651,7 +652,7 @@ public class LocalController implements Closeable {
 
             @Override
             public Serializable getTenantId() {
-                return body("filters");
+                return body("tenantId");
             }
 
             @Override
@@ -752,6 +753,11 @@ public class LocalController implements Closeable {
 
         protected Map body() {
             return BODY_THREAD_LOCAL.get();
+        }
+
+        protected <T> T body(String name, Class<T> type) {
+            Object body = body(name);
+            return TypeUtil.cast(body, type);
         }
 
         protected <T> T body(String name) {

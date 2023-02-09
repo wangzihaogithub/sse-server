@@ -2,219 +2,82 @@ package com.github.sseserver.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.DisposableBean;
-import org.springframework.http.*;
-import org.springframework.http.client.ClientHttpResponse;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
-import org.springframework.lang.Nullable;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-import org.springframework.util.Assert;
 import org.springframework.util.LinkedCaseInsensitiveMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.util.concurrent.ListenableFuture;
-import org.springframework.util.concurrent.ListenableFutureAdapter;
-import org.springframework.web.client.*;
+import org.springframework.util.StringUtils;
 
 import java.io.*;
-import java.net.URI;
+import java.net.*;
 import java.nio.charset.Charset;
-import java.util.*;
-import java.util.concurrent.ExecutionException;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class SpringUtil {
-    public static final HttpHeaders EMPTY_HEADERS = new HttpHeaders();
-
-    public static class AsyncRestTemplate {
-        private final SpringUtil.AsyncClientHttpRequestFactory factory;
-        private final AtomicBoolean close = new AtomicBoolean(false);
-        private final String authorization;
-
-        private final ObjectMapper objectMapper = new ObjectMapper();
-
-        public AsyncRestTemplate(SpringUtil.AsyncClientHttpRequestFactory factory, String authorization) {
-            this.factory = factory;
-            this.authorization = authorization;
-        }
-
-        public void close() {
-            if (this.close.compareAndSet(false, true)) {
-                if (factory instanceof DisposableBean) {
-                    try {
-                        ((DisposableBean) factory).destroy();
-                    } catch (Exception ignored) {
-                    }
-                } else if (factory instanceof AutoCloseable) {
-                    try {
-                        ((AutoCloseable) factory).close();
-                    } catch (Exception ignored) {
-                    }
-                }
-            }
-        }
-
-        public <T> CompletableFuture<HttpEntity<T>> getForEntity(String url, Class<T> responseType, Object... uriVariables)
-                throws RestClientException {
-            AsyncRequestCallback requestCallback = acceptHeaderRequestCallback(responseType);
-            ResponseEntityResponseExtractor<T> responseExtractor = new ResponseEntityResponseExtractor<>(responseType, objectMapper);
-            URI uri = null;
-            return doExecute(uri, "GET", requestCallback, responseExtractor);
-        }
-
-        public <T> CompletableFuture<HttpEntity<T>> postForEntity(String url, Object body,
-                                                                 Class<T> responseType) throws RestClientException {
-            AsyncRequestCallback requestCallback = httpEntityCallback(body, responseType);
-            ResponseEntityResponseExtractor<T> responseExtractor = new ResponseEntityResponseExtractor<>(responseType, objectMapper);
-            URI uri = null;
-            return doExecute(uri, "POST", requestCallback, responseExtractor);
-        }
-
-        /**
-         * Response extractor for {@link org.springframework.http.HttpEntity}.
-         */
-        private static class ResponseEntityResponseExtractor<T> {
-            private final ObjectMapper objectMapper;
-            private final Class<T> responseType;
-
-            public ResponseEntityResponseExtractor(Class<T> responseType, ObjectMapper objectMapper) {
-                this.responseType = responseType;
-                this.objectMapper = objectMapper;
-            }
-
-            public HttpEntity<T> extractData(HttpEntity<InputStream> response) throws IOException {
-                InputStream stream = response.getBody();
-                T body = objectMapper.readValue(stream, responseType);
-                return new HttpEntity(body, response.getHeaders(), response.getStatus());
-            }
-        }
-
-        protected <T> CompletableFuture<HttpEntity<T>> doExecute(URI url, String method,
-                                                      AsyncRequestCallback requestCallback,
-                                                      ResponseEntityResponseExtractor<T> responseExtractor) throws RestClientException {
-            try {
-                AsyncClientHttpRequest request = factory.createAsyncRequest(url, method);
-                if (requestCallback != null) {
-                    requestCallback.doWithRequest(request);
-                }
-                CompletableFuture<HttpEntity<InputStream>> responseFuture = request.executeAsync();
-                CompletableFuture<HttpEntity<T>> bodyFuture = new CompletableFuture<>();
-                responseFuture.whenComplete((streamResponse, throwable) -> {
-                    if (throwable != null) {
-                        bodyFuture.completeExceptionally(throwable);
-                    } else {
-                        try {
-                            HttpEntity<T> bodyResponse = responseExtractor.extractData(streamResponse);
-                            bodyFuture.complete(bodyResponse);
-                        } catch (IOException e) {
-                            bodyFuture.completeExceptionally(e);
-                        }
-                    }
-                });
-                return bodyFuture;
-            } catch (IOException ex) {
-                throw new ResourceAccessException("I/O error on " + method.name() +
-                        " request for \"" + url + "\":" + ex.getMessage(), ex);
-            }
-        }
-
-        /**
-         * Future returned from
-         * {@link #doExecute(URI, HttpMethod, AsyncRequestCallback, ResponseExtractor)}.
-         */
-        private static class ResponseExtractorFuture<T> extends ListenableFutureAdapter<T, ClientHttpResponse> {
-
-            private final HttpMethod method;
-
-            private final URI url;
-
-            @Nullable
-            private final ResponseEntityResponseExtractor<T> responseExtractor;
-
-            public ResponseExtractorFuture(HttpMethod method, URI url,
-                                           CompletableFuture<HttpEntity<InputStream>> clientHttpResponseFuture,
-                                           @Nullable ResponseEntityResponseExtractor<T> responseExtractor) {
-
-                super(clientHttpResponseFuture);
-                this.method = method;
-                this.url = url;
-                this.responseExtractor = responseExtractor;
-            }
-
-            @Override
-            @Nullable
-            protected final T adapt(ClientHttpResponse response) throws ExecutionException {
-                try {
-                    if (!getErrorHandler().hasError(response)) {
-                        logResponseStatus(this.method, this.url, response);
-                    } else {
-                        handleResponseError(this.method, this.url, response);
-                    }
-                    return convertResponse(response);
-                } catch (Throwable ex) {
-                    throw new ExecutionException(ex);
-                } finally {
-                    response.close();
-                }
-            }
-
-            @Nullable
-            protected T convertResponse(HttpEntity<InputStream> response) throws IOException {
-                return (this.responseExtractor != null ? this.responseExtractor.extractData(response).getBody() : null);
-            }
-        }
-
-    }
 
     public static AsyncRestTemplate newAsyncRestTemplate(int connectTimeout, int readTimeout,
                                                          int threadsIfAsyncRequest, int threadsIfBlockRequest,
                                                          String threadName,
                                                          String account, String password) {
         String authorization = "Basic " + encodeBasicAuth(account, password, Charset.forName("ISO-8859-1"));
-        SpringUtil.AsyncClientHttpRequestFactory factory = newAsyncClientHttpRequestFactory(connectTimeout, readTimeout,
+        AsyncClientHttpRequestFactory factory = newAsyncClientHttpRequestFactory(connectTimeout, readTimeout,
                 threadsIfAsyncRequest, threadsIfBlockRequest, threadName);
-
-        AsyncRestTemplate restTemplate = new AsyncRestTemplate(factory, authorization);
-        restTemplate.getInterceptors().add((request, body, execution) -> {
-            request.getHeaders().set("Authorization", authorization);
-            return execution.executeAsync(request, body);
-        });
-        return restTemplate;
+        return new AsyncRestTemplate(factory, authorization);
     }
 
-    public static SpringUtil.AsyncClientHttpRequestFactory newAsyncClientHttpRequestFactory(int connectTimeout, int readTimeout,
-                                                                                            int threadsIfAsyncRequest, int threadsIfBlockRequest,
-                                                                                            String threadName) {
-        SpringUtil.AsyncClientHttpRequestFactory result;
-        if (PlatformDependentUtil.isSupportApacheHttp()) {
-            result = ApacheHttpUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName);
-        } else if (PlatformDependentUtil.isSupportNetty4()) {
-            result = NettyUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName);
-        } else if (PlatformDependentUtil.isSupportOkhttp3()) {
-            result = OkhttpUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName);
-        } else {
-            ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-            executor.setDaemon(true);
-            executor.setThreadNamePrefix(threadName + "-");
-            executor.setCorePoolSize(0);
-            executor.setKeepAliveSeconds(60);
-            executor.setMaxPoolSize(threadsIfBlockRequest);
-            executor.setWaitForTasksToCompleteOnShutdown(true);
-
-            ClientHttpRequestFactory factory = new ClientHttpRequestFactory(executor);
-            factory.setConnectTimeout(connectTimeout);
-            factory.setReadTimeout(readTimeout);
-
-            result = factory;
+    public static AsyncClientHttpRequestFactory newAsyncClientHttpRequestFactory(int connectTimeout, int readTimeout,
+                                                                                 int threadsIfAsyncRequest, int threadsIfBlockRequest,
+                                                                                 String threadName) {
+        AsyncClientHttpRequestFactory result;
+        String httpRequestFactory = PlatformDependentUtil.getHttpRequestFactory();
+        switch (httpRequestFactory) {
+            case "apache": {
+                result = ApacheHttpUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName);
+                break;
+            }
+            case "netty4": {
+                result = NettyUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName);
+                break;
+            }
+            case "okhttp3": {
+                result = OkhttpUtil.newRequestFactory(connectTimeout, readTimeout, threadsIfAsyncRequest, threadName);
+                break;
+            }
+            default:
+            case "simple": {
+                result = newRequestFactory(connectTimeout, readTimeout, threadsIfBlockRequest, threadName);
+                break;
+            }
         }
         return result;
     }
 
-    public static void close(AsyncRestTemplate restTemplate) {
-        if (restTemplate instanceof AutoCloseable) {
-            try {
-                ((AutoCloseable) restTemplate).close();
-            } catch (Exception ignored) {
+    public static AsyncClientHttpRequestFactory newRequestFactory(int connectTimeout, int readTimeout, int maxThreads, String threadName) {
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(0, maxThreads,
+                60, TimeUnit.SECONDS,
+                new SynchronousQueue<>(), new ThreadFactory() {
+            private final AtomicInteger id = new AtomicInteger();
+
+            @Override
+            public Thread newThread(Runnable r) {
+                String name = threadName + "-" + id.getAndIncrement();
+                Thread t = new Thread(r, name);
+                t.setDaemon(true);
+                return null;
             }
-        }
+        }, (r, executor1) -> {
+            if (!executor1.isShutdown()) {
+                r.run();
+            }
+        });
+
+        ClientHttpRequestFactory factory = new ClientHttpRequestFactory(executor);
+        factory.setConnectTimeout(connectTimeout);
+        factory.setReadTimeout(readTimeout);
+        return factory;
     }
 
     public static String encodeBasicAuth(String username, String password, Charset charset) {
@@ -238,171 +101,400 @@ public class SpringUtil {
         return builder.toString();
     }
 
-    public static class ClientHttpRequestFactory extends SimpleClientHttpRequestFactory implements DisposableBean {
-        private final ThreadPoolTaskExecutor threadPool;
+    public interface AsyncClientHttpRequestFactory {
+        AsyncClientHttpRequest createAsyncRequest(URI uri, String httpMethod) throws IOException;
+    }
 
-        public ClientHttpRequestFactory(ThreadPoolTaskExecutor threadPool) {
+    public interface AsyncClientHttpRequest {
+        String getMethod();
+
+        HttpHeaders getHeaders();
+
+        OutputStream getBody() throws IOException;
+
+        CompletableFuture<HttpEntity<InputStream>> executeAsync() throws IOException;
+    }
+
+    @FunctionalInterface
+    public interface AsyncRequestCallback {
+        void doWithRequest(AsyncClientHttpRequest request) throws IOException;
+    }
+
+    public static class AsyncRestTemplate implements AutoCloseable {
+        private final AsyncClientHttpRequestFactory factory;
+        private final String authorization;
+        private final AtomicBoolean close = new AtomicBoolean(false);
+        private final ObjectMapper objectMapper = new ObjectMapper();
+
+        public AsyncRestTemplate(AsyncClientHttpRequestFactory factory, String authorization) {
+            this.factory = factory;
+            this.authorization = authorization;
+        }
+
+        @Override
+        public void close() {
+            if (this.close.compareAndSet(false, true)) {
+                if (factory instanceof DisposableBean) {
+                    try {
+                        ((DisposableBean) factory).destroy();
+                    } catch (Exception ignored) {
+                    }
+                } else if (factory instanceof AutoCloseable) {
+                    try {
+                        ((AutoCloseable) factory).close();
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+        }
+
+        public <T> CompletableFuture<HttpEntity<T>> getForEntity(String url, Class<T> responseType, Object... uriVariables) {
+            ResponseEntityResponseExtractor<T> responseExtractor = new ResponseEntityResponseExtractor<>(responseType, objectMapper);
+            String resolvingUrl = resolving(url, uriVariables);
+            URI uri = URI.create(resolvingUrl);
+
+            return doExecute(uri, "GET", null, responseExtractor);
+        }
+
+        public <T> CompletableFuture<HttpEntity<T>> postForEntity(String url, Object body, Class<T> responseType) {
+            AsyncRequestCallback requestCallback = request -> {
+                request.getHeaders().put("Content-Type", new ArrayList<>(Collections.singletonList("application/json;charset=UTF-8")));
+                if (body == null) {
+                    request.getHeaders().setContentLength(0L);
+                } else {
+                    OutputStream out = request.getBody();
+                    objectMapper.writeValue(out, body);
+                    out.close();
+                }
+            };
+            ResponseEntityResponseExtractor<T> responseExtractor = new ResponseEntityResponseExtractor<>(responseType, objectMapper);
+            URI uri = URI.create(url);
+            return doExecute(uri, "POST", requestCallback, responseExtractor);
+        }
+
+        protected <T> CompletableFuture<HttpEntity<T>> doExecute(URI url, String method,
+                                                                 AsyncRequestCallback requestCallback,
+                                                                 ResponseEntityResponseExtractor<T> responseExtractor) {
+            CompletableFuture<HttpEntity<T>> bodyFuture = new CompletableFuture<>();
+            try {
+                AsyncClientHttpRequest request = factory.createAsyncRequest(url, method);
+                request.getHeaders().put("Authorization", new ArrayList<>(Collections.singletonList(authorization)));
+                request.getHeaders().put("Accept", new ArrayList<>(Collections.singletonList("application/json, application/*+json, text/plain, text/html, */*")));
+
+                if (requestCallback != null) {
+                    requestCallback.doWithRequest(request);
+                }
+                CompletableFuture<HttpEntity<InputStream>> responseFuture = request.executeAsync();
+                responseFuture.whenComplete((streamResponse, throwable) -> {
+                    if (throwable != null) {
+                        bodyFuture.completeExceptionally(throwable);
+                    } else {
+                        try {
+                            HttpEntity<T> bodyResponse = responseExtractor.extractData(streamResponse);
+                            bodyFuture.complete(bodyResponse);
+                        } catch (IOException e) {
+                            bodyFuture.completeExceptionally(e);
+                        }
+                    }
+                    if (streamResponse instanceof AutoCloseable) {
+                        try {
+                            ((AutoCloseable) streamResponse).close();
+                        } catch (Exception ignored) {
+
+                        }
+                    }
+                });
+            } catch (IOException ex) {
+                bodyFuture.completeExceptionally(new IOException("I/O error on " + method +
+                        " request for \"" + url + "\":" + ex.getMessage(), ex));
+            }
+            return bodyFuture;
+        }
+
+        private static class ResponseEntityResponseExtractor<T> {
+            private final ObjectMapper objectMapper;
+            private final Class<T> responseType;
+
+            public ResponseEntityResponseExtractor(Class<T> responseType, ObjectMapper objectMapper) {
+                this.responseType = responseType;
+                this.objectMapper = objectMapper;
+            }
+
+            public HttpEntity<T> extractData(HttpEntity<InputStream> response) throws IOException {
+                InputStream stream = response.getBody();
+                T body = objectMapper.readValue(stream, responseType);
+                return new HttpEntity(body, response.getHeaders(), response.getStatus());
+            }
+        }
+    }
+
+    public static class ClientHttpRequestFactory implements AsyncClientHttpRequestFactory, DisposableBean {
+        private final ThreadPoolExecutor threadPool;
+        private Proxy proxy;
+        private int connectTimeout = -1;
+        private int readTimeout = -1;
+
+        public ClientHttpRequestFactory(ThreadPoolExecutor threadPool) {
             this.threadPool = threadPool;
-            threadPool.afterPropertiesSet();
-            setTaskExecutor(threadPool);
+        }
+
+        public void setConnectTimeout(int connectTimeout) {
+            this.connectTimeout = connectTimeout;
+        }
+
+        public void setReadTimeout(int readTimeout) {
+            this.readTimeout = readTimeout;
+        }
+
+        public void setProxy(Proxy proxy) {
+            this.proxy = proxy;
         }
 
         @Override
         public void destroy() {
-            threadPool.shutdown();
+            if (!threadPool.isShutdown()) {
+                threadPool.shutdown();
+            }
+        }
+
+        @Override
+        public AsyncClientHttpRequest createAsyncRequest(URI uri, String httpMethod) throws IOException {
+            URL url = uri.toURL();
+            URLConnection urlConnection = (proxy != null ? url.openConnection(proxy) : url.openConnection());
+            if (!(urlConnection instanceof HttpURLConnection)) {
+                throw new IllegalStateException(
+                        "HttpURLConnection required for [" + url + "] but got: " + urlConnection);
+            }
+            HttpURLConnection connection = (HttpURLConnection) urlConnection;
+            if (this.connectTimeout >= 0) {
+                connection.setConnectTimeout(this.connectTimeout);
+            }
+            if (this.readTimeout >= 0) {
+                connection.setReadTimeout(this.readTimeout);
+            }
+
+            boolean mayWrite = ("POST".equals(httpMethod) || "PUT".equals(httpMethod) ||
+                    "PATCH".equals(httpMethod) || "DELETE".equals(httpMethod));
+            connection.setDoInput(true);
+            connection.setInstanceFollowRedirects("GET".equals(httpMethod));
+            connection.setDoOutput(mayWrite);
+            connection.setRequestMethod(httpMethod);
+            return new SimpleBufferingAsyncClientHttpRequest(connection, this.threadPool);
+        }
+
+    }
+
+    public static class SimpleBufferingAsyncClientHttpRequest extends AbstractBufferingAsyncClientHttpRequest {
+        private final HttpURLConnection connection;
+        private final Executor executor;
+
+        SimpleBufferingAsyncClientHttpRequest(HttpURLConnection connection, Executor executor) {
+            this.connection = connection;
+            this.executor = executor;
+        }
+
+        static void addHeaders(HttpURLConnection connection, HttpHeaders headers) {
+            String method = connection.getRequestMethod();
+            if (method.equals("PUT") || method.equals("DELETE")) {
+                if (!StringUtils.hasText(headers.getFirst("Accept"))) {
+                    // Avoid "text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2"
+                    // from HttpUrlConnection which prevents JSON error response details.
+                    headers.put("Accept", new ArrayList<>(Collections.singletonList("*/*")));
+                }
+            }
+            headers.forEach((headerName, headerValues) -> {
+                if ("Cookie".equalsIgnoreCase(headerName)) {  // RFC 6265
+                    String headerValue = StringUtils.collectionToDelimitedString(headerValues, "; ");
+                    connection.setRequestProperty(headerName, headerValue);
+                } else {
+                    for (String headerValue : headerValues) {
+                        String actualHeaderValue = headerValue != null ? headerValue : "";
+                        connection.addRequestProperty(headerName, actualHeaderValue);
+                    }
+                }
+            });
+        }
+
+        @Override
+        public String getMethod() {
+            return this.connection.getRequestMethod();
+        }
+
+        @Override
+        protected CompletableFuture<HttpEntity<InputStream>> executeInternal(HttpHeaders headers, byte[] bufferedOutput) throws IOException {
+            CompletableFuture<HttpEntity<InputStream>> future = new CompletableFuture<>();
+            this.executor.execute(() -> {
+                try {
+                    addHeaders(this.connection, headers);
+                    // JDK <1.8 doesn't support getOutputStream with HTTP DELETE
+                    if ("DELETE".equals(getMethod()) && bufferedOutput.length == 0) {
+                        this.connection.setDoOutput(false);
+                    }
+                    if (this.connection.getDoOutput()) {
+                        this.connection.setFixedLengthStreamingMode(bufferedOutput.length);
+                    }
+                    this.connection.connect();
+                    if (this.connection.getDoOutput()) {
+                        OutputStream outputStream = this.connection.getOutputStream();
+                        outputStream.write(bufferedOutput);
+                        outputStream.close();
+                    } else {
+                        // Immediately trigger the request in a no-output scenario as well
+                        this.connection.getResponseCode();
+                    }
+                    future.complete(new SimpleClientHttpResponse(this.connection));
+                } catch (Throwable throwable) {
+                    future.completeExceptionally(throwable);
+                }
+            });
+            return future;
+        }
+
+        final static class SimpleClientHttpResponse extends HttpEntity<InputStream> implements Closeable {
+            private final HttpURLConnection connection;
+            private HttpHeaders headers;
+            private InputStream responseStream;
+
+            SimpleClientHttpResponse(HttpURLConnection connection) {
+                this.connection = connection;
+            }
+
+            @Override
+            public int getStatus() {
+                try {
+                    return this.connection.getResponseCode();
+                } catch (IOException e) {
+                    LambdaUtil.sneakyThrows(e);
+                    return 0;
+                }
+            }
+
+            @Override
+            public HttpHeaders getHeaders() {
+                if (this.headers == null) {
+                    this.headers = new HttpHeaders();
+                    // Header field 0 is the status line for most HttpURLConnections, but not on GAE
+                    String name = this.connection.getHeaderFieldKey(0);
+                    if (StringUtils.hasLength(name)) {
+                        this.headers.computeIfAbsent(name, e -> new ArrayList<>())
+                                .add(connection.getHeaderField(0));
+                    }
+                    int i = 1;
+                    while (true) {
+                        name = this.connection.getHeaderFieldKey(i);
+                        if (!StringUtils.hasLength(name)) {
+                            break;
+                        }
+                        this.headers.computeIfAbsent(name, e -> new ArrayList<>())
+                                .add(connection.getHeaderField(i));
+                        i++;
+                    }
+                }
+                return this.headers;
+            }
+
+            @Override
+            public InputStream getBody() {
+                InputStream errorStream = this.connection.getErrorStream();
+                try {
+                    this.responseStream = (errorStream != null ? errorStream : this.connection.getInputStream());
+                    return this.responseStream;
+                } catch (IOException e) {
+                    LambdaUtil.sneakyThrows(e);
+                    return null;
+                }
+            }
+
+            @Override
+            public void close() {
+                try {
+                    InputStream responseStream = this.responseStream;
+                    if (responseStream == null) {
+                        getBody();
+                        responseStream = this.responseStream;
+                    }
+
+                    // drain
+                    byte[] buffer = new byte[4096];
+                    while ((responseStream.read(buffer)) != -1) {
+                    }
+                    responseStream.close();
+                } catch (Exception ex) {
+                    // ignore
+                }
+            }
         }
     }
 
-    public static abstract class AbstractBufferingAsyncClientHttpRequest extends AbstractAsyncClientHttpRequest {
-
-        private ByteArrayOutputStream bufferedOutput = new ByteArrayOutputStream(1024);
-
+    public static abstract class AbstractBufferingAsyncClientHttpRequest implements AsyncClientHttpRequest {
+        private final HttpHeaders headers = new HttpHeaders();
+        private ByteArrayOutputStream bufferedOutput;
+        private boolean executed = false;
 
         @Override
-        protected OutputStream getBodyInternal(HttpHeaders headers) throws IOException {
-            return this.bufferedOutput;
+        public HttpHeaders getHeaders() {
+            return this.headers;
         }
 
         @Override
-        protected CompletableFuture<HttpEntity<InputStream>>executeInternal(HttpHeaders headers) throws IOException {
-            byte[] bytes = this.bufferedOutput.toByteArray();
+        public OutputStream getBody() throws IOException {
+            if (executed) {
+                throw new IllegalStateException("ClientHttpRequest already executed");
+            }
+            ByteArrayOutputStream bufferedOutput = this.bufferedOutput;
+            if (bufferedOutput == null) {
+                this.bufferedOutput = bufferedOutput = new ByteArrayOutputStream(1024);
+            }
+            return bufferedOutput;
+        }
+
+        @Override
+        public CompletableFuture<HttpEntity<InputStream>> executeAsync() throws IOException {
+            if (executed) {
+                throw new IllegalStateException("ClientHttpRequest already executed");
+            }
+
+            byte[] bytes = this.bufferedOutput == null ? new byte[0] : this.bufferedOutput.toByteArray();
             if (headers.getContentLength() < 0) {
                 headers.setContentLength(bytes.length);
             }
             CompletableFuture<HttpEntity<InputStream>> result = executeInternal(headers, bytes);
-            this.bufferedOutput = new ByteArrayOutputStream(0);
+            this.bufferedOutput = null;
+            this.executed = true;
             return result;
         }
 
-        /**
-         * Abstract template method that writes the given headers and content to the HTTP request.
-         *
-         * @param headers        the HTTP headers
-         * @param bufferedOutput the body content
-         * @return the response object for the executed request
-         */
-        protected abstract CompletableFuture<HttpEntity<InputStream>>  executeInternal(
+        protected abstract CompletableFuture<HttpEntity<InputStream>> executeInternal(
                 HttpHeaders headers, byte[] bufferedOutput) throws IOException;
-
     }
+
     public static class HttpHeaders extends LinkedCaseInsensitiveMap<List<String>> {
+        public long getContentLength() {
+            String value = getFirst("Content-Length");
+            return (value != null ? Long.parseLong(value) : -1);
+        }
+
         public void setContentLength(long contentLength) {
             ArrayList<String> list = new ArrayList<>();
             list.add(Long.toString(contentLength));
             put("Content-Length", list);
         }
-        public long getContentLength() {
-            String value = getFirst("Content-Length");
-            return (value != null ? Long.parseLong(value) : -1);
-        }
+
         public String getFirst(String headerName) {
             List<String> list = get(headerName);
-            return list== null || list.isEmpty()?null: list.get(0);
+            return list == null || list.isEmpty() ? null : list.get(0);
         }
-    }
-    public static abstract class AbstractAsyncClientHttpRequest implements AsyncClientHttpRequest {
-
-        private final HttpHeaders headers = new HttpHeaders();
-
-        private boolean executed = false;
-
-
-        @Override
-        public final HttpHeaders getHeaders() {
-            return (this.executed ? HttpHeaders.readOnlyHttpHeaders(this.headers) : this.headers);
-        }
-
-        @Override
-        public final OutputStream getBody() throws IOException {
-            assertNotExecuted();
-            return getBodyInternal(this.headers);
-        }
-
-        @Override
-        public CompletableFuture<HttpEntity<InputStream>> executeAsync() throws IOException {
-            assertNotExecuted();
-            CompletableFuture<HttpEntity<InputStream>> result = executeInternal(this.headers);
-            this.executed = true;
-            return result;
-        }
-
-        /**
-         * Asserts that this request has not been {@linkplain #executeAsync() executed} yet.
-         *
-         * @throws IllegalStateException if this request has been executed
-         */
-        protected void assertNotExecuted() {
-            Assert.state(!this.executed, "ClientHttpRequest already executed");
-        }
-
-
-        /**
-         * Abstract template method that returns the body.
-         *
-         * @param headers the HTTP headers
-         * @return the body output stream
-         */
-        protected abstract OutputStream getBodyInternal(HttpHeaders headers) throws IOException;
-
-        /**
-         * Abstract template method that writes the given headers and content to the HTTP request.
-         *
-         * @param headers the HTTP headers
-         * @return the response object for the executed request
-         */
-        protected abstract CompletableFuture<HttpEntity<InputStream>> executeInternal(HttpHeaders headers)
-                throws IOException;
-
-    }
-
-    public interface AsyncClientHttpRequestFactory {
-
-        /**
-         * Create a new asynchronous {@link AsyncClientHttpRequest} for the specified URI
-         * and HTTP method.
-         * <p>The returned request can be written to, and then executed by calling
-         * {@link AsyncClientHttpRequest#executeAsync()}.
-         *
-         * @param uri        the URI to create a request for
-         * @param httpMethod the HTTP method to execute
-         * @return the created request
-         * @throws IOException in case of I/O errors
-         */
-        AsyncClientHttpRequest createAsyncRequest(URI uri, String httpMethod) throws IOException;
-
-    }
-
-    public interface AsyncClientHttpRequest  {
-        String getMethod();
-        HttpHeaders getHeaders();
-        OutputStream getBody() throws IOException;
-
-        /**
-         * Return the URI of the request (including a query string if any,
-         * but only if it is well-formed for a URI representation).
-         * @return the URI of the request (never {@code null})
-         */
-        URI getURI();
-        /**
-         * Execute this request asynchronously, resulting in a Future handle.
-         * {@link ClientHttpResponse} that can be read.
-         *
-         * @return the future response result of the execution
-         * @throws java.io.IOException in case of I/O errors
-         */
-        CompletableFuture<HttpEntity<InputStream>> executeAsync() throws IOException;
-
     }
 
     public static class HttpEntity<T> {
-        private  int status;
-        private  HttpHeaders headers;
-        private  T body;
+        private int status;
+        private HttpHeaders headers;
+        private T body;
 
         public HttpEntity() {
         }
 
-        public HttpEntity( T body,HttpHeaders headers, int status) {
+        public HttpEntity(T body, HttpHeaders headers, int status) {
             this.status = status;
             this.headers = headers;
             this.body = body;
@@ -420,11 +512,36 @@ public class SpringUtil {
             return headers;
         }
     }
-    @FunctionalInterface
-    public interface AsyncRequestCallback {
 
-        void doWithRequest(AsyncClientHttpRequest request) throws IOException;
+    private static String resolving(String url, Object... uriVariables) {
+        if (uriVariables.length == 0) {
+            return url;
+        }
+        StringBuilder sqlBuffer = new StringBuilder(url);
+        int urlLength = url.length();
+        int beginIndex = 0;
+        String beginSymbol = "{";
+        String endSymbol = "}";
 
+        int uriVariablesIndex = 0;
+        while (true) {
+            beginIndex = url.indexOf(beginSymbol, beginIndex);
+            if (beginIndex == -1) {
+                break;
+            }
+            beginIndex = beginIndex + beginSymbol.length();
+            int endIndex = url.indexOf(endSymbol, beginIndex);
+
+            int offset = urlLength - sqlBuffer.length();
+            int offsetBegin = beginIndex - beginSymbol.length() - offset;
+            int offsetEnd = endIndex + endSymbol.length() - offset;
+            if (uriVariablesIndex >= uriVariables.length) {
+                break;
+            }
+            sqlBuffer.replace(offsetBegin, offsetEnd, String.valueOf(uriVariables[uriVariablesIndex]));
+            uriVariablesIndex++;
+        }
+        return sqlBuffer.toString();
     }
 
 }

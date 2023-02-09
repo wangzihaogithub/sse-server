@@ -208,8 +208,8 @@ public class SseWebController<ACCESS_USER> {
         String channel = Objects.toString(attributeMap.get("channel"), null);
         emitter.setChannel(channel == null || channel.isEmpty() ? null : channel);
         emitter.setUserAgent(request.getHeader("User-Agent"));
-        emitter.setRequestIp(WebUtil.getRequestIpAddr(request));
-        emitter.setRequestDomain(WebUtil.getRequestDomain(request, false));
+        emitter.setRequestIp(getRequestIpAddr(request));
+        emitter.setRequestDomain(getRequestDomain(request));
         emitter.setHttpCookies(request.getCookies());
         emitter.getHttpParameters().putAll(attributeMap);
         Enumeration<String> headerNames = request.getHeaderNames();
@@ -854,4 +854,28 @@ public class SseWebController<ACCESS_USER> {
         }
     }
 
+    protected String getRequestIpAddr(HttpServletRequest request) {
+        String ip = request.getHeader("x-forwarded-for");
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        // 如果是多级代理，那么取第一个ip为客户ip
+        if (ip != null && ip.contains(",")) {
+            ip = ip.substring(ip.lastIndexOf(",") + 1).trim();
+        }
+        return ip;
+    }
+
+    protected String getRequestDomain(HttpServletRequest request) {
+        StringBuffer url = request.getRequestURL();
+        StringBuffer sb = url.delete(url.length() - request.getRequestURI().length(), url.length());
+
+        if (sb.toString().startsWith("http://localhost")) {
+            String host = request.getHeader("host");
+            if (host != null && host.length() > 0) {
+                sb = new StringBuffer("http://" + host);
+            }
+        }
+        return WebUtil.rewriteHttpToHttpsIfSecure(sb.toString(), request.isSecure());
+    }
 }

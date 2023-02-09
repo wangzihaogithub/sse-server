@@ -11,7 +11,7 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import java.util.ArrayList;
 import java.util.List;
 
-public class SpringWebRegistrar {
+public class SpringWebMvcRegistrar {
 
     public static void registerBeanDefinitionsGithubSseEmitterReturnValueHandler(ListableBeanFactory beanFactory,
                                                                                  BeanDefinitionRegistry definitionRegistry,

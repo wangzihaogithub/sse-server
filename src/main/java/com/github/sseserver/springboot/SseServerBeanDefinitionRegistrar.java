@@ -83,7 +83,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
 
         // 1.GithubSseEmitterReturnValueHandler.class (if not exist)
         if (enableLocalConnectionService) {
-            SpringWebRegistrar.registerBeanDefinitionsGithubSseEmitterReturnValueHandler(beanFactory, definitionRegistry, DEFAULT_BEAN_NAME_GITHUB_SSE_EMITTER_RETURN_VALUE_HANDLER);
+            SpringWebMvcRegistrar.registerBeanDefinitionsGithubSseEmitterReturnValueHandler(beanFactory, definitionRegistry, DEFAULT_BEAN_NAME_GITHUB_SSE_EMITTER_RETURN_VALUE_HANDLER);
         }
 
         // 2.LocalConnectionService.class  (if not exist)

@@ -1,11 +1,12 @@
 package com.github.sseserver.util;
 
 public class PlatformDependentUtil {
-    public static final String SSE_SERVER_VERSION = "1.2.1";
+    public static final String SSE_SERVER_VERSION = "1.2.2";
     private static final boolean SUPPORT_NETTY4;
     private static final boolean SUPPORT_OKHTTP3;
     private static final boolean SUPPORT_APACHE_HTTP;
     private static final boolean SUPPORT_SPRINGFRAMEWORK_WEB;
+    private static final String HTTP_REQUEST_FACTORY = "auto";
 
     static {
         boolean supportNetty4;
@@ -62,4 +63,23 @@ public class PlatformDependentUtil {
     public static boolean isSupportOkhttp3() {
         return SUPPORT_OKHTTP3;
     }
+
+    public static String getHttpRequestFactory() {
+        String httpRequestFactory = System.getProperty("sseserver.PlatformDependentUtil.httpRequestFactory", "auto");
+        httpRequestFactory = httpRequestFactory.toLowerCase();
+        if ("auto".equals(httpRequestFactory)) {
+            if (SUPPORT_APACHE_HTTP) {
+                return "apache";
+            } else if (SUPPORT_NETTY4) {
+                return "netty4";
+            } else if (SUPPORT_OKHTTP3) {
+                return "okhttp3";
+            } else {
+                return "simple";
+            }
+        } else {
+            return httpRequestFactory;
+        }
+    }
+
 }
