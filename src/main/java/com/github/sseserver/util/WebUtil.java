@@ -1,6 +1,5 @@
 package com.github.sseserver.util;
 
-import javax.servlet.http.HttpServletRequest;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.nio.charset.Charset;
@@ -12,9 +11,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 public class WebUtil {
-    public static final String PROTOCOL_HTTPS = "https:";
-    public static final String PROTOCOL_HTTP = "http:";
-    public static final Pattern PATTERN_HTTP = Pattern.compile(PROTOCOL_HTTP);
+    private static final String PROTOCOL_HTTPS = "https:";
+    private static final String PROTOCOL_HTTP = "http:";
+    private static final Pattern PATTERN_HTTP = Pattern.compile(PROTOCOL_HTTP);
     private static final Charset UTF_8 = Charset.forName("UTF-8");
     public static Integer port;
     private static String ipAddress;
@@ -28,8 +27,8 @@ public class WebUtil {
      */
     public static boolean isInVersion(String requestVersion, String minVersion) {
         // 限制最低使用版本 (1.1.7)
-        Integer[] pluginVersionNumbers = WebUtil.parseNumber(requestVersion);
-        Integer[] minVersionNumbers = WebUtil.parseNumber(minVersion);
+        Integer[] pluginVersionNumbers = parseNumber(requestVersion);
+        Integer[] minVersionNumbers = parseNumber(minVersion);
         for (int i = 0; i < pluginVersionNumbers.length && i < minVersionNumbers.length; i++) {
             int min = minVersionNumbers[i];
             int curr = pluginVersionNumbers[i];
@@ -44,7 +43,7 @@ public class WebUtil {
         return true;
     }
 
-    public static Integer[] parseNumber(String str) {
+    private static Integer[] parseNumber(String str) {
         if (str == null) {
             return new Integer[0];
         }
@@ -71,38 +70,6 @@ public class WebUtil {
             }
         }
         return result.toArray(new Integer[0]);
-    }
-
-    public static String getRequestIpAddr(HttpServletRequest request) {
-        String ip = request.getHeader("x-forwarded-for");
-        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        // 如果是多级代理，那么取第一个ip为客户ip
-        if (ip != null && ip.contains(",")) {
-            ip = ip.substring(ip.lastIndexOf(",") + 1).trim();
-        }
-        return ip;
-    }
-
-    public static String getRequestDomain(HttpServletRequest request) {
-        return getRequestDomain(request, true);
-    }
-
-    public static String getRequestDomain(HttpServletRequest request, boolean appendContextPath) {
-        StringBuffer url = request.getRequestURL();
-        StringBuffer sb = url
-                .delete(url.length() - request.getRequestURI().length(), url.length());
-        if (appendContextPath) {
-            sb.append(request.getServletContext().getContextPath());
-        }
-        if (sb.toString().startsWith("http://localhost")) {
-            String host = request.getHeader("host");
-            if (host != null && host.length() > 0) {
-                sb = new StringBuffer("http://" + host);
-            }
-        }
-        return rewriteHttpToHttpsIfSecure(sb.toString(), request.isSecure());
     }
 
     /**

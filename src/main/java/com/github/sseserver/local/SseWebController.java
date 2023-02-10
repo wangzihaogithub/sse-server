@@ -8,6 +8,7 @@ import com.github.sseserver.remote.ConnectionDTO;
 import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.CompletableFuture;
 import com.github.sseserver.util.PageInfo;
+import com.github.sseserver.util.PlatformDependentUtil;
 import com.github.sseserver.util.WebUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,7 +35,7 @@ import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 
 /**
- * 消息事件推送 (非分布式)
+ * 消息事件推送 (分布式)
  * 注: !! 这里是示例代码, 根据自己项目封装的用户逻辑, 继承类或复制到自己项目里都行
  * <p>
  * 1. 如果用nginx代理, 要加下面的配置
@@ -51,7 +52,7 @@ import java.util.stream.Collectors;
 //@RequestMapping("/a/sse")
 //@RequestMapping("/b/sse")
 public class SseWebController<ACCESS_USER> {
-    @Autowired
+    @Autowired(required = false)
     protected HttpServletRequest request;
     protected LocalConnectionService localConnectionService;
 
@@ -207,8 +208,8 @@ public class SseWebController<ACCESS_USER> {
         String channel = Objects.toString(attributeMap.get("channel"), null);
         emitter.setChannel(channel == null || channel.isEmpty() ? null : channel);
         emitter.setUserAgent(request.getHeader("User-Agent"));
-        emitter.setRequestIp(WebUtil.getRequestIpAddr(request));
-        emitter.setRequestDomain(WebUtil.getRequestDomain(request, false));
+        emitter.setRequestIp(getRequestIpAddr(request));
+        emitter.setRequestDomain(getRequestDomain(request));
         emitter.setHttpCookies(request.getCookies());
         emitter.getHttpParameters().putAll(attributeMap);
         Enumeration<String> headerNames = request.getHeaderNames();
@@ -609,7 +610,7 @@ public class SseWebController<ACCESS_USER> {
         if (sseServerIdHeaderName != null && sseServerIdHeaderName.length() > 0) {
             responseHeaders.set(sseServerIdHeaderName, getSseServerId());
         }
-        responseHeaders.set("Sse-Server-Version", SseEmitter.VERSION);
+        responseHeaders.set("Sse-Server-Version", PlatformDependentUtil.SSE_SERVER_VERSION);
     }
 
     protected String getSseServerId() {
@@ -853,4 +854,28 @@ public class SseWebController<ACCESS_USER> {
         }
     }
 
+    protected String getRequestIpAddr(HttpServletRequest request) {
+        String ip = request.getHeader("x-forwarded-for");
+        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        // 如果是多级代理，那么取第一个ip为客户ip
+        if (ip != null && ip.contains(",")) {
+            ip = ip.substring(ip.lastIndexOf(",") + 1).trim();
+        }
+        return ip;
+    }
+
+    protected String getRequestDomain(HttpServletRequest request) {
+        StringBuffer url = request.getRequestURL();
+        StringBuffer sb = url.delete(url.length() - request.getRequestURI().length(), url.length());
+
+        if (sb.toString().startsWith("http://localhost")) {
+            String host = request.getHeader("host");
+            if (host != null && host.length() > 0) {
+                sb = new StringBuffer("http://" + host);
+            }
+        }
+        return WebUtil.rewriteHttpToHttpsIfSecure(sb.toString(), request.isSecure());
+    }
 }

@@ -80,7 +80,7 @@ public class BeanUtil {
 
     public static <T, R> R[] transformArray(Collection<T> source, Class<R> returnType) {
         if (source == null) {
-            return (R[]) null;
+            return null;
         }
         IdentityHashMap<Object, Object> context = new IdentityHashMap<>();
         return source.stream()
@@ -527,7 +527,7 @@ public class BeanUtil {
         if (Modifier.isAbstract(type.getModifiers()) && type.isAssignableFrom(def)) {
             return (T) newInstance(def);
         } else {
-            return (T) newInstance(type);
+            return newInstance(type);
         }
     }
 

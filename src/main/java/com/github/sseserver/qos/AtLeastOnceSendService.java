@@ -1,20 +1,20 @@
 package com.github.sseserver.qos;
 
+import com.github.sseserver.DistributedConnectionService;
 import com.github.sseserver.SendService;
 import com.github.sseserver.local.LocalConnectionService;
 import com.github.sseserver.local.SseChangeEvent;
-import com.github.sseserver.local.SseEmitter;
 import com.github.sseserver.remote.ClusterCompletableFuture;
 import com.github.sseserver.remote.ClusterConnectionService;
-import com.github.sseserver.remote.ClusterMessageRepository;
-import com.github.sseserver.remote.RemoteResponseMessage;
 import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.SpringUtil;
 import com.github.sseserver.util.WebUtil;
 
-import java.io.IOException;
 import java.io.Serializable;
-import java.util.*;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -29,14 +29,15 @@ import java.util.function.Supplier;
  * @author wangzihaogithub 2022-11-12
  */
 public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompletableFuture<Integer>> {
-    protected final LocalConnectionService localConnectionService;
+    protected final Optional<LocalConnectionService> localConnectionService;
+    protected final DistributedConnectionService distributedConnectionService;
     protected final MessageRepository messageRepository;
     protected final Map<String, QosCompletableFuture<Integer>> futureMap = new ConcurrentHashMap<>(32);
-    protected final Set<String> sendingSet = Collections.newSetFromMap(new ConcurrentHashMap<>());
     protected final String serverId = SpringUtil.filterNonAscii(WebUtil.getIPAddress(WebUtil.port));
 
-    public AtLeastOnceSendService(LocalConnectionService localConnectionService, MessageRepository messageRepository) {
+    public AtLeastOnceSendService(Optional<LocalConnectionService> localConnectionService, DistributedConnectionService distributedConnectionService, MessageRepository messageRepository) {
         this.localConnectionService = localConnectionService;
+        this.distributedConnectionService = distributedConnectionService;
         this.messageRepository = messageRepository;
         this.messageRepository.addDeleteListener(message -> {
             QosCompletableFuture<Integer> future = futureMap.remove(message.getId());
@@ -44,18 +45,21 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
                 complete(future, 1);
             }
         });
-        localConnectionService.<ACCESS_USER>addConnectListener(this::resend);
-        localConnectionService.addListeningChangeWatch((Consumer<SseChangeEvent<ACCESS_USER, Set<String>>>) event -> {
-            if (SseEmitter.EVENT_ADD_LISTENER.equals(event.getEventName())) {
-                resend(event.getInstance());
-            }
+        localConnectionService.ifPresent(local -> {
+            AtLeastResend<ACCESS_USER> atLeastResend = new AtLeastResend<>(messageRepository);
+            local.<ACCESS_USER>addConnectListener(atLeastResend::resend);
+            local.addListeningChangeWatch((Consumer<SseChangeEvent<ACCESS_USER, Set<String>>>) event -> {
+                if (SseChangeEvent.EVENT_ADD_LISTENER.equals(event.getEventName())) {
+                    atLeastResend.resend(event.getInstance());
+                }
+            });
         });
     }
 
     public QosCompletableFuture<Integer> qosSend(Function<SendService, ?> sendFunction, Supplier<AtLeastOnceMessage> messageSupplier) {
         QosCompletableFuture<Integer> future = new QosCompletableFuture<>(Message.newId("qos", serverId));
-        if (localConnectionService.isEnableCluster()) {
-            ClusterConnectionService cluster = localConnectionService.getCluster();
+        if (distributedConnectionService.isEnableCluster()) {
+            ClusterConnectionService cluster = distributedConnectionService.getCluster();
 
             ClusterCompletableFuture<Integer, ClusterConnectionService> clusterFuture = cluster.scopeOnWriteable(
                     () -> (ClusterCompletableFuture<Integer, ClusterConnectionService>) sendFunction.apply(cluster));
@@ -67,9 +71,10 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
                     enqueue(message, future);
                 }
             });
-        } else {
-            Integer succeedCount = localConnectionService.scopeOnWriteable(
-                    () -> (Integer) sendFunction.apply(localConnectionService));
+        } else if (localConnectionService.isPresent()) {
+            LocalConnectionService local = this.localConnectionService.get();
+            Integer succeedCount = local.scopeOnWriteable(
+                    () -> (Integer) sendFunction.apply(local));
             if (succeedCount != null && succeedCount > 0) {
                 complete(future, succeedCount);
             } else {
@@ -222,69 +227,6 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
         message.setId(messageId);
         messageRepository.insert(message);
         futureMap.put(messageId, future);
-    }
-
-    protected void markSending(List<Message> messageList) {
-        int i = 0;
-        for (Message message : messageList) {
-            if (!sendingSet.add(message.getId())) {
-                messageList.set(i, null);
-            }
-            i++;
-        }
-    }
-
-    protected void resend(SseEmitter<ACCESS_USER> connection) {
-        if (messageRepository instanceof ClusterMessageRepository) {
-            ((ClusterMessageRepository) messageRepository).selectAsync(connection)
-                    .thenAccept(e -> resend(e, connection));
-        } else {
-            resend(messageRepository.select(connection), connection);
-        }
-    }
-
-    protected void resend(List<Message> messageList, SseEmitter<ACCESS_USER> connection) {
-        if (messageList.isEmpty()) {
-            return;
-        }
-        markSending(messageList);
-
-        IOException error = null;
-        for (Message message : messageList) {
-            if (message == null) {
-                // other sending
-                continue;
-            }
-            String id = message.getId();
-            try {
-                if (!connection.isActive() || !connection.isWriteable() || error != null) {
-                    continue;
-                }
-
-                connection.send(SseEmitter.event()
-                        .id(id)
-                        .name(message.getEventName())
-                        .comment("resend")
-                        .data(message.getBody()));
-
-                if (messageRepository instanceof ClusterMessageRepository) {
-                    ClusterMessageRepository repository = ((ClusterMessageRepository) messageRepository);
-                    String repositoryId;
-                    if (message instanceof RemoteResponseMessage) {
-                        repositoryId = ((RemoteResponseMessage) message).getRemoteMessageRepositoryId();
-                    } else {
-                        repositoryId = null;
-                    }
-                    repository.deleteAsync(id, repositoryId);
-                } else {
-                    messageRepository.delete(id);
-                }
-            } catch (IOException e) {
-                error = e;
-            } finally {
-                sendingSet.remove(id);
-            }
-        }
     }
 
 }

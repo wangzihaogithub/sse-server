@@ -842,7 +842,7 @@ public class TypeUtil {
         }
 
         if (type instanceof ParameterizedType) {
-            return (T) cast(obj, (ParameterizedType) type);
+            return cast(obj, (ParameterizedType) type);
         }
 
         if (obj instanceof String) {
@@ -918,7 +918,7 @@ public class TypeUtil {
         if (type.getActualTypeArguments().length == 1) {
             Type argType = type.getActualTypeArguments()[0];
             if (argType instanceof WildcardType) {
-                return (T) cast(obj, rawTye);
+                return cast(obj, rawTye);
             }
         }
 

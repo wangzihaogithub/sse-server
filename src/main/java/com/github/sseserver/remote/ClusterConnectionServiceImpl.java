@@ -20,17 +20,17 @@ import java.util.function.Supplier;
 
 public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     private final static Logger log = LoggerFactory.getLogger(ClusterConnectionServiceImpl.class);
-    private final Supplier<LocalConnectionService> localSupplier;
+    private final Supplier<Optional<LocalConnectionService>> localSupplier;
     private final Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier;
     private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
 
-    public ClusterConnectionServiceImpl(Supplier<LocalConnectionService> localSupplier,
+    public ClusterConnectionServiceImpl(Supplier<Optional<LocalConnectionService>> localSupplier,
                                         Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier) {
         this.localSupplier = localSupplier;
         this.remoteSupplier = remoteSupplier;
     }
 
-    public LocalConnectionService getLocalService() {
+    public Optional<LocalConnectionService> getLocalService() {
         return localSupplier.get();
     }
 
@@ -43,7 +43,7 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
 
     @Override
     public boolean isOnline(Serializable userId) {
-        if (getLocalService().isOnline(userId)) {
+        if (getLocalService().map(e -> e.isOnline(userId)).orElse(false)) {
             return true;
         }
         ClusterCompletableFuture<Boolean, ClusterConnectionService> future = mapReduce(
@@ -63,9 +63,9 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
 
     @Override
     public <ACCESS_USER> ACCESS_USER getUser(Serializable userId) {
-        ACCESS_USER result = getLocalService().getUser(userId);
-        if (result != null) {
-            return result;
+        Optional<ACCESS_USER> result = getLocalService().map(e -> e.getUser(userId));
+        if (result.isPresent()) {
+            return result.get();
         }
         ClusterCompletableFuture<ACCESS_USER, ClusterConnectionService> future = mapReduce(
                 e -> e.getUserAsync(userId),
@@ -371,12 +371,17 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
             }
 
             // local method call
-            LocalConnectionService local = getLocalService();
+            Optional<LocalConnectionService> localService = getLocalService();
             T localPart;
-            if (scopeOnWriteable != null && scopeOnWriteable) {
-                localPart = local.scopeOnWriteable(() -> localFunction.apply(local));
+            if (localService.isPresent()) {
+                LocalConnectionService local = localService.get();
+                if (scopeOnWriteable != null && scopeOnWriteable) {
+                    localPart = local.scopeOnWriteable(() -> localFunction.apply(local));
+                } else {
+                    localPart = localFunction.apply(local);
+                }
             } else {
-                localPart = localFunction.apply(local);
+                localPart = null;
             }
 
             ClusterCompletableFuture<R, ClusterConnectionService> future = new ClusterCompletableFuture<>(remoteUrlList, this);
@@ -402,7 +407,12 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
                         handleRemoteException(remoteFuture, exception, future);
                     }
                 }
-                T end = reduce.apply(remotePart, localPart);
+                T end;
+                if (localPart != null) {
+                    end = reduce.apply(remotePart, localPart);
+                } else {
+                    end = remotePart;
+                }
                 return finisher.apply(end);
             });
             return future;

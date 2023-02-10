@@ -50,7 +50,7 @@ sse协议的后端API, 比websocket轻量的实时通信,
         <dependency>
             <groupId>com.github.wangzihaogithub</groupId>
             <artifactId>sse-server</artifactId>
-            <version>1.2.1</version>
+            <version>1.2.2</version>
         </dependency>
         
 2.  配置业务逻辑 （后端）
@@ -82,7 +82,7 @@ sse协议的后端API, 比websocket轻量的实时通信,
         
         
         /**
-         * 消息事件推送 (非分布式)
+         * 消息事件推送 (分布式)
          * <p>
          * 1. 如果用nginx代理, 要加下面的配置
          * # 长连接配置

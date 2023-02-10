@@ -9,6 +9,7 @@ import com.github.sseserver.remote.ConnectionDTO;
 import com.github.sseserver.remote.ServiceDiscoveryService;
 import com.github.sseserver.springboot.SseServerBeanDefinitionRegistrar;
 import com.github.sseserver.util.LambdaUtil;
+import com.github.sseserver.util.PlatformDependentUtil;
 import com.github.sseserver.util.TypeUtil;
 import com.github.sseserver.util.WebUtil;
 import org.slf4j.Logger;
@@ -226,7 +227,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                             + ",\"reconnectTime\":" + reconnectTime
                             + ",\"name\":\"" + beanName + "\""
                             + ",\"enableCluster\":" + isEnableCluster()
-                            + ",\"version\":\"" + SseEmitter.VERSION + "\""
+                            + ",\"version\":\"" + PlatformDependentUtil.SSE_SERVER_VERSION + "\""
                             + "}"));
             return result;
         } catch (IOException e) {

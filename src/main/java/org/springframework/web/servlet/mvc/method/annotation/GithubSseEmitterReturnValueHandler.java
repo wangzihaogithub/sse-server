@@ -132,14 +132,12 @@ public class GithubSseEmitterReturnValueHandler implements HandlerMethodReturnVa
 
         @Override
         public void send(Object data, MediaType mediaType) throws IOException {
-            sendInternal(data, mediaType);
-        }
-
-        @SuppressWarnings("unchecked")
-        private <T> void sendInternal(T data, MediaType mediaType) throws IOException {
-            for (HttpMessageConverter<?> converter : messageConverters.get()) {
+            if (data == null) {
+                return;
+            }
+            for (HttpMessageConverter converter : messageConverters.get()) {
                 if (converter.canWrite(data.getClass(), mediaType)) {
-                    ((HttpMessageConverter<T>) converter).write(data, mediaType, this.outputMessage);
+                    converter.write(data, mediaType, this.outputMessage);
                     this.outputMessage.flush();
                     return;
                 }

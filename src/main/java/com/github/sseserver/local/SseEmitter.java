@@ -31,10 +31,6 @@ import java.util.stream.Collectors;
  * @author wangzihaogithub 2022-11-12
  */
 public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc.method.annotation.SseEmitter implements MessageRepository.Query {
-    public static final String VERSION = "1.2.1";
-    public static final String EVENT_ADD_LISTENER = "addListener";
-    public static final String EVENT_REMOVE_LISTENER = "removeListener";
-
     private final static Logger log = LoggerFactory.getLogger(SseEmitter.class);
     private static final MediaType TEXT_PLAIN = new MediaType("text", "plain", Charset.forName("UTF-8"));
 
@@ -657,7 +653,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
         listeners.addAll(addListener);
         Set<String> afterCopy = new LinkedHashSet<>(listeners);
 
-        SseChangeEvent<ACCESS_USER, Set<String>> event = new SseChangeEvent<>(this, EVENT_ADD_LISTENER, beforeCopy, afterCopy);
+        SseChangeEvent<ACCESS_USER, Set<String>> event = new SseChangeEvent<>(this, SseChangeEvent.EVENT_ADD_LISTENER, beforeCopy, afterCopy);
         for (Consumer<SseChangeEvent<ACCESS_USER, Set<String>>> changeEventConsumer : new ArrayList<>(listenersWatchList)) {
             changeEventConsumer.accept(event);
         }
@@ -669,7 +665,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
         listeners.removeAll(removeListener);
         Set<String> afterCopy = new LinkedHashSet<>(listeners);
 
-        SseChangeEvent<ACCESS_USER, Set<String>> event = new SseChangeEvent<>(this, EVENT_REMOVE_LISTENER, beforeCopy, afterCopy);
+        SseChangeEvent<ACCESS_USER, Set<String>> event = new SseChangeEvent<>(this, SseChangeEvent.EVENT_REMOVE_LISTENER, beforeCopy, afterCopy);
         for (Consumer<SseChangeEvent<ACCESS_USER, Set<String>>> changeEventConsumer : new ArrayList<>(listenersWatchList)) {
             changeEventConsumer.accept(event);
         }
