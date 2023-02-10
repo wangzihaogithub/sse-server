@@ -13,7 +13,6 @@ import com.github.sseserver.util.WebUtil;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,13 +28,13 @@ import java.util.function.Supplier;
  * @author wangzihaogithub 2022-11-12
  */
 public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompletableFuture<Integer>> {
-    protected final Optional<LocalConnectionService> localConnectionService;
+    protected final LocalConnectionService localConnectionService;
     protected final DistributedConnectionService distributedConnectionService;
     protected final MessageRepository messageRepository;
     protected final Map<String, QosCompletableFuture<Integer>> futureMap = new ConcurrentHashMap<>(32);
     protected final String serverId = SpringUtil.filterNonAscii(WebUtil.getIPAddress(WebUtil.port));
 
-    public AtLeastOnceSendService(Optional<LocalConnectionService> localConnectionService, DistributedConnectionService distributedConnectionService, MessageRepository messageRepository) {
+    public AtLeastOnceSendService(LocalConnectionService localConnectionService, DistributedConnectionService distributedConnectionService, MessageRepository messageRepository) {
         this.localConnectionService = localConnectionService;
         this.distributedConnectionService = distributedConnectionService;
         this.messageRepository = messageRepository;
@@ -45,15 +44,15 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
                 complete(future, 1);
             }
         });
-        localConnectionService.ifPresent(local -> {
+        if (localConnectionService != null) {
             AtLeastResend<ACCESS_USER> atLeastResend = new AtLeastResend<>(messageRepository);
-            local.<ACCESS_USER>addConnectListener(atLeastResend::resend);
-            local.addListeningChangeWatch((Consumer<SseChangeEvent<ACCESS_USER, Set<String>>>) event -> {
+            localConnectionService.<ACCESS_USER>addConnectListener(atLeastResend::resend);
+            localConnectionService.addListeningChangeWatch((Consumer<SseChangeEvent<ACCESS_USER, Set<String>>>) event -> {
                 if (SseChangeEvent.EVENT_ADD_LISTENER.equals(event.getEventName())) {
                     atLeastResend.resend(event.getInstance());
                 }
             });
-        });
+        }
     }
 
     public QosCompletableFuture<Integer> qosSend(Function<SendService, ?> sendFunction, Supplier<AtLeastOnceMessage> messageSupplier) {
@@ -71,16 +70,17 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
                     enqueue(message, future);
                 }
             });
-        } else if (localConnectionService.isPresent()) {
-            LocalConnectionService local = this.localConnectionService.get();
-            Integer succeedCount = local.scopeOnWriteable(
-                    () -> (Integer) sendFunction.apply(local));
+        } else if (localConnectionService != null) {
+            Integer succeedCount = localConnectionService.scopeOnWriteable(
+                    () -> (Integer) sendFunction.apply(localConnectionService));
             if (succeedCount != null && succeedCount > 0) {
                 complete(future, succeedCount);
             } else {
                 AtLeastOnceMessage message = messageSupplier.get();
                 enqueue(message, future);
             }
+        } else {
+            future.complete(0);
         }
         return future;
     }

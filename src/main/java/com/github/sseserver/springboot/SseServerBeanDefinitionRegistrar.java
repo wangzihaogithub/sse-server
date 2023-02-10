@@ -178,7 +178,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
                         MessageRepository repository = beanFactory.getBean(repositoryBeanName, MessageRepository.class);
                         DistributedConnectionService distributedConnectionService = getDistributedConnectionService(connectionServiceBeanName, beanFactory);
                         Optional<LocalConnectionService> localConnectionService = getLocalConnectionService(connectionServiceBeanName, beanFactory);
-                        return new AtLeastOnceSendService(localConnectionService, distributedConnectionService, repository);
+                        return new AtLeastOnceSendService(localConnectionService.orElse(null), distributedConnectionService, repository);
                     });
             String beanName = getAtLeastOnceBeanName(connectionServiceBeanName);
             definitionRegistry.registerBeanDefinition(beanName, builder.getBeanDefinition());
