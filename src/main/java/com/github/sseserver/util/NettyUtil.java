@@ -201,7 +201,9 @@ public class NettyUtil {
 
             @Override
             protected void channelRead0(ChannelHandlerContext context, FullHttpResponse response) throws Exception {
-                this.responseFuture.complete(new Netty4ClientHttpResponse(context, response));
+                if (!this.responseFuture.isDone()) {
+                    this.responseFuture.complete(new Netty4ClientHttpResponse(context, response));
+                }
             }
 
             @Override

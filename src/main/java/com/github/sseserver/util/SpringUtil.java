@@ -66,10 +66,12 @@ public class SpringUtil {
                 String name = threadName + "-" + id.getAndIncrement();
                 Thread t = new Thread(r, name);
                 t.setDaemon(true);
-                return null;
+                return t;
             }
         }, (r, executor1) -> {
-            if (!executor1.isShutdown()) {
+            if (executor1.isShutdown()) {
+                throw new RejectedExecutionException("ThreadPoolExecutor shutdown！");
+            } else {
                 r.run();
             }
         });
