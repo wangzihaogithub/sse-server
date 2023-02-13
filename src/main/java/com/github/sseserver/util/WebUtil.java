@@ -123,7 +123,7 @@ public class WebUtil {
                         }
                         String hostAddress = inetAddress.getHostAddress();
                         if (hostAddress.startsWith("192.")) {
-                            ipList.addFirst(hostAddress);
+                            return ipAddress = hostAddress;
                         } else {
                             ipList.addLast(hostAddress);
                         }
