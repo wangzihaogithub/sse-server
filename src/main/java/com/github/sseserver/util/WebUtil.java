@@ -124,6 +124,34 @@ public class WebUtil {
                             continue;
                         }
                         String hostAddress = inetAddress.getHostAddress();
+                        if(hostAddress.startsWith("192.")){
+                            return ipAddress = hostAddress;
+                        }
+                    }
+                }
+
+                networkInterfaces = NetworkInterface.getNetworkInterfaces();
+                while (networkInterfaces.hasMoreElements()) {
+                    NetworkInterface networkInterface = networkInterfaces.nextElement();
+                    if (networkInterface.isVirtual() && networkInterface.isLoopback()) {
+                        continue;
+                    }
+
+                    String name = Objects.toString(networkInterface.getName(), "").trim().toUpperCase();
+                    String displayName = Objects.toString(networkInterface.getDisplayName(), "").trim().toUpperCase();
+                    String netName = name.length() > 0 ? name : displayName;
+                    boolean skip = Stream.of(skipNames).anyMatch(netName::contains);
+                    if (skip) {
+                        continue;
+                    }
+
+                    Enumeration<InetAddress> inetAddresses = networkInterface.getInetAddresses();
+                    while (inetAddresses.hasMoreElements()) {
+                        InetAddress inetAddress = inetAddresses.nextElement();
+                        if (inetAddress.isLoopbackAddress() || !inetAddress.isSiteLocalAddress() || !inetAddress.isReachable(100)) {
+                            continue;
+                        }
+                        String hostAddress = inetAddress.getHostAddress();
                         return ipAddress = hostAddress;
                     }
                 }
