@@ -3,10 +3,7 @@ package com.github.sseserver.util;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -100,6 +97,7 @@ public class WebUtil {
         if (ipAddress != null) {
             return ipAddress;
         } else {
+            LinkedList<String> ipList = new LinkedList<>();
             try {
                 Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
                 String[] skipNames = {"TAP", "VPN", "UTUN", "VIRBR"};
@@ -124,39 +122,19 @@ public class WebUtil {
                             continue;
                         }
                         String hostAddress = inetAddress.getHostAddress();
-                        if(hostAddress.startsWith("192.")){
-                            return ipAddress = hostAddress;
+                        if (hostAddress.startsWith("192.")) {
+                            ipList.addFirst(hostAddress);
+                        } else {
+                            ipList.addLast(hostAddress);
                         }
                     }
                 }
 
-                networkInterfaces = NetworkInterface.getNetworkInterfaces();
-                while (networkInterfaces.hasMoreElements()) {
-                    NetworkInterface networkInterface = networkInterfaces.nextElement();
-                    if (networkInterface.isVirtual() && networkInterface.isLoopback()) {
-                        continue;
-                    }
-
-                    String name = Objects.toString(networkInterface.getName(), "").trim().toUpperCase();
-                    String displayName = Objects.toString(networkInterface.getDisplayName(), "").trim().toUpperCase();
-                    String netName = name.length() > 0 ? name : displayName;
-                    boolean skip = Stream.of(skipNames).anyMatch(netName::contains);
-                    if (skip) {
-                        continue;
-                    }
-
-                    Enumeration<InetAddress> inetAddresses = networkInterface.getInetAddresses();
-                    while (inetAddresses.hasMoreElements()) {
-                        InetAddress inetAddress = inetAddresses.nextElement();
-                        if (inetAddress.isLoopbackAddress() || !inetAddress.isSiteLocalAddress() || !inetAddress.isReachable(100)) {
-                            continue;
-                        }
-                        String hostAddress = inetAddress.getHostAddress();
-                        return ipAddress = hostAddress;
-                    }
-                }
                 // 如果没有发现 non-loopback地址.只能用最次选的方案
-                return ipAddress = InetAddress.getLocalHost().getHostAddress();
+                if (ipList.isEmpty()) {
+                    ipList.addLast(InetAddress.getLocalHost().getHostAddress());
+                }
+                return ipAddress = ipList.get(0);
             } catch (Exception var6) {
                 return null;
             }
