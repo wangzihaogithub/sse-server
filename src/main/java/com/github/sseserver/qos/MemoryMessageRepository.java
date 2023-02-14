@@ -5,7 +5,14 @@ import java.util.*;
 import java.util.function.Consumer;
 
 public class MemoryMessageRepository implements MessageRepository {
-    protected final Map<String, Message> messageMap = Collections.synchronizedMap(new LinkedHashMap<>(6));
+    public int maxThresholdSize = Integer.getInteger("sseserver.MemoryMessageRepository.maxThresholdSize",
+            1000);
+    protected final Map<String, Message> messageMap = Collections.synchronizedMap(new LinkedHashMap<String, Message>() {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry eldest) {
+            return size() > maxThresholdSize;
+        }
+    });
     protected final List<Consumer<Message>> deleteListenerList = new LinkedList<>();
 
     @Override
@@ -106,4 +113,11 @@ public class MemoryMessageRepository implements MessageRepository {
         }
     }
 
+    public int getMaxThresholdSize() {
+        return maxThresholdSize;
+    }
+
+    public void setMaxThresholdSize(int maxThresholdSize) {
+        this.maxThresholdSize = maxThresholdSize;
+    }
 }

@@ -3,10 +3,7 @@ package com.github.sseserver.util;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -100,6 +97,7 @@ public class WebUtil {
         if (ipAddress != null) {
             return ipAddress;
         } else {
+            LinkedList<String> ipList = new LinkedList<>();
             try {
                 Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
                 String[] skipNames = {"TAP", "VPN", "UTUN", "VIRBR"};
@@ -124,11 +122,31 @@ public class WebUtil {
                             continue;
                         }
                         String hostAddress = inetAddress.getHostAddress();
-                        return ipAddress = hostAddress;
+                        if (hostAddress.startsWith("192.")) {
+                            return ipAddress = hostAddress;
+                        } else {
+                            ipList.addLast(hostAddress);
+                        }
+                    }
+                }
+
+                for (String ip : ipList) {
+                    if (ip.startsWith("172.")) {
+                        return ipAddress = ip;
+                    }
+                }
+                for (String ip : ipList) {
+                    // xxx.
+                    // xx.
+                    if (ip.length() > 3 && ip.charAt(3) == '.') {
+                        return ipAddress = ip;
                     }
                 }
                 // 如果没有发现 non-loopback地址.只能用最次选的方案
-                return ipAddress = InetAddress.getLocalHost().getHostAddress();
+                if (ipList.isEmpty()) {
+                    ipList.addLast(InetAddress.getLocalHost().getHostAddress());
+                }
+                return ipAddress = ipList.get(0);
             } catch (Exception var6) {
                 return null;
             }

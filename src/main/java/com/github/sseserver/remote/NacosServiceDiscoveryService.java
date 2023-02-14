@@ -24,7 +24,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
     public static final String METADATA_NAME_ACCOUNT = "account";
     public static final String METADATA_NAME_PASSWORD = "password";
 
-    public static final String PROJECT_NAME = limit(SpringUtil.filterNonAscii(System.getProperty("user.dir")), 10);
+    public static final String PROJECT_NAME = limit(SpringUtil.filterNonAscii(System.getProperty("user.dir")), 12);
     public static final String METADATA_VALUE_DEVICE_ID = SpringUtil.filterNonAscii(
             PROJECT_NAME + "-" + WebUtil.getIPAddress(WebUtil.port) + "(" + new Timestamp(System.currentTimeMillis()) + ")");
 

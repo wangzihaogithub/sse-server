@@ -50,7 +50,7 @@ sse协议的后端API, 比websocket轻量的实时通信,
         <dependency>
             <groupId>com.github.wangzihaogithub</groupId>
             <artifactId>sse-server</artifactId>
-            <version>1.2.2</version>
+            <version>1.2.3</version>
         </dependency>
         
 2.  配置业务逻辑 （后端）
