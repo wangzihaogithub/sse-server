@@ -132,14 +132,14 @@ public class WebUtil {
 
                 for (String ip : ipList) {
                     if (ip.startsWith("172.")) {
-                        return ip;
+                        return ipAddress = ip;
                     }
                 }
                 for (String ip : ipList) {
                     // xxx.
                     // xx.
                     if (ip.length() > 3 && ip.charAt(3) == '.') {
-                        return ip;
+                        return ipAddress = ip;
                     }
                 }
                 // 如果没有发现 non-loopback地址.只能用最次选的方案
