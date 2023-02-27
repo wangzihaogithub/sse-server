@@ -8,6 +8,7 @@ import com.github.sseserver.util.ReferenceCounted;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -168,13 +169,20 @@ public class ClusterMessageRepository implements MessageRepository {
         if (cause == null) {
             cause = exception;
         }
-        if (!doneFuture.isDone()) {
-            doneFuture.setExceptionallyPrefix("ClusterMessageRepository at remoteFuture " + remoteFuture.getClient().getId());
-        }
-        boolean completeExceptionally = doneFuture.completeExceptionally(cause);
-        if (log.isDebugEnabled()) {
-            log.debug("RemoteException: RemoteMessageRepository {} , RemoteException {}, completeExceptionally {}",
-                    remoteFuture.getClient(), exception, completeExceptionally, exception);
+        if (cause instanceof IOException) {
+            if (log.isDebugEnabled()) {
+                log.debug("RemoteException: RemoteMessageRepository {} , RemoteException {}",
+                        remoteFuture.getClient(), exception, exception);
+            }
+        } else {
+            if (!doneFuture.isDone()) {
+                doneFuture.setExceptionallyPrefix("ClusterMessageRepository at remoteFuture " + remoteFuture.getClient().getId());
+            }
+            boolean completeExceptionally = doneFuture.completeExceptionally(cause);
+            if (log.isDebugEnabled()) {
+                log.debug("RemoteException: RemoteMessageRepository {} , RemoteException {}, completeExceptionally {}",
+                        remoteFuture.getClient(), exception, completeExceptionally, exception);
+            }
         }
     }
 
