@@ -10,6 +10,8 @@ import com.github.sseserver.util.CompletableFuture;
 import com.github.sseserver.util.PageInfo;
 import com.github.sseserver.util.PlatformDependentUtil;
 import com.github.sseserver.util.WebUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.InputStreamResource;
@@ -52,6 +54,7 @@ import java.util.stream.Collectors;
 //@RequestMapping("/a/sse")
 //@RequestMapping("/b/sse")
 public class SseWebController<ACCESS_USER> {
+    private final Logger logger = LoggerFactory.getLogger(getClass());
     @Autowired(required = false)
     protected HttpServletRequest request;
     protected LocalConnectionService localConnectionService;
@@ -369,7 +372,8 @@ public class SseWebController<ACCESS_USER> {
             localConnectionService.getCluster().disconnectByConnectionId(connectionId)
                     .whenComplete((remoteCount, throwable) -> {
                         if (throwable != null) {
-                            result.setErrorResult(throwable);
+                            logger.warn("disconnectConnection exception = {}", throwable, throwable);
+                            result.setResult(responseEntity(buildDisconnectResult(0, false)));
                         } else {
                             int count = remoteCount + localCount;
                             result.setResult(responseEntity(buildDisconnectResult(count, false)));
@@ -399,7 +403,8 @@ public class SseWebController<ACCESS_USER> {
             DeferredResult<ResponseEntity> result = new DeferredResult<>(timeout, responseEntity(buildDisconnectResult(disconnectList.size(), true)));
             localConnectionService.getCluster().disconnectByAccessToken(accessToken).whenComplete((remoteCount, throwable) -> {
                 if (throwable != null) {
-                    result.setErrorResult(throwable);
+                    logger.warn("disconnectByAccessToken exception = {}", throwable, throwable);
+                    result.setResult(responseEntity(buildDisconnectResult(0, false)));
                 } else {
                     int count = remoteCount + disconnectList.size();
                     result.setResult(responseEntity(buildDisconnectResult(count, false)));
@@ -433,7 +438,8 @@ public class SseWebController<ACCESS_USER> {
             DeferredResult<ResponseEntity> result = new DeferredResult<>(timeout, () -> responseEntity(buildDisconnectResult(disconnectList.size(), true)));
             localConnectionService.getCluster().disconnectByUserId(userId).whenComplete((remoteCount, throwable) -> {
                 if (throwable != null) {
-                    result.setErrorResult(throwable);
+                    logger.warn("disconnectUser exception = {}", throwable, throwable);
+                    result.setResult(responseEntity(buildDisconnectResult(0, false)));
                 } else {
                     int count = remoteCount + disconnectList.size();
                     result.setResult(responseEntity(buildDisconnectResult(count, false)));

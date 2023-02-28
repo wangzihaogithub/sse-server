@@ -22,6 +22,22 @@ public interface ClusterConnectionService extends ConnectionQueryService, SendSe
 
     <ACCESS_USER> ClusterCompletableFuture<List<ACCESS_USER>, ClusterConnectionService> getUsersAsync(SseServerProperties.AutoType autoType);
 
+    <ACCESS_USER> ClusterCompletableFuture<ACCESS_USER, ClusterConnectionService> getUserAsync(Serializable userId);
+
+    <ACCESS_USER> ClusterCompletableFuture<List<ACCESS_USER>, ClusterConnectionService> getUsersAsync();
+
+    <ACCESS_USER> ClusterCompletableFuture<List<ACCESS_USER>, ClusterConnectionService> getUsersByListeningAsync(String sseListenerName);
+
+    <ACCESS_USER> ClusterCompletableFuture<List<ACCESS_USER>, ClusterConnectionService> getUsersByTenantIdListeningAsync(Serializable tenantId, String sseListenerName);
+
+    /* getUserIds */
+
+    <T> ClusterCompletableFuture<List<T>, ClusterConnectionService> getUserIdsAsync(Class<T> type);
+
+    <T> ClusterCompletableFuture<List<T>, ClusterConnectionService> getUserIdsByListeningAsync(String sseListenerName, Class<T> type);
+
+    <T> ClusterCompletableFuture<List<T>, ClusterConnectionService> getUserIdsByTenantIdListeningAsync(Serializable tenantId, String sseListenerName, Class<T> type);
+
     /* getConnection */
 
     <ACCESS_USER> ClusterCompletableFuture<List<ConnectionDTO<ACCESS_USER>>, ClusterConnectionService> getConnectionDTOAllAsync(SseServerProperties.AutoType autoType);

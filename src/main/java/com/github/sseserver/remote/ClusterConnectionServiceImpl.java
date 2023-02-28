@@ -304,6 +304,82 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
+    public <ACCESS_USER> ClusterCompletableFuture<ACCESS_USER, ClusterConnectionService> getUserAsync(Serializable userId) {
+        Optional<ACCESS_USER> result = getLocalService().map(e -> e.getUser(userId));
+        if (result.isPresent()) {
+            ClusterCompletableFuture<ACCESS_USER, ClusterConnectionService> future = new ClusterCompletableFuture<>(Collections.emptyList(), this);
+            future.complete(result.get());
+            return future;
+        }
+        ClusterCompletableFuture<ACCESS_USER, ClusterConnectionService> future = mapReduce(
+                e -> e.getUserAsync(userId),
+                e -> null,
+                LambdaUtil.filterNull(),
+                LambdaUtil.defaultNull());
+        return future;
+    }
+
+    @Override
+    public <ACCESS_USER> ClusterCompletableFuture<List<ACCESS_USER>, ClusterConnectionService> getUsersAsync() {
+        return mapReduce(
+                RemoteConnectionService::getUsersAsync,
+                ConnectionQueryService::getUsers,
+                LambdaUtil.reduceList(),
+                LambdaUtil.distinct(),
+                ArrayList::new);
+    }
+
+    @Override
+    public <ACCESS_USER> ClusterCompletableFuture<List<ACCESS_USER>, ClusterConnectionService> getUsersByListeningAsync(String sseListenerName) {
+        return mapReduce(
+                e -> e.getUsersByListeningAsync(sseListenerName),
+                e -> e.getUsersByListening(sseListenerName),
+                LambdaUtil.reduceList(),
+                LambdaUtil.distinct(),
+                ArrayList::new);
+    }
+
+    @Override
+    public <ACCESS_USER> ClusterCompletableFuture<List<ACCESS_USER>, ClusterConnectionService> getUsersByTenantIdListeningAsync(Serializable tenantId, String sseListenerName) {
+        return mapReduce(
+                e -> e.getUsersByTenantIdListeningAsync(tenantId, sseListenerName),
+                e -> e.getUsersByTenantIdListening(tenantId, sseListenerName),
+                LambdaUtil.reduceList(),
+                LambdaUtil.distinct(),
+                ArrayList::new);
+    }
+
+    @Override
+    public <T> ClusterCompletableFuture<List<T>, ClusterConnectionService> getUserIdsAsync(Class<T> type) {
+        return mapReduce(
+                e -> e.getUserIdsAsync(type),
+                e -> e.getUserIds(type),
+                LambdaUtil.reduceList(),
+                LambdaUtil.distinct(),
+                ArrayList::new);
+    }
+
+    @Override
+    public <T> ClusterCompletableFuture<List<T>, ClusterConnectionService> getUserIdsByListeningAsync(String sseListenerName, Class<T> type) {
+        return mapReduce(
+                e -> e.getUserIdsByListeningAsync(sseListenerName, type),
+                e -> e.getUserIdsByListening(sseListenerName, type),
+                LambdaUtil.reduceList(),
+                LambdaUtil.distinct(),
+                ArrayList::new);
+    }
+
+    @Override
+    public <T> ClusterCompletableFuture<List<T>, ClusterConnectionService> getUserIdsByTenantIdListeningAsync(Serializable tenantId, String sseListenerName, Class<T> type) {
+        return mapReduce(
+                e -> e.getUserIdsByTenantIdListeningAsync(tenantId, sseListenerName, type),
+                e -> e.getUserIdsByTenantIdListening(tenantId, sseListenerName, type),
+                LambdaUtil.reduceList(),
+                LambdaUtil.distinct(),
+                ArrayList::new);
+    }
+
+    @Override
     public <ACCESS_USER> ClusterCompletableFuture<List<ConnectionDTO<ACCESS_USER>>, ClusterConnectionService> getConnectionDTOAllAsync(SseServerProperties.AutoType autoType) {
         return mapReduce(
                 e -> e.getConnectionDTOAllAsync(autoType),
