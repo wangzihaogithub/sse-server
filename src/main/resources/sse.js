@@ -9,11 +9,11 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.2.4</version>
+ *      <version>1.2.5</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.2.4'
+  static version = '1.2.5'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,
@@ -44,6 +44,16 @@ class Sse {
    * 连接未打开，并且用户代理未尝试重新连接。要么存在致命错误，要么close()调用了该方法。
    */
   static STATE_CLOSED = EventSource.CLOSED
+  /**
+   * 服务器主动触发了关闭连接
+   * 谁主动触发了关闭连接
+   */
+  static SERVER_TRIGGER_CLOSE = 'server'
+  /**
+   * 客户端主动触发了关闭连接
+   * 谁主动触发了关闭连接
+   */
+  static CLIENT_TRIGGER_CLOSE = 'client'
 
   static install = function(global = window, opts = {}) {
     global.Sse = Sse
@@ -80,6 +90,7 @@ class Sse {
     localStorage.setItem('sseClientId', clientId)
     this.clientId = clientId
     this.instanceId = `${h() + h()}-${h()}-${h()}-${h()}-${h()}${h()}${h()}`
+    this.clientClose = null
 
     this.handleConnectionFinish = (event) => {
       this.clearReconnectTimer()
@@ -122,14 +133,10 @@ class Sse {
     }
 
     this.handleConnectionClose = (event) => {
-      if (this.isActive()) {
-        this.flush()
-      }
       this.state = Sse.STATE_CLOSED
-      const res = JSON.parse(event.data)
-      this.closeResponse = res
-      this.removeEventSource()
+      setTimeout(this.removeEventSource, 0)
       this.clearReconnectTimer()
+      this.closeResponse = JSON.parse(event.data)
     }
 
     this.toString = () => {
@@ -137,6 +144,7 @@ class Sse {
     }
 
     this.handleOpen = () => {
+      this.clientClose = null
       this.state = Sse.STATE_OPEN
     }
 
@@ -202,6 +210,23 @@ class Sse {
     this._addEventListener = (es, eventName, fn) => {
       if (!es) {
         return false
+      }
+      if (eventName === 'connect-close') {
+        const oldFn = fn
+        fn = (event) => {
+          const closeInfo = {
+            whoTriggerClose: this.clientClose ? Sse.CLIENT_TRIGGER_CLOSE : Sse.SERVER_TRIGGER_CLOSE,
+            closeReason: this.clientClose ? this.clientClose.reason : 'server-close'
+          }
+          try {
+            for (const key in closeInfo) {
+              event[key] = closeInfo[key]
+            }
+          } catch (e) {
+            // skip
+          }
+          oldFn.apply(this, [event, closeInfo])
+        }
       }
       try {
         if (fn) {
@@ -374,6 +399,7 @@ class Sse {
       if (!this.es) {
         return
       }
+      this.connectionId = undefined
       this.es.removeEventListener('error', this.handleError)
       this.es.removeEventListener('open', this.handleOpen)
       this.es.removeEventListener('connect-finish', this.handleConnectionFinish)
@@ -397,18 +423,25 @@ class Sse {
     }
 
     this.close = (reason = 'close') => {
+      if (this.state === Sse.STATE_CLOSED) {
+        return false
+      }
+      if (this.isActive()) {
+        this.flush()
+      }
       this.state = Sse.STATE_CLOSED
-      this.removeEventSource()
       this.clearReconnectTimer()
       const connectionId = this.connectionId
       if (connectionId !== undefined) {
-        this.connectionId = undefined
+        this.clientClose = { connectionId, reason }
         const params = new URLSearchParams()
         params.set('clientId', this.clientId)
         params.set('connectionId', connectionId)
         params.set('reason', reason)
         params.set('sseVersion', Sse.version)
-        navigator.sendBeacon(`${this.options.url}/disconnect`, params)
+        return navigator.sendBeacon(`${this.options.url}/disconnect`, params)
+      } else {
+        return false
       }
     }
 

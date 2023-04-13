@@ -430,13 +430,13 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     }
 
     @Override
-    public synchronized void complete() {
+    public void complete() {
         this.complete = true;
         super.complete();
     }
 
     @Override
-    public synchronized void completeWithError(Throwable ex) {
+    public void completeWithError(Throwable ex) {
         this.complete = true;
         super.completeWithError(ex);
     }
@@ -573,7 +573,6 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
             this.earlyDisconnect = true;
             return false;
         }
-        this.writeable = false;
         cancelTimeoutTask();
         if (disconnect.compareAndSet(false, true)) {
             for (Consumer<SseEmitter<ACCESS_USER>> disconnectListener : new ArrayList<>(disconnectListeners)) {
@@ -588,11 +587,13 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
             disconnectListeners.clear();
             if (sendClose && isActive()) {
                 try {
-                    send("connect-close", "{}");
+                    SseEventBuilderFuture event = event();
+                    super.send(event.defaultId(++defaultId).name("connect-close").data("{\"connectionId\": \"" + id + "\"}"));
                 } catch (IOException ignored) {
                 }
             }
 
+            this.writeable = false;
             try {
                 complete();
             } catch (Exception e) {
