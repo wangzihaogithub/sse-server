@@ -19,6 +19,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
 import java.util.*;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public class LocalController implements Closeable {
     private static final Charset UTF_8 = Charset.forName("UTF-8");
@@ -170,6 +171,22 @@ public class LocalController implements Closeable {
                         writeResponse(request, service.get().disconnectByConnectionId(
                                 body("connectionId", Long.class)
                         ) != null ? 1 : 0);
+                    } else {
+                        writeResponse(request, 0);
+                    }
+                    break;
+                }
+                case "disconnectByConnectionIds": {
+                    if (service.isPresent()) {
+                        Collection<?> connectionIds = body("connectionIds", Collection.class);
+                        if (connectionIds == null) {
+                            writeResponse(request, 0);
+                        } else {
+                            writeResponse(request, service.get().disconnectByConnectionIds(connectionIds.stream()
+                                    .map(TypeUtil::castToLong)
+                                    .collect(Collectors.toList())
+                            ).size());
+                        }
                     } else {
                         writeResponse(request, 0);
                     }
@@ -483,6 +500,14 @@ public class LocalController implements Closeable {
                 case "getConnectionDTOAll": {
                     if (service.isPresent()) {
                         writeResponse(request, service.get().getConnectionDTOAll());
+                    } else {
+                        writeResponse(request, Collections.emptyList());
+                    }
+                    break;
+                }
+                case "getConnectionDTOByUserId": {
+                    if (service.isPresent()) {
+                        writeResponse(request, service.get().getConnectionDTOByUserId(query("userId")));
                     } else {
                         writeResponse(request, Collections.emptyList());
                     }

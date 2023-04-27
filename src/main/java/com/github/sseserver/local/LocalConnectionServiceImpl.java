@@ -3,10 +3,7 @@ package com.github.sseserver.local;
 import com.github.sseserver.SendService;
 import com.github.sseserver.qos.MessageRepository;
 import com.github.sseserver.qos.QosCompletableFuture;
-import com.github.sseserver.remote.ClusterConnectionService;
-import com.github.sseserver.remote.ClusterMessageRepository;
-import com.github.sseserver.remote.ConnectionDTO;
-import com.github.sseserver.remote.ServiceDiscoveryService;
+import com.github.sseserver.remote.*;
 import com.github.sseserver.springboot.SseServerBeanDefinitionRegistrar;
 import com.github.sseserver.util.LambdaUtil;
 import com.github.sseserver.util.PlatformDependentUtil;
@@ -249,6 +246,21 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
+    public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> disconnectByConnectionIds(Collection<Long> connectionIds) {
+        if (connectionIds == null) {
+            return Collections.emptyList();
+        }
+        List<SseEmitter<ACCESS_USER>> disconnectList = new ArrayList<>(connectionIds.size());
+        for (Long connectionId : connectionIds) {
+            SseEmitter<ACCESS_USER> disconnect = disconnectByConnectionId(connectionId);
+            if (disconnect != null) {
+                disconnectList.add(disconnect);
+            }
+        }
+        return disconnectList;
+    }
+
+    @Override
     public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> disconnectByAccessToken(String accessToken) {
         List<SseEmitter<ACCESS_USER>> sseEmitters = getConnectionByAccessToken(accessToken);
         List<SseEmitter<ACCESS_USER>> result = new ArrayList<>();
@@ -411,6 +423,13 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     public <ACCESS_USER> List<ConnectionDTO<ACCESS_USER>> getConnectionDTOAll() {
         return this.<ACCESS_USER>getConnectionAll().stream()
                 .map(ConnectionDTO::convert)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<ConnectionByUserIdDTO> getConnectionDTOByUserId(Serializable userId) {
+        return this.getConnectionByUserId(userId).stream()
+                .map(ConnectionByUserIdDTO::convert)
                 .collect(Collectors.toList());
     }
 

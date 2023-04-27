@@ -7,6 +7,7 @@ import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.ReferenceCounted;
 
 import java.io.Serializable;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -42,6 +43,8 @@ public interface ClusterConnectionService extends ConnectionQueryService, SendSe
 
     <ACCESS_USER> ClusterCompletableFuture<List<ConnectionDTO<ACCESS_USER>>, ClusterConnectionService> getConnectionDTOAllAsync(SseServerProperties.AutoType autoType);
 
+    ClusterCompletableFuture<List<ConnectionByUserIdDTO>, ClusterConnectionService> getConnectionDTOByUserIdAsync(Serializable userId);
+
     /* disconnect */
 
     ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByUserId(Serializable userId);
@@ -50,4 +53,5 @@ public interface ClusterConnectionService extends ConnectionQueryService, SendSe
 
     ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByConnectionId(Long connectionId);
 
+    ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByConnectionIds(Collection<Long> connectionIds);
 }

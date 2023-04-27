@@ -48,6 +48,8 @@ public interface LocalConnectionService extends DistributedConnectionService, Co
 
     <ACCESS_USER> SseEmitter<ACCESS_USER> disconnectByConnectionId(Long connectionId);
 
+    <ACCESS_USER> List<SseEmitter<ACCESS_USER>> disconnectByConnectionIds(Collection<Long> connectionIds);
+
     /* getConnectionId */
 
     Collection<Long> getConnectionIds();

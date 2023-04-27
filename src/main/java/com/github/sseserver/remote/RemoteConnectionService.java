@@ -35,6 +35,8 @@ public interface RemoteConnectionService extends ConnectionQueryService, SendSer
 
     <ACCESS_USER> RemoteCompletableFuture<List<ConnectionDTO<ACCESS_USER>>, RemoteConnectionService> getConnectionDTOAllAsync(SseServerProperties.AutoType autoTypeEnum);
 
+    RemoteCompletableFuture<List<ConnectionByUserIdDTO>, RemoteConnectionService> getConnectionDTOByUserIdAsync(Serializable userId);
+
     /* getUserIds */
 
     <T> RemoteCompletableFuture<Collection<T>, RemoteConnectionService> getUserIdsAsync(Class<T> type);
@@ -68,4 +70,5 @@ public interface RemoteConnectionService extends ConnectionQueryService, SendSer
 
     RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByConnectionId(Long connectionId);
 
+    RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByConnectionIds(Collection<Long> connectionIds);
 }

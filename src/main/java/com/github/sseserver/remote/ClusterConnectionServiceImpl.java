@@ -63,6 +63,13 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
+    public List<ConnectionByUserIdDTO> getConnectionDTOByUserId(Serializable userId) {
+        ClusterCompletableFuture<List<ConnectionByUserIdDTO>, ClusterConnectionService> future
+                = getConnectionDTOByUserIdAsync(userId);
+        return future.block();
+    }
+
+    @Override
     public <ACCESS_USER> ACCESS_USER getUser(Serializable userId) {
         Optional<ACCESS_USER> result = getLocalService().map(e -> e.getUser(userId));
         if (result.isPresent()) {
@@ -390,6 +397,16 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     }
 
     @Override
+    public ClusterCompletableFuture<List<ConnectionByUserIdDTO>, ClusterConnectionService> getConnectionDTOByUserIdAsync(Serializable userId) {
+        return mapReduce(
+                e -> e.getConnectionDTOByUserIdAsync(userId),
+                e -> e.getConnectionDTOByUserId(userId),
+                LambdaUtil.reduceList(),
+                LambdaUtil.noop(),
+                ArrayList::new);
+    }
+
+    @Override
     public ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByUserId(Serializable userId) {
         return mapReduce(
                 e -> e.disconnectByUserId(userId),
@@ -412,6 +429,15 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
         return mapReduce(
                 e -> e.disconnectByConnectionId(connectionId),
                 e -> e.disconnectByConnectionId(connectionId) != null ? 1 : 0,
+                Integer::sum,
+                LambdaUtil.defaultZero());
+    }
+
+    @Override
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByConnectionIds(Collection<Long> connectionIds) {
+        return mapReduce(
+                e -> e.disconnectByConnectionIds(connectionIds),
+                e -> e.disconnectByConnectionIds(connectionIds).size(),
                 Integer::sum,
                 LambdaUtil.defaultZero());
     }

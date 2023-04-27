@@ -1,14 +1,20 @@
 server:
-  port: 80
+  port: 81
 spring:
   servlet:
     multipart:
       location: ${user.dir}/src/test/resources/html
+  thymeleaf:
+    cache: false
+    encoding: UTF-8
+    mode: HTML
+    prefix: classpath:/html/
+    suffix: .html
   sse-server:
     remote:
       enabled: true
       nacos:
-        server-addr: '192.168.25.179:8848'
+        server-addr: '10.0.65.98'
         namespace: hao
   application:
     name: 'xx-123'

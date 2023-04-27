@@ -4,6 +4,8 @@ import com.github.sseserver.AccessToken;
 import com.github.sseserver.AccessUser;
 import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
+import com.github.sseserver.remote.ClusterConnectionService;
+import com.github.sseserver.remote.ConnectionByUserIdDTO;
 import com.github.sseserver.remote.ConnectionDTO;
 import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.CompletableFuture;
@@ -144,9 +146,7 @@ public class SseWebController<ACCESS_USER> {
     }
 
     protected void onConnect(SseEmitter<ACCESS_USER> conncet, Map<String, Object> query) {
-        if (clientIdMaxConnections != null) {
-            disconnectClientIdMaxConnections(conncet, clientIdMaxConnections);
-        }
+        disconnectClientIdMaxConnections(conncet, getClientIdMaxConnections());
     }
 
     protected void onDisconnect(List<SseEmitter<ACCESS_USER>> disconnectList, ACCESS_USER accessUser, Map query) {
@@ -623,7 +623,18 @@ public class SseWebController<ACCESS_USER> {
         return WebUtil.getIPAddress(serverPort);
     }
 
-    protected void disconnectClientIdMaxConnections(SseEmitter<ACCESS_USER> conncet, int clientIdMaxConnections) {
+    protected void disconnectClientIdMaxConnections(SseEmitter<ACCESS_USER> conncet, Integer clientIdMaxConnections) {
+        if (clientIdMaxConnections == null) {
+            return;
+        }
+        if (localConnectionService.isEnableCluster()) {
+            disconnectClientIdMaxConnectionsCluster(conncet, clientIdMaxConnections);
+        } else {
+            disconnectClientIdMaxConnectionsLocal(conncet, clientIdMaxConnections);
+        }
+    }
+
+    protected List<SseEmitter> disconnectClientIdMaxConnectionsLocal(SseEmitter<ACCESS_USER> conncet, int clientIdMaxConnections) {
         Serializable userId = conncet.getUserId();
         String clientId = conncet.getClientId();
 
@@ -635,12 +646,41 @@ public class SseWebController<ACCESS_USER> {
                 .collect(Collectors.toList());
 
         if (clientConnectionList.size() > clientIdMaxConnections) {
-            List<SseEmitter> sseEmitters =
+            List<SseEmitter> disconnectList =
                     clientConnectionList.subList(0, clientConnectionList.size() - clientIdMaxConnections);
-            for (SseEmitter sseEmitter : sseEmitters) {
+            for (SseEmitter sseEmitter : disconnectList) {
                 sseEmitter.disconnect();
             }
+            return disconnectList;
+        } else {
+            return Collections.emptyList();
         }
+    }
+
+    protected java.util.concurrent.CompletableFuture<List<ConnectionByUserIdDTO>> disconnectClientIdMaxConnectionsCluster(SseEmitter<ACCESS_USER> conncet, int clientIdMaxConnections) {
+        Serializable userId = conncet.getUserId();
+        String clientId = conncet.getClientId();
+
+        ClusterConnectionService cluster = localConnectionService.getCluster();
+
+        return cluster.getConnectionDTOByUserIdAsync(userId).thenApply(connections -> {
+            List<ConnectionByUserIdDTO> clientConnectionList = connections.stream()
+                    .filter(e -> Objects.equals(e.getClientId(), clientId))
+                    .sorted(Comparator.comparing(ConnectionByUserIdDTO::getCreateTime)
+                            .thenComparing(ConnectionByUserIdDTO::getId))
+                    .collect(Collectors.toList());
+
+            if (clientConnectionList.size() > clientIdMaxConnections) {
+                List<ConnectionByUserIdDTO> disconnectList =
+                        clientConnectionList.subList(0, clientConnectionList.size() - clientIdMaxConnections);
+                if (!disconnectList.isEmpty()) {
+                    cluster.disconnectByConnectionIds(disconnectList.stream().map(ConnectionByUserIdDTO::getId).collect(Collectors.toList()));
+                }
+                return disconnectList;
+            } else {
+                return Collections.emptyList();
+            }
+        });
     }
 
     protected Map<String, Object> buildDisconnectResult(Integer count, boolean timeout) {

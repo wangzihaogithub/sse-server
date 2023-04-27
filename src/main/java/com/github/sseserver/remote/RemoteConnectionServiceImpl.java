@@ -108,6 +108,11 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
+    public RemoteCompletableFuture<List<ConnectionByUserIdDTO>, RemoteConnectionService> getConnectionDTOByUserIdAsync(Serializable userId) {
+        return asyncGetConnectionQueryService("/getConnectionDTOByUserId?userId={userId}", this::extract, userId);
+    }
+
+    @Override
     public <T> RemoteCompletableFuture<Collection<T>, RemoteConnectionService> getUserIdsAsync(Class<T> type) {
         return asyncGetConnectionQueryService("/getUserIds", entity -> {
             Collection<?> result = extract(entity);
@@ -167,6 +172,13 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     public <ACCESS_USER> List<ConnectionDTO<ACCESS_USER>> getConnectionDTOAll() {
         RemoteCompletableFuture<List<ConnectionDTO<ACCESS_USER>>, RemoteConnectionService> future
                 = getConnectionDTOAllAsync(null);
+        return future.block();
+    }
+
+    @Override
+    public List<ConnectionByUserIdDTO> getConnectionDTOByUserId(Serializable userId) {
+        RemoteCompletableFuture<List<ConnectionByUserIdDTO>, RemoteConnectionService> future
+                = getConnectionDTOByUserIdAsync(userId);
         return future.block();
     }
 
@@ -377,6 +389,13 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
         Map<String, Object> request = new HashMap<>(1);
         request.put("connectionId", connectionId);
         return asyncPostRemoteConnectionService("/disconnectByConnectionId", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByConnectionIds(Collection<Long> connectionIds) {
+        Map<String, Object> request = new HashMap<>(1);
+        request.put("connectionIds", connectionIds);
+        return asyncPostRemoteConnectionService("/disconnectByConnectionIds", this::extract, request);
     }
 
     protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncGetConnectionQueryService(String uri, Function<HttpEntity<Response>, T> extract, Object... uriVariables) {
