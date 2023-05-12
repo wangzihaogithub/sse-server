@@ -47,7 +47,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     private final Map<String, String> httpHeaders = new LinkedHashMap<>(6);
     private String serverId;
     private boolean connect = false;
-    private boolean complete = false;
+    private volatile boolean complete = false;
     private boolean writeable = false;
     private boolean earlyDisconnect = false;
     private int count;
@@ -589,7 +589,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
                 try {
                     SseEventBuilderFuture event = event();
                     super.send(event.defaultId(++defaultId).name("connect-close").data("{\"connectionId\": \"" + id + "\"}"));
-                } catch (IOException ignored) {
+                } catch (IOException | IllegalStateException ignored) {
                 }
             }
 
