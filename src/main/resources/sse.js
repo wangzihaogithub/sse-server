@@ -9,11 +9,11 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.2.7</version>
+ *      <version>1.2.8</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.2.7'
+  static version = '1.2.8'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,
@@ -303,7 +303,7 @@ class Sse {
         query.append(key, this.options.query[key])
       }
       try {
-        const responsePromise = fetch(`${this.options.url}/addListener?${query.toString()}`, {
+        const responsePromise = fetch(`${this.options.url}/connect/addListener.do?${query.toString()}`, {
           method: 'POST',
           body: JSON.stringify(body),
           credentials: 'include',
@@ -351,7 +351,7 @@ class Sse {
         query.append(key, this.options.query[key])
       }
       try {
-        const responsePromise = fetch(`${this.options.url}/removeListener?${query.toString()}`, {
+        const responsePromise = fetch(`${this.options.url}/connect/removeListener.do?${query.toString()}`, {
           method: 'POST',
           body: JSON.stringify(body),
           credentials: 'include',
@@ -439,7 +439,7 @@ class Sse {
         params.set('connectionId', connectionId)
         params.set('reason', reason)
         params.set('sseVersion', Sse.version)
-        return navigator.sendBeacon(`${this.options.url}/disconnect`, params)
+        return navigator.sendBeacon(`${this.options.url}/connect/disconnect.do`, params)
       } else {
         return false
       }
@@ -462,7 +462,7 @@ class Sse {
         queryBuilder.append(key, query[key])
       }
       try {
-        return fetch(`${this.options.url}/message/${path}?${queryBuilder.toString()}`, {
+        return fetch(`${this.options.url}/connect/message/${path}.do?${queryBuilder.toString()}`, {
           method: 'POST',
           body: JSON.stringify(body),
           credentials: 'include',
@@ -495,7 +495,7 @@ class Sse {
         queryBuilder.append(key, query[key])
       }
       try {
-        return fetch(`${this.options.url}/upload/${path}?${queryBuilder.toString()}`, {
+        return fetch(`${this.options.url}/connect/upload/${path}.do?${queryBuilder.toString()}`, {
           method: 'POST',
           body: formData,
           credentials: 'include',

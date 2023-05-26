@@ -1,7 +1,7 @@
 package com.github.sseserver.util;
 
 public class PlatformDependentUtil {
-    public static final String SSE_SERVER_VERSION = "1.2.7";
+    public static final String SSE_SERVER_VERSION = "1.2.8";
     private static final boolean SUPPORT_NETTY4;
     private static final boolean SUPPORT_OKHTTP3;
     private static final boolean SUPPORT_APACHE_HTTP;

@@ -1,8 +1,10 @@
 package com.github.sseserver;
 
 //import com.github.netty.springboot.EnableNettyEmbedded;
+
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.web.servlet.ServletComponentScan;
 
 /**
  * Websocket服务端 端口号:10005
@@ -12,6 +14,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  */
 //@EnableNettyEmbedded
 @SpringBootApplication
+@ServletComponentScan
 public class SseApplication80 {
 
     public static void main(String[] args) {

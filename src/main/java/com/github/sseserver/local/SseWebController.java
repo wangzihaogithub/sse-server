@@ -1,6 +1,5 @@
 package com.github.sseserver.local;
 
-import com.github.sseserver.AccessToken;
 import com.github.sseserver.AccessUser;
 import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
@@ -21,10 +20,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.context.request.async.DeferredResult;
 
 import javax.servlet.ServletException;
@@ -56,6 +52,24 @@ import java.util.stream.Collectors;
 //@RequestMapping("/a/sse")
 //@RequestMapping("/b/sse")
 public class SseWebController<ACCESS_USER> {
+    public static final String API_CONNECT_STREAM = "/connect";
+
+    public static final String API_ADD_LISTENER_DO = "/connect/addListener.do";
+    public static final String API_REMOVE_LISTENER_DO = "/connect/removeListener.do";
+    public static final String API_MESSAGE_DO = "/connect/message/{path}.do";
+    public static final String API_UPLOAD_DO = "/connect/upload/{path}.do";
+    public static final String API_DISCONNECT_DO = "/connect/disconnect.do";
+
+    public static final String API_REPOSITORY_MESSAGES_JSON = "/connect/repositoryMessages.json";
+    public static final String API_USER_JSON = "/connect/users.json";
+
+    /**
+     * @deprecated v1.2.8
+     */
+    @Deprecated
+    public static final String API_CONNECTIONS_JSON_V1 = "/connections";
+    public static final String API_CONNECTIONS_JSON = "/connect/connections.json";
+
     private final Logger logger = LoggerFactory.getLogger(getClass());
     @Autowired(required = false)
     protected HttpServletRequest request;
@@ -66,6 +80,19 @@ public class SseWebController<ACCESS_USER> {
     private String sseServerIdHeaderName = "Sse-Server-Id";
     private Integer clientIdMaxConnections = 3;
     private Long keepaliveTime;
+    private boolean enableGetJson = false;
+
+    protected boolean isGetJson(String api) {
+        return api != null && api.endsWith(".json");
+    }
+
+    public boolean isEnableGetJson() {
+        return enableGetJson;
+    }
+
+    public void setEnableGetJson(boolean enableGetJson) {
+        this.enableGetJson = enableGetJson;
+    }
 
     public Long getKeepaliveTime() {
         return keepaliveTime;
@@ -107,9 +134,13 @@ public class SseWebController<ACCESS_USER> {
         HttpHeaders headers = new HttpHeaders();
         settingResponseHeader(headers);
         headers.set("Content-Type", "application/javascript;charset=utf-8");
-        InputStream stream = SseWebController.class.getResourceAsStream("/sse.js");
-        Resource body = new InputStreamResource(stream);
+        Resource body = readSseJs();
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
+    }
+
+    protected Resource readSseJs() {
+        InputStream stream = SseWebController.class.getResourceAsStream("/sse.js");
+        return new InputStreamResource(stream);
     }
 
     public void setLocalConnectionService(LocalConnectionService localConnectionService) {
@@ -123,14 +154,60 @@ public class SseWebController<ACCESS_USER> {
         }
     }
 
-
     /**
      * 获取当前登录用户, 这里返回后, 就可以获取 {@link SseEmitter#getAccessUser()}
      *
+     * @param api 是哪个接口调用的getAccessUser
      * @return 使用者自己系统的用户
+     * @see #API_CONNECT_STREAM
+     * @see #API_ADD_LISTENER_DO
+     * @see #API_REMOVE_LISTENER_DO
+     * @see #API_MESSAGE_DO
+     * @see #API_UPLOAD_DO
+     * @see #API_DISCONNECT_DO
+     * @see #API_REPOSITORY_MESSAGES_JSON
+     * @see #API_USER_JSON
+     * @see #API_CONNECTIONS_JSON
      */
-    protected ACCESS_USER getAccessUser() {
+    protected ACCESS_USER getAccessUser(String api) {
         return null;
+    }
+
+    /**
+     * 当前登录用户是否有权限访问这个接口
+     *
+     * @param currentUser 当前登录用户
+     * @param api         是哪个接口调用的getAccessUser
+     * @return true=有权限，false=无权限，会返回 {@link #buildPermissionRejectResponse(Object, String)}
+     * @see #API_CONNECT_STREAM
+     * @see #API_ADD_LISTENER_DO
+     * @see #API_REMOVE_LISTENER_DO
+     * @see #API_MESSAGE_DO
+     * @see #API_UPLOAD_DO
+     * @see #API_DISCONNECT_DO
+     * @see #API_REPOSITORY_MESSAGES_JSON
+     * @see #API_USER_JSON
+     * @see #API_CONNECTIONS_JSON
+     */
+    protected boolean hasPermission(ACCESS_USER currentUser, String api) {
+        return isEnableGetJson() || !isGetJson(api);
+    }
+
+    protected ResponseEntity buildIfPermissionErrorResponse(ACCESS_USER currentUser, String api) {
+        if (hasPermission(currentUser, api)) {
+            return null;
+        } else {
+            return buildPermissionRejectResponse(currentUser, api);
+        }
+    }
+
+    protected ResponseEntity buildPermissionRejectResponse(ACCESS_USER currentUser, String api) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setConnection("close");
+        settingResponseHeader(headers);
+        Map<String, String> body = Collections.singletonMap("error",
+                "get json api default is disabled. if you need use, place use SseWebController#setEnableGetJson(true);");
+        return new ResponseEntity<>(body, headers, HttpStatus.UNAUTHORIZED);
     }
 
     protected Object wrapOkResponse(Object result) {
@@ -184,7 +261,7 @@ public class SseWebController<ACCESS_USER> {
     /**
      * 创建连接
      */
-    @RequestMapping("/connect")
+    @RequestMapping(value = API_CONNECT_STREAM, method = {RequestMethod.GET, RequestMethod.POST})
     public Object connect(@RequestParam Map query, @RequestBody(required = false) Map body,
                           Long keepaliveTime) {
         // args
@@ -195,12 +272,15 @@ public class SseWebController<ACCESS_USER> {
         Long choseKeepaliveTime = choseKeepaliveTime(keepaliveTime, getKeepaliveTime());
 
         // Verify 1 login
-        ACCESS_USER currentUser = getAccessUser();
-        ResponseEntity errorResponseEntity = buildIfLoginVerifyErrorResponse(currentUser, query, body, choseKeepaliveTime);
-        if (errorResponseEntity != null) {
-            return errorResponseEntity;
+        ACCESS_USER currentUser = getAccessUser(API_CONNECT_STREAM);
+        ResponseEntity loginVerifyErrorResponse = buildIfLoginVerifyErrorResponse(currentUser, query, body, choseKeepaliveTime);
+        if (loginVerifyErrorResponse != null) {
+            return loginVerifyErrorResponse;
         }
-
+        ResponseEntity permissionErrorResponse = buildIfPermissionErrorResponse(currentUser, API_CONNECT_STREAM);
+        if (permissionErrorResponse != null) {
+            return permissionErrorResponse;
+        }
         // build connect
         SseEmitter<ACCESS_USER> emitter = localConnectionService.connect(currentUser, choseKeepaliveTime, attributeMap);
         if (emitter == null) {
@@ -222,9 +302,9 @@ public class SseWebController<ACCESS_USER> {
         }
 
         // Verify 2 connect
-        errorResponseEntity = buildIfConnectVerifyErrorResponse(emitter);
-        if (errorResponseEntity != null) {
-            return errorResponseEntity;
+        loginVerifyErrorResponse = buildIfConnectVerifyErrorResponse(emitter);
+        if (loginVerifyErrorResponse != null) {
+            return loginVerifyErrorResponse;
         }
 
         // callback
@@ -238,14 +318,18 @@ public class SseWebController<ACCESS_USER> {
      *
      * @return http原生响应
      */
-    @RequestMapping("/addListener")
+    @PostMapping(API_ADD_LISTENER_DO)
     public ResponseEntity addListener(@RequestBody ListenerReq req) {
         if (req == null || req.isInvalid()) {
             return responseEntity(Collections.singletonMap("listener", null));
         }
-        ACCESS_USER currentUser = getAccessUser();
+        ACCESS_USER currentUser = getAccessUser(API_ADD_LISTENER_DO);
         if (currentUser == null) {
             return buildUnauthorizedResponse();
+        }
+        ResponseEntity permissionErrorResponse = buildIfPermissionErrorResponse(currentUser, API_ADD_LISTENER_DO);
+        if (permissionErrorResponse != null) {
+            return permissionErrorResponse;
         }
         SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(req.getConnectionId());
         if (emitter == null) {
@@ -261,14 +345,18 @@ public class SseWebController<ACCESS_USER> {
      *
      * @return http原生响应
      */
-    @RequestMapping("/removeListener")
+    @PostMapping(API_REMOVE_LISTENER_DO)
     public ResponseEntity removeListener(@RequestBody ListenerReq req) {
         if (req == null || req.isInvalid()) {
             return responseEntity(Collections.singletonMap("listener", null));
         }
-        ACCESS_USER currentUser = getAccessUser();
+        ACCESS_USER currentUser = getAccessUser(API_REMOVE_LISTENER_DO);
         if (currentUser == null) {
             return buildUnauthorizedResponse();
+        }
+        ResponseEntity permissionErrorResponse = buildIfPermissionErrorResponse(currentUser, API_REMOVE_LISTENER_DO);
+        if (permissionErrorResponse != null) {
+            return permissionErrorResponse;
         }
         SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(req.getConnectionId());
         if (emitter == null) {
@@ -284,11 +372,15 @@ public class SseWebController<ACCESS_USER> {
      *
      * @return http原生响应
      */
-    @RequestMapping("/message/{path}")
+    @PostMapping(API_MESSAGE_DO)
     public ResponseEntity message(@PathVariable String path, Long connectionId, @RequestParam Map query, @RequestBody(required = false) Map body) {
-        ACCESS_USER currentUser = getAccessUser();
+        ACCESS_USER currentUser = getAccessUser(API_MESSAGE_DO);
         if (currentUser == null) {
             return buildUnauthorizedResponse();
+        }
+        ResponseEntity permissionErrorResponse = buildIfPermissionErrorResponse(currentUser, API_MESSAGE_DO);
+        if (permissionErrorResponse != null) {
+            return permissionErrorResponse;
         }
         SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(connectionId);
         Map message = new LinkedHashMap<>(query);
@@ -308,11 +400,15 @@ public class SseWebController<ACCESS_USER> {
      *
      * @return http原生响应
      */
-    @RequestMapping("/upload/{path}")
+    @PostMapping(API_UPLOAD_DO)
     public ResponseEntity upload(@PathVariable String path, HttpServletRequest request, Long connectionId, @RequestParam Map query, @RequestBody(required = false) Map body) throws IOException, ServletException {
-        ACCESS_USER currentUser = getAccessUser();
+        ACCESS_USER currentUser = getAccessUser(API_UPLOAD_DO);
         if (currentUser == null) {
             return buildUnauthorizedResponse();
+        }
+        ResponseEntity permissionErrorResponse = buildIfPermissionErrorResponse(currentUser, API_UPLOAD_DO);
+        if (permissionErrorResponse != null) {
+            return permissionErrorResponse;
         }
         SseEmitter<ACCESS_USER> emitter = localConnectionService.getConnectionById(connectionId);
         Map message = new LinkedHashMap<>(query);
@@ -331,37 +427,17 @@ public class SseWebController<ACCESS_USER> {
     /**
      * 关闭连接
      */
-    @RequestMapping("/disconnect")
+    @PostMapping(API_DISCONNECT_DO)
     public Object disconnect(Long connectionId, @RequestParam Map query,
                              Boolean cluster,
                              @RequestParam(required = false, defaultValue = "5000") Long timeout) {
-        if (connectionId != null) {
-            return disconnectConnection(connectionId, query, cluster, timeout);
-        } else {
-            ACCESS_USER currentUser = getAccessUser();
-            if (currentUser instanceof AccessToken) {
-                String accessToken = ((AccessToken) currentUser).getAccessToken();
-                return disconnectAccessToken(accessToken, query, cluster, timeout, currentUser);
-            } else if (currentUser instanceof AccessUser) {
-                Serializable id = ((AccessUser) currentUser).getId();
-                return disconnectUser(Objects.toString(id, null), query, cluster, timeout);
-            } else {
-                return responseEntity(buildDisconnectResult(0, false));
-            }
+        if (connectionId == null) {
+            return responseEntity(buildDisconnectResult(0, false));
         }
-    }
-
-    /**
-     * 关闭连接
-     */
-    @RequestMapping("/disconnect/{connectionId}")
-    public Object disconnectConnection(@PathVariable Long connectionId, @RequestParam Map query,
-                                       Boolean cluster,
-                                       @RequestParam(required = false, defaultValue = "5000") Long timeout) {
         SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
         int localCount = disconnect != null ? 1 : 0;
         if (disconnect != null) {
-            ACCESS_USER currentUser = getAccessUser();
+            ACCESS_USER currentUser = getAccessUser(API_DISCONNECT_DO);
             onDisconnect(Collections.singletonList(disconnect), currentUser, query);
         }
         if (cluster == null || cluster) {
@@ -385,77 +461,15 @@ public class SseWebController<ACCESS_USER> {
         }
     }
 
-    /**
-     * 关闭连接
-     */
-    public Object disconnectAccessToken(String accessToken, Map query,
-                                        Boolean cluster,
-                                        Long timeout,
-                                        ACCESS_USER currentUser) {
-        List<SseEmitter<ACCESS_USER>> disconnectList = localConnectionService.disconnectByAccessToken(accessToken);
-        if (disconnectList.size() > 0) {
-            onDisconnect(disconnectList, currentUser, query);
-        }
-        if (cluster == null || cluster) {
-            cluster = localConnectionService.isEnableCluster();
-        }
-        if (cluster) {
-            DeferredResult<ResponseEntity> result = new DeferredResult<>(timeout, responseEntity(buildDisconnectResult(disconnectList.size(), true)));
-            localConnectionService.getCluster().disconnectByAccessToken(accessToken).whenComplete((remoteCount, throwable) -> {
-                if (throwable != null) {
-                    logger.warn("disconnectByAccessToken exception = {}", throwable, throwable);
-                    result.setResult(responseEntity(buildDisconnectResult(0, false)));
-                } else {
-                    int count = remoteCount + disconnectList.size();
-                    result.setResult(responseEntity(buildDisconnectResult(count, false)));
-                }
-            });
-            return result;
-        } else {
-            return responseEntity(buildDisconnectResult(disconnectList.size(), false));
-        }
-    }
-
-    /**
-     * 关闭连接
-     */
-    @RequestMapping("/disconnectUser")
-    public Object disconnectUser(String userId, @RequestParam Map query,
-                                 Boolean cluster,
-                                 @RequestParam(required = false, defaultValue = "5000") Long timeout) {
-        ACCESS_USER currentUser = getAccessUser();
-        if (currentUser == null) {
-            return buildUnauthorizedResponse();
-        }
-        List<SseEmitter<ACCESS_USER>> disconnectList = localConnectionService.disconnectByUserId(userId);
-        if (disconnectList.size() > 0) {
-            onDisconnect(disconnectList, currentUser, query);
-        }
-        if (cluster == null || cluster) {
-            cluster = localConnectionService.isEnableCluster();
-        }
-        if (cluster) {
-            DeferredResult<ResponseEntity> result = new DeferredResult<>(timeout, () -> responseEntity(buildDisconnectResult(disconnectList.size(), true)));
-            localConnectionService.getCluster().disconnectByUserId(userId).whenComplete((remoteCount, throwable) -> {
-                if (throwable != null) {
-                    logger.warn("disconnectUser exception = {}", throwable, throwable);
-                    result.setResult(responseEntity(buildDisconnectResult(0, false)));
-                } else {
-                    int count = remoteCount + disconnectList.size();
-                    result.setResult(responseEntity(buildDisconnectResult(count, false)));
-                }
-            });
-            return result;
-        } else {
-            return responseEntity(buildDisconnectResult(disconnectList.size(), false));
-        }
-    }
-
-    @RequestMapping("/repositoryMessages")
+    @GetMapping(API_REPOSITORY_MESSAGES_JSON)
     public Object repositoryMessages(RepositoryMessagesReq req) {
-        ACCESS_USER currentUser = getAccessUser();
+        ACCESS_USER currentUser = getAccessUser(API_REPOSITORY_MESSAGES_JSON);
         if (currentUser == null) {
             return buildUnauthorizedResponse();
+        }
+        ResponseEntity permissionErrorResponse = buildIfPermissionErrorResponse(currentUser, API_REPOSITORY_MESSAGES_JSON);
+        if (permissionErrorResponse != null) {
+            return permissionErrorResponse;
         }
         Integer pageNum = req.getPageNum();
         Integer pageSize = req.getPageSize();
@@ -495,15 +509,19 @@ public class SseWebController<ACCESS_USER> {
         return result;
     }
 
-    @RequestMapping("/users")
+    @GetMapping(API_USER_JSON)
     public Object users(@RequestParam(required = false, defaultValue = "1") Integer pageNum,
                         @RequestParam(required = false, defaultValue = "100") Integer pageSize,
                         String name,
                         Boolean cluster,
                         @RequestParam(required = false, defaultValue = "5000") Long timeout) {
-        ACCESS_USER currentUser = getAccessUser();
+        ACCESS_USER currentUser = getAccessUser(API_USER_JSON);
         if (currentUser == null) {
             return buildUnauthorizedResponse();
+        }
+        ResponseEntity permissionErrorResponse = buildIfPermissionErrorResponse(currentUser, API_USER_JSON);
+        if (permissionErrorResponse != null) {
+            return permissionErrorResponse;
         }
         if (cluster == null || cluster) {
             cluster = localConnectionService.isEnableCluster();
@@ -547,7 +565,22 @@ public class SseWebController<ACCESS_USER> {
         return result;
     }
 
-    @RequestMapping("/connections")
+    /**
+     * @deprecated v1.2.8
+     */
+    @Deprecated
+    @GetMapping(API_CONNECTIONS_JSON_V1)
+    public Object connectionsV1(@RequestParam(required = false, defaultValue = "1") Integer pageNum,
+                                @RequestParam(required = false, defaultValue = "100") Integer pageSize,
+                                String name,
+                                String clientId,
+                                Long id,
+                                Boolean cluster,
+                                @RequestParam(required = false, defaultValue = "5000") Long timeout) {
+        return connections(pageNum, pageSize, name, clientId, id, cluster, timeout);
+    }
+
+    @GetMapping(API_CONNECTIONS_JSON)
     public Object connections(@RequestParam(required = false, defaultValue = "1") Integer pageNum,
                               @RequestParam(required = false, defaultValue = "100") Integer pageSize,
                               String name,
@@ -555,9 +588,13 @@ public class SseWebController<ACCESS_USER> {
                               Long id,
                               Boolean cluster,
                               @RequestParam(required = false, defaultValue = "5000") Long timeout) {
-        ACCESS_USER currentUser = getAccessUser();
+        ACCESS_USER currentUser = getAccessUser(API_CONNECTIONS_JSON);
         if (currentUser == null) {
             return buildUnauthorizedResponse();
+        }
+        ResponseEntity permissionErrorResponse = buildIfPermissionErrorResponse(currentUser, API_CONNECTIONS_JSON);
+        if (permissionErrorResponse != null) {
+            return permissionErrorResponse;
         }
         if (cluster == null || cluster) {
             cluster = localConnectionService.isEnableCluster();

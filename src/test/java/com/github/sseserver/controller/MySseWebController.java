@@ -45,7 +45,7 @@ public class MySseWebController extends SseWebController<MyAccessUser> {
     }
 
     @Override
-    protected MyAccessUser getAccessUser() {
+    protected MyAccessUser getAccessUser(String api) {
         // 验证用户
         String token = request.getParameter("access-token");
         MyAccessUser accessUser = new MyAccessUser();
