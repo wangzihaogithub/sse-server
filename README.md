@@ -17,7 +17,7 @@ sse协议的后端API, 比websocket轻量的实时通信, 支持集群，qos，�
 
 [https://github.com/wangzihaogithub/sse-server-demo](https://github.com/wangzihaogithub/sse-server-demo "https://github.com/wangzihaogithub/sse-server-demo")
 
-[https://gitee.com/wangzihaogithub/sse-server-demo](https://gitee.com/wangzihaogithub/sse-server-demo "https://gitee.com/wangzihaogithub/sse-server-demo")
+[https://gitee.com/wangzihaogitee/sse-server-demo](https://gitee.com/wangzihaogitee/sse-server-demo "https://gitee.com/wangzihaogitee/sse-server-demo")
 
 
 ### 简单介绍
