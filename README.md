@@ -1,7 +1,7 @@
 # sse-server
 
 #### 介绍
-sse协议的后端API, 比websocket轻量的实时通信, 
+sse协议的后端API, 比websocket轻量的实时通信, 支持集群，qos，异步，监控
 
 在LocalConnectionService和sse.js中封装了业务 (浏览器tab切换逻辑, 断线重连, 根据用户ID发送, 获取在线用户, 上线通知, 离线通知)
 
@@ -12,6 +12,12 @@ sse协议的后端API, 比websocket轻量的实时通信,
 
 3. 支持双向通信, 后端发送消息后会返回是否成功, 前端发送有可靠保证, 会自动重连, 成功后会自动将离线期间的请求继续发送.
 
+
+### demo地址
+
+[https://github.com/wangzihaogithub/sse-server-demo](https://github.com/wangzihaogithub/sse-server-demo "https://github.com/wangzihaogithub/sse-server-demo")
+
+### 简单介绍
 
         // 1.后端给前端推数据
         const listeners = {
@@ -36,9 +42,61 @@ sse协议的后端API, 比websocket轻量的实时通信,
 4. 在nginx开启http2情况下, 可以和其他短链接ajax请求, 复用一个连接, 摆脱了浏览器单个域名下的最大连接数限制, 在客户网络繁忙或网卡老化的情况下有奇效, 这是websocket做不到的. 
 
 
+### 项目原理
 
-#### 软件架构
-软件架构说明
+1. 前端浏览器通过
+
+       import(后段接口).then(conn => {
+           实现获得sse监听对象
+       }) 
+
+2. 后端服务端，直接面向前端，提供http接口
+
+通过继承 SseWebController<MyAccessUser> 实现提供http-sse接口
+
+        @RestController
+        @RequestMapping("/my-sse")
+        public class MySseWebController extends SseWebController<MyAccessUser> 
+
+获取sse链接方式如下
+
+        @Resource
+        private LocalConnectionService localConnectionService; // 通过这种方式获得sse链接
+   
+        注！如果一个应用需要报漏多个SseWebController服务，请手工向spring注册LocalConnectionService
+
+
+3. 集群需要用户添加依赖nacos， 开启配置
+
+        spring:
+            sse-server:
+                remote:
+                    enabled: true
+                        nacos:
+                            service-name: 'demo2-distributed'
+                            server-addr: 'xx.xx.xx.xx'
+
+4. 开启集群后，支持后端客户端（不依赖tomcat）
+
+         @Resource
+         private DistributedConnectionService distributedConnectionService; // 这种方式获得sse链接
+
+5. qos发送，保证至少发送一次
+
+         // 可以通过下面两个接口发送
+         localConnectionService.qos().sendByUserId()
+         distributedConnectionService.qos().sendByUserId()
+
+### QA问答
+
+    Q：开启集群后的如何确认消息落点并转发，怎么实现的？
+    A: sse-client（DistributedConnectionService），sse-controller(SseWebController), localConnectionService.getCluster()
+       这三个发消息入口发消息前会先看本地是否存在该链接ID，如果不存在则广播集群所有机器，
+       每个sse-server内置暴露了随机端口号的http接口，并注册到nacos上（放心有安全机制）
+
+    Q：如何保证qos？
+    A：如果用户不在线，会将消息存放在MessageRepository接口中，如果下次用户上线，会触发重新发送并删除消息，
+       目前MessageRepository的实现是MemoryMessageRepository，未来会增加其他实现
 
 
 #### 安装教程
@@ -218,27 +276,3 @@ sse协议的后端API, 比websocket轻量的实时通信,
               this.hrSse.destroy()
               this.hunterSse.destroy()
             }
-
-
-#### 使用说明
-
-1.  xxxx
-2.  xxxx
-3.  xxxx
-
-#### 参与贡献
-
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
-
-
-#### 特技
-
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
