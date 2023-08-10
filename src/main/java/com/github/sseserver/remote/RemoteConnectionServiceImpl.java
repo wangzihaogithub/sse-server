@@ -16,9 +16,9 @@ import java.util.function.Function;
 
 public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     public static int connectTimeout = Integer.getInteger("sseserver.RemoteConnectionServiceImpl.connectTimeout",
-            2000);
+            500);
     public static int readTimeout = Integer.getInteger("sseserver.RemoteConnectionServiceImpl.readTimeout",
-            10000);
+            1000);
     public static int threadsIfAsyncRequest = Integer.getInteger("sseserver.RemoteConnectionServiceImpl.threadsIfAsyncRequest",
             1);
     public static int threadsIfBlockRequest = Integer.getInteger("sseserver.RemoteConnectionServiceImpl.threadsIfBlockRequest",

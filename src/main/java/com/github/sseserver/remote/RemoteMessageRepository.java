@@ -22,9 +22,9 @@ import java.util.stream.Collectors;
 
 public class RemoteMessageRepository implements MessageRepository {
     public static int connectTimeout = Integer.getInteger("sseserver.RemoteMessageRepository.connectTimeout",
-            2000);
+            500);
     public static int readTimeout = Integer.getInteger("sseserver.RemoteMessageRepository.readTimeout",
-            10000);
+            1500);
     public static int threadsIfAsyncRequest = Integer.getInteger("sseserver.RemoteMessageRepository.threadsIfAsyncRequest",
             1);
     public static int threadsIfBlockRequest = Integer.getInteger("sseserver.RemoteMessageRepository.threadsIfBlockRequest",

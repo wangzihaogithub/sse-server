@@ -9,11 +9,11 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.2.8</version>
+ *      <version>1.2.9</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.2.8'
+  static version = '1.2.9'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,
@@ -54,11 +54,6 @@ class Sse {
    * 谁主动触发了关闭连接
    */
   static CLIENT_TRIGGER_CLOSE = 'client'
-
-  static install = function(global = window, opts = {}) {
-    global.Sse = Sse
-    console.log('install Sse')
-  }
 
   state = Sse.STATE_CONNECTING
   createTimestamp = Date.now()

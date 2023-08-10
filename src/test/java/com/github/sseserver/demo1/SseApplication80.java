@@ -1,4 +1,4 @@
-package com.github.sseserver;
+package com.github.sseserver.demo1;
 
 //import com.github.netty.springboot.EnableNettyEmbedded;
 

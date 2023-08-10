@@ -443,7 +443,7 @@ public class SseWebController<ACCESS_USER> {
         if (cluster == null || cluster) {
             cluster = localConnectionService.isEnableCluster();
         }
-        if (cluster) {
+        if (cluster && localCount == 0) {
             DeferredResult<ResponseEntity> result = new DeferredResult<>(timeout, responseEntity(buildDisconnectResult(localCount, true)));
             localConnectionService.getCluster().disconnectByConnectionId(connectionId)
                     .whenComplete((remoteCount, throwable) -> {
@@ -674,9 +674,13 @@ public class SseWebController<ACCESS_USER> {
     protected List<SseEmitter> disconnectClientIdMaxConnectionsLocal(SseEmitter<ACCESS_USER> conncet, int clientIdMaxConnections) {
         Serializable userId = conncet.getUserId();
         String clientId = conncet.getClientId();
+        String requestDomain = conncet.getRequestDomain();
+        String tenantId = Objects.toString(conncet.getTenantId(), "");
 
         List<SseEmitter> clientConnectionList = localConnectionService.getConnectionByUserId(userId).stream()
                 .filter(e -> Objects.equals(e.getClientId(), clientId))
+                .filter(e -> Objects.equals(e.getRequestDomain(), requestDomain))
+                .filter(e -> Objects.equals(Objects.toString(e.getTenantId(), ""), tenantId))
                 .sorted(Comparator.comparingLong((ToLongFunction<SseEmitter>)
                                 SseEmitter::getCreateTime)
                         .thenComparing(SseEmitter::getId))
@@ -697,12 +701,16 @@ public class SseWebController<ACCESS_USER> {
     protected java.util.concurrent.CompletableFuture<List<ConnectionByUserIdDTO>> disconnectClientIdMaxConnectionsCluster(SseEmitter<ACCESS_USER> conncet, int clientIdMaxConnections) {
         Serializable userId = conncet.getUserId();
         String clientId = conncet.getClientId();
+        String requestDomain = conncet.getRequestDomain();
+        String tenantId = Objects.toString(conncet.getTenantId(), "");
 
         ClusterConnectionService cluster = localConnectionService.getCluster();
 
         return cluster.getConnectionDTOByUserIdAsync(userId).thenApply(connections -> {
             List<ConnectionByUserIdDTO> clientConnectionList = connections.stream()
                     .filter(e -> Objects.equals(e.getClientId(), clientId))
+                    .filter(e -> Objects.equals(e.getRequestDomain(), requestDomain))
+                    .filter(e -> Objects.equals(Objects.toString(e.getAccessTenantId(), ""), tenantId))
                     .sorted(Comparator.comparing(ConnectionByUserIdDTO::getCreateTime)
                             .thenComparing(ConnectionByUserIdDTO::getId))
                     .collect(Collectors.toList());

@@ -1,4 +1,4 @@
-package com.github.sseserver.controller;
+package com.github.sseserver.demo1.controller;
 
 import com.github.sseserver.local.LocalConnectionService;
 import org.springframework.stereotype.Component;

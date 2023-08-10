@@ -23,6 +23,7 @@ public class ConnectionByUserIdDTO {
     private String locationHref;
 
     // user
+    private Object accessTenantId;
     private Object accessUserId;
     private String accessToken;
 
@@ -68,6 +69,7 @@ public class ConnectionByUserIdDTO {
 
         dto.setAccessToken(connection.getAccessToken());
         dto.setAccessUserId(connection.getUserId());
+        dto.setAccessTenantId(connection.getTenantId());
 
         dto.setClientId(connection.getClientId());
         dto.setClientVersion(connection.getClientVersion());
@@ -312,4 +314,11 @@ public class ConnectionByUserIdDTO {
         this.accessToken = accessToken;
     }
 
+    public Object getAccessTenantId() {
+        return accessTenantId;
+    }
+
+    public void setAccessTenantId(Object accessTenantId) {
+        this.accessTenantId = accessTenantId;
+    }
 }
