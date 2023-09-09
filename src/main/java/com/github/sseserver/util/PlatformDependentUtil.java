@@ -1,11 +1,13 @@
 package com.github.sseserver.util;
 
 public class PlatformDependentUtil {
-    public static final String SSE_SERVER_VERSION = "1.2.9";
+    public static final String SSE_SERVER_VERSION = "1.2.10";
     private static final boolean SUPPORT_NETTY4;
     private static final boolean SUPPORT_OKHTTP3;
     private static final boolean SUPPORT_APACHE_HTTP;
     private static final boolean SUPPORT_SPRINGFRAMEWORK_WEB;
+    private static final boolean SUPPORT_SPRINGFRAMEWORK_REDIS;
+    public static final Class REDIS_CONNECTION_FACTORY_CLASS;
 
     static {
         boolean supportNetty4;
@@ -46,6 +48,15 @@ public class PlatformDependentUtil {
             supportSpringframeworkWeb = false;
         }
         SUPPORT_SPRINGFRAMEWORK_WEB = supportSpringframeworkWeb;
+
+        Class redisConnectionFactory;
+        try {
+            redisConnectionFactory = Class.forName("org.springframework.data.redis.connection.RedisConnectionFactory");
+        } catch (Throwable e) {
+            redisConnectionFactory = null;
+        }
+        REDIS_CONNECTION_FACTORY_CLASS = redisConnectionFactory;
+        SUPPORT_SPRINGFRAMEWORK_REDIS = redisConnectionFactory != null;
     }
 
     public static boolean isSupportSpringframeworkWeb() {
@@ -62,6 +73,10 @@ public class PlatformDependentUtil {
 
     public static boolean isSupportOkhttp3() {
         return SUPPORT_OKHTTP3;
+    }
+
+    public static boolean isSupportSpringframeworkRedis() {
+        return SUPPORT_SPRINGFRAMEWORK_REDIS;
     }
 
     public static String getHttpRequestFactory() {

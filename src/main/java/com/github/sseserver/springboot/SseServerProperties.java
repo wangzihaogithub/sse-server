@@ -36,9 +36,17 @@ public class SseServerProperties {
 
     }
 
+    public enum DiscoveryEnum {
+        AUTO,
+        REDIS,
+        NACOS
+    }
+
     public static class Remote {
         private boolean enabled = false;
+        private DiscoveryEnum discovery = DiscoveryEnum.AUTO;
         private final Nacos nacos = new Nacos();
+        private final Redis redis = new Redis();
         private final MessageRepository messageRepository = new MessageRepository();
         private final ConnectionService connectionService = new ConnectionService();
 
@@ -50,12 +58,24 @@ public class SseServerProperties {
             this.enabled = enabled;
         }
 
+        public DiscoveryEnum getDiscovery() {
+            return discovery;
+        }
+
+        public void setDiscovery(DiscoveryEnum discovery) {
+            this.discovery = discovery;
+        }
+
         public MessageRepository getMessageRepository() {
             return messageRepository;
         }
 
         public ConnectionService getConnectionService() {
             return connectionService;
+        }
+
+        public Redis getRedis() {
+            return redis;
         }
 
         public Nacos getNacos() {
@@ -144,6 +164,37 @@ public class SseServerProperties {
             public void setProperties(Properties properties) {
                 this.properties = properties;
             }
+        }
+
+        public static class Redis {
+            private String redisConnectionFactoryBeanName = "redisConnectionFactory";
+            private String redisKeyRootPrefix = "sse:";
+            private int redisInstanceExpireSec = 10;
+
+            public String getRedisConnectionFactoryBeanName() {
+                return redisConnectionFactoryBeanName;
+            }
+
+            public void setRedisConnectionFactoryBeanName(String redisConnectionFactoryBeanName) {
+                this.redisConnectionFactoryBeanName = redisConnectionFactoryBeanName;
+            }
+
+            public String getRedisKeyRootPrefix() {
+                return redisKeyRootPrefix;
+            }
+
+            public void setRedisKeyRootPrefix(String redisKeyRootPrefix) {
+                this.redisKeyRootPrefix = redisKeyRootPrefix;
+            }
+
+            public int getRedisInstanceExpireSec() {
+                return redisInstanceExpireSec;
+            }
+
+            public void setRedisInstanceExpireSec(int redisInstanceExpireSec) {
+                this.redisInstanceExpireSec = redisInstanceExpireSec;
+            }
+
         }
     }
 }

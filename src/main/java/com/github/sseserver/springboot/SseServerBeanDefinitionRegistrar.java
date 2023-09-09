@@ -190,7 +190,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
             BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(ServiceDiscoveryService.class,
                     () -> {
                         SseServerProperties properties = beanFactory.getBean(SseServerProperties.class);
-                        return ServiceDiscoveryService.newInstance(connectionServiceBeanName, properties.getRemote());
+                        return ServiceDiscoveryService.newInstance(connectionServiceBeanName, properties.getRemote(), beanFactory);
                     });
 
             String beanName = getServiceDiscoveryServiceBeanName(connectionServiceBeanName);

@@ -49,7 +49,7 @@ public class MySseWebController extends SseWebController<MyAccessUser> {
         // 验证用户
         String token = request.getParameter("access-token");
         MyAccessUser accessUser = new MyAccessUser();
-        accessUser.setId(token);
+        accessUser.setId(request.getServerPort() + "");
         accessUser.setAccessToken(token);
         accessUser.setTenantId(1);
         return accessUser;

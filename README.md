@@ -111,7 +111,7 @@ sse协议的后端API, 比websocket轻量的实时通信, 支持集群，qos，�
         <dependency>
             <groupId>com.github.wangzihaogithub</groupId>
             <artifactId>sse-server</artifactId>
-            <version>1.2.9</version>
+            <version>1.2.10</version>
         </dependency>
         
 2.  配置业务逻辑 （后端）
