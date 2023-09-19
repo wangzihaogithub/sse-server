@@ -596,9 +596,11 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
             this.writeable = false;
             try {
                 complete();
+            } catch (NullPointerException ignored) {
+                // 关闭服务时，tomcat会报NullPointerException。 ignored for only at shutdown tomcat server.
             } catch (Exception e) {
                 if (log.isWarnEnabled()) {
-                    log.warn("sse connection disconnect exception : {}. {}", e.toString(), this);
+                    log.warn("sse connection disconnect exception : {}. {}", e.toString(), this, e);
                 }
             }
             return true;
