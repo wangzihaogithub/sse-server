@@ -42,6 +42,44 @@ sse协议的后端API, 比websocket轻量的实时通信, 支持集群，qos，�
             console.log(response)
         })
 
+
+### TypeScript定义
+
+      // 与后端接口建立连接
+      sseEventListener(url:string,
+                     eventListeners:Record<string, (event: MessageEvent) => void>,
+                     query?: Record<string, any>) : Promise<SseSocket>;
+      
+
+      // 建立连接后获得的对象
+      interface SseSocket {
+         addListener(eventName: string, listener: (event: MessageEvent) => void): Promise<Response>;
+      
+          addListener(eventListeners: Record<string, (event: MessageEvent) => void>): Promise<Response>;
+      
+          removeListener(eventName: string, listener: (event: MessageEvent) => void): Promise<Response>;
+      
+          removeListener(eventListeners: Record<string, (event: MessageEvent) => void>): Promise<Response>;
+      
+          connect(): void;
+      
+          destroy(): void;
+      
+          switchURL(newUrl): void;
+      
+          close(reason: string): void;
+      
+          close(): void;
+      
+          isActive(): boolean;
+      
+          send(path: string, body: Record<string, any> | undefined, query: Record<string, any> | undefined, header: string[][] | Record<string, string> | Headers | undefined): Promise<Response>;
+      
+          upload(path: string, formData: FormData, query: object  undefined, header: string[][] | Record<string, string> | Headers | undefined): Promise<Response>;
+      
+      }
+
+
 4. 在nginx开启http2情况下, 可以和其他短链接ajax请求, 复用一个连接, 摆脱了浏览器单个域名下的最大连接数限制, 在客户网络繁忙或网卡老化的情况下有奇效, 这是websocket做不到的. 
 
 
