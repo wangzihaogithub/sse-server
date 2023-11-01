@@ -12,10 +12,9 @@ public interface DistributedConnectionService {
      * QOS 保证发送质量接口，支持分布式
      * 目前实现的级别是至少收到一次 {@link com.github.sseserver.qos.AtLeastOnceSendService}
      *
-     * @param <ACCESS_USER> 用户
-     * @return 消息保障，至少收到一次
+     * @return 消息保障，至少收到一次,Integer必定大于0，Integer 是成功发送的连接数量
      */
-    <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> qos();
+    SendService<QosCompletableFuture<Integer>> qos();
 
     MessageRepository getLocalMessageRepository();
 

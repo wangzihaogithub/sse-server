@@ -15,7 +15,7 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
     private String beanName = getClass().getSimpleName();
 
     @Override
-    public <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> qos() {
+    public SendService<QosCompletableFuture<Integer>> qos() {
         String beanName = SseServerBeanDefinitionRegistrar.getAtLeastOnceBeanName(this.beanName);
         return beanFactory.getBean(beanName, SendService.class);
     }

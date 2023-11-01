@@ -80,7 +80,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public <ACCESS_USER> SendService<QosCompletableFuture<ACCESS_USER>> qos() {
+    public SendService<QosCompletableFuture<Integer>> qos() {
         String beanName = SseServerBeanDefinitionRegistrar.getAtLeastOnceBeanName(this.beanName);
         return beanFactory.getBean(beanName, SendService.class);
     }
