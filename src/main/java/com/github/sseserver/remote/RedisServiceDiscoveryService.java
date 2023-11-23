@@ -61,7 +61,7 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
                                         int redisInstanceExpireSec,
                                         SseServerProperties.Remote remoteConfig) {
         String shortGroupName = String.valueOf(Math.abs(groupName.hashCode()));
-        if (shortGroupName.length() <= groupName.length()) {
+        if (shortGroupName.length() >= groupName.length()) {
             shortGroupName = groupName;
         }
         String account = SpringUtil.filterNonAscii(shortGroupName + "-" + DEVICE_ID);
