@@ -60,8 +60,10 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
                                         String redisKeyRootPrefix,
                                         int redisInstanceExpireSec,
                                         SseServerProperties.Remote remoteConfig) {
-
         String shortGroupName = String.valueOf(Math.abs(groupName.hashCode()));
+        if (shortGroupName.length() <= groupName.length()) {
+            shortGroupName = groupName;
+        }
         String account = SpringUtil.filterNonAscii(shortGroupName + "-" + DEVICE_ID);
         this.instance.setDeviceId(DEVICE_ID);
         this.instance.setAccount(account);
@@ -70,10 +72,10 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
         this.redisInstanceExpireSec = Math.max(redisInstanceExpireSec, MIN_REDIS_INSTANCE_EXPIRE_SEC);
         this.remoteConfig = remoteConfig;
         StringRedisSerializer keySerializer = StringRedisSerializer.UTF_8;
-        this.keyPubSubBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + "c:sub");
-        this.keyPubUnsubBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + "c:unsub");
-        this.keySubBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + "c:*");
-        this.keySetBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + ":d:" + account);
+        this.keyPubSubBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + ":c:sub");
+        this.keyPubUnsubBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + ":c:unsub");
+        this.keySubBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + ":c:*");
+        this.keySetBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + ":d:" + DEVICE_ID);
         this.keySetScanOptions = ScanOptions.scanOptions()
                 .count(20)
                 .match(redisKeyRootPrefix + shortGroupName + ":d:*")
@@ -265,8 +267,8 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
     }
 
     private Map<String, ServerInstance> filterInstance(Map<String, ServerInstance> instanceMap) {
-        if (instanceMap == null) {
-            return this.instanceMap;
+        if (instanceMap == null || instanceMap.isEmpty()) {
+            instanceMap = this.instanceMap;
         }
         Map<String, ServerInstance> connectInstanceMap = new LinkedHashMap<>(instanceMap.size());
         for (Map.Entry<String, ServerInstance> entry : instanceMap.entrySet()) {
@@ -287,20 +289,23 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
 
     public Map<String, ServerInstance> getInstanceMap(RedisConnection connection) {
         Map<String, ServerInstance> map = new LinkedHashMap<>();
-        Cursor<byte[]> cursor = connection.scan(keySetScanOptions);
-        while (cursor.hasNext()) {
-            byte[] key = cursor.next();
-            if (key == null) {
-                continue;
+        try (Cursor<byte[]> cursor = connection.scan(keySetScanOptions)) {
+            while (cursor.hasNext()) {
+                byte[] key = cursor.next();
+                if (key == null) {
+                    continue;
+                }
+                byte[] body = connection.get(key);
+                if (body == null) {
+                    continue;
+                }
+                ServerInstance instance = instanceSerializer.deserialize(body);
+                if (instance != null) {
+                    map.put(instance.getAccount(), instance);
+                }
             }
-            byte[] body = connection.get(key);
-            if (body == null) {
-                continue;
-            }
-            ServerInstance instance = instanceSerializer.deserialize(body);
-            if (instance != null) {
-                map.put(instance.getAccount(), instance);
-            }
+        } catch (Exception ignored) {
+            return null;
         }
         return map;
     }
