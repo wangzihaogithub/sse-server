@@ -73,7 +73,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
 
     @Override
     public <ACCESS_USER> RemoteCompletableFuture<List<ACCESS_USER>, RemoteConnectionService> getUsersAsync(SseServerProperties.AutoType autoType) {
-        return asyncGetConnectionQueryService("/getUsers", (response) -> extract(response, null));
+        return asyncGetConnectionQueryService("/getUsers", (response) -> extract(response, autoType));
     }
 
     @Override

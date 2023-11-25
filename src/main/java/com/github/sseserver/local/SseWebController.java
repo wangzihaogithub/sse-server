@@ -30,7 +30,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 
@@ -74,7 +77,7 @@ public class SseWebController<ACCESS_USER> {
     @Autowired(required = false)
     protected HttpServletRequest request;
     protected LocalConnectionService localConnectionService;
-
+    private final ClusterBatchDisconnectRunnable batchDisconnectRunnable = new ClusterBatchDisconnectRunnable(() -> localConnectionService != null ? localConnectionService.getCluster() : null);
     @Value("${server.port:8080}")
     private Integer serverPort;
     private String sseServerIdHeaderName = "Sse-Server-Id";
@@ -705,7 +708,6 @@ public class SseWebController<ACCESS_USER> {
         String tenantId = Objects.toString(conncet.getTenantId(), "");
 
         ClusterConnectionService cluster = localConnectionService.getCluster();
-
         return cluster.getConnectionDTOByUserIdAsync(userId).thenApply(connections -> {
             List<ConnectionByUserIdDTO> clientConnectionList = connections.stream()
                     .filter(e -> Objects.equals(e.getClientId(), clientId))
@@ -719,7 +721,9 @@ public class SseWebController<ACCESS_USER> {
                 List<ConnectionByUserIdDTO> disconnectList =
                         clientConnectionList.subList(0, clientConnectionList.size() - clientIdMaxConnections);
                 if (!disconnectList.isEmpty()) {
-                    cluster.disconnectByConnectionIds(disconnectList.stream().map(ConnectionByUserIdDTO::getId).collect(Collectors.toList()));
+                    List<Long> disconnectIdList = disconnectList.stream().map(ConnectionByUserIdDTO::getId).collect(Collectors.toList());
+                    batchDisconnectRunnable.addAll(disconnectIdList);
+                    localConnectionService.getScheduled().schedule(batchDisconnectRunnable, 1000, TimeUnit.MILLISECONDS);
                 }
                 return disconnectList;
             } else {
@@ -969,4 +973,37 @@ public class SseWebController<ACCESS_USER> {
         }
         return WebUtil.rewriteHttpToHttpsIfSecure(sb.toString(), request.isSecure());
     }
+
+    private static class ClusterBatchDisconnectRunnable implements Runnable {
+        private final Collection<Long> batchDisconnectIdList = Collections.newSetFromMap(new ConcurrentHashMap<>());
+        private final Supplier<ClusterConnectionService> serviceSupplier;
+
+        private ClusterBatchDisconnectRunnable(Supplier<ClusterConnectionService> serviceSupplier) {
+            this.serviceSupplier = serviceSupplier;
+        }
+
+        void addAll(Collection<Long> disconnectIdList) {
+            batchDisconnectIdList.addAll(disconnectIdList);
+        }
+
+        @Override
+        public void run() {
+            if (batchDisconnectIdList.isEmpty()) {
+                return;
+            }
+            List<Long> idList;
+            synchronized (batchDisconnectIdList) {
+                idList = new ArrayList<>(batchDisconnectIdList);
+                batchDisconnectIdList.clear();
+            }
+            if (idList.isEmpty()) {
+                return;
+            }
+            ClusterConnectionService service = serviceSupplier.get();
+            if (service != null) {
+                service.disconnectByConnectionIds(idList);
+            }
+        }
+    }
+
 }
