@@ -983,7 +983,9 @@ public class SseWebController<ACCESS_USER> {
         }
 
         void addAll(Collection<Long> disconnectIdList) {
-            batchDisconnectIdList.addAll(disconnectIdList);
+            synchronized (batchDisconnectIdList) {
+                batchDisconnectIdList.addAll(disconnectIdList);
+            }
         }
 
         @Override
@@ -991,14 +993,16 @@ public class SseWebController<ACCESS_USER> {
             if (batchDisconnectIdList.isEmpty()) {
                 return;
             }
+
             List<Long> idList;
             synchronized (batchDisconnectIdList) {
+                if (batchDisconnectIdList.isEmpty()) {
+                    return;
+                }
                 idList = new ArrayList<>(batchDisconnectIdList);
                 batchDisconnectIdList.clear();
             }
-            if (idList.isEmpty()) {
-                return;
-            }
+
             ClusterConnectionService service = serviceSupplier.get();
             if (service != null) {
                 service.disconnectByConnectionIds(idList);
