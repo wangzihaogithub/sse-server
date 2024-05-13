@@ -1,6 +1,5 @@
 package com.github.sseserver.remote;
 
-import com.alibaba.nacos.common.utils.ConcurrentHashSet;
 import com.github.sseserver.local.LocalController;
 import com.github.sseserver.qos.Message;
 import com.github.sseserver.qos.MessageRepository;
@@ -16,6 +15,7 @@ import java.io.Serializable;
 import java.net.URL;
 import java.nio.channels.ClosedChannelException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -35,7 +35,7 @@ public class RemoteMessageRepository implements MessageRepository {
     private final String urlMessageRepository;
     private final String id;
     private final SseServerProperties.Remote.MessageRepository config;
-    private final Set<String> classNotFoundSet = new ConcurrentHashSet<>();
+    private final Set<String> classNotFoundSet = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private boolean closeFlag = false;
 
     public RemoteMessageRepository(URL url, String account, String password, SseServerProperties.Remote.MessageRepository config) {

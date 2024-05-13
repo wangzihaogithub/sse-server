@@ -1,6 +1,5 @@
 package com.github.sseserver.remote;
 
-import com.alibaba.nacos.common.utils.ConcurrentHashSet;
 import com.github.sseserver.local.LocalController.Response;
 import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.*;
@@ -12,6 +11,7 @@ import java.net.URL;
 import java.nio.channels.ClosedChannelException;
 import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 public class RemoteConnectionServiceImpl implements RemoteConnectionService {
@@ -31,7 +31,7 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     private final String urlSendService;
     private final String urlRemoteConnectionService;
     private final SseServerProperties.Remote.ConnectionService config;
-    private final Set<String> classNotFoundSet = new ConcurrentHashSet<>();
+    private final Set<String> classNotFoundSet = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final String id;
     private boolean closeFlag = false;
 
