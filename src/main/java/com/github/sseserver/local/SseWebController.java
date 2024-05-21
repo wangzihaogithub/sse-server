@@ -951,12 +951,12 @@ public class SseWebController<ACCESS_USER> {
 
     protected String getRequestIpAddr(HttpServletRequest request) {
         String ip = request.getHeader("x-forwarded-for");
-        if (ip == null || ip.length() == 0 || "unknown".equalsIgnoreCase(ip)) {
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
             ip = request.getRemoteAddr();
         }
         // 如果是多级代理，那么取第一个ip为客户ip
-        if (ip != null && ip.contains(",")) {
-            ip = ip.substring(ip.lastIndexOf(",") + 1).trim();
+        if (ip != null) {
+            ip = ip.split(",", 2)[0].trim();
         }
         return ip;
     }
@@ -967,7 +967,7 @@ public class SseWebController<ACCESS_USER> {
 
         if (sb.toString().startsWith("http://localhost")) {
             String host = request.getHeader("host");
-            if (host != null && host.length() > 0) {
+            if (host != null && !host.isEmpty()) {
                 sb = new StringBuffer("http://" + host);
             }
         }
