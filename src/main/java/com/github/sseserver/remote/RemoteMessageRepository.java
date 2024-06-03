@@ -34,11 +34,11 @@ public class RemoteMessageRepository implements MessageRepository {
     private final URL url;
     private final String urlMessageRepository;
     private final String id;
-    private final SseServerProperties.Remote.MessageRepository config;
+    private final SseServerProperties.ClusterConfig.MessageRepository config;
     private final Set<String> classNotFoundSet = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private boolean closeFlag = false;
 
-    public RemoteMessageRepository(URL url, String account, String password, SseServerProperties.Remote.MessageRepository config) {
+    public RemoteMessageRepository(URL url, String account, String password, SseServerProperties.ClusterConfig.MessageRepository config) {
         this.url = url;
         this.urlMessageRepository = url + "/MessageRepository";
         this.id = account;

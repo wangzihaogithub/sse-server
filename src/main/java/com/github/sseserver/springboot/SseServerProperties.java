@@ -2,20 +2,21 @@ package com.github.sseserver.springboot;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-import java.util.Properties;
+import java.util.*;
 
-@ConfigurationProperties(prefix = "spring.sse-server", ignoreUnknownFields = true)
+@ConfigurationProperties(prefix = SseServerProperties.PREFIX, ignoreUnknownFields = true)
 public class SseServerProperties {
-    private final Qos qos = new Qos();
-    private final Local local = new Local();
+    public static final String PREFIX = "spring.sse-server";
+    public static final String PREFIX_REMOTE_ENABLED = PREFIX + ".remote.enabled";
+    public static final String PREFIX_CLUSTER = PREFIX + ".cluster.";
+    public static final String PREFIX_CLUSTER_ROLE = PREFIX + ".cluster.%s.role";
+    public static final String PREFIX_CLUSTER_PRIMARY = PREFIX + ".cluster.%s.primary";
+    public static final String DEFAULT_BEAN_NAME_CONNECTION_SERVICE = "defaultConnectionService";
     private final Remote remote = new Remote();
+    private final Map<String, ClusterConfig> cluster = new LinkedHashMap<>();
 
-    public Qos getQos() {
-        return qos;
-    }
-
-    public Local getLocal() {
-        return local;
+    public Map<String, ClusterConfig> getCluster() {
+        return cluster;
     }
 
     public Remote getRemote() {
@@ -28,12 +29,33 @@ public class SseServerProperties {
         CLASS_NOT_FOUND_THROWS,
     }
 
-    public static class Local {
+    public enum ClusterRoleEnum {
+        SERVER(Arrays.asList(
+                SseServerBeanDefinitionRegistrar.registerLocalConnectionService,
+                SseServerBeanDefinitionRegistrar.registerLocalConnectionController,
+                SseServerBeanDefinitionRegistrar.registerLocalMessageRepository,
+                SseServerBeanDefinitionRegistrar.registerClusterConnectionService,
+                SseServerBeanDefinitionRegistrar.registerClusterMessageRepository,
+                SseServerBeanDefinitionRegistrar.registerServiceDiscoveryService,
+                SseServerBeanDefinitionRegistrar.registerAtLeastOnce
+        )),
+        CLIENT(Arrays.asList(
+                SseServerBeanDefinitionRegistrar.registerLocalMessageRepository,
+                SseServerBeanDefinitionRegistrar.registerClusterConnectionService,
+                SseServerBeanDefinitionRegistrar.registerClusterMessageRepository,
+                SseServerBeanDefinitionRegistrar.registerServiceDiscoveryService,
+                SseServerBeanDefinitionRegistrar.registerAtLeastOnce
+        ));
 
-    }
+        private final Set<String> registers;
 
-    public static class Qos {
+        ClusterRoleEnum(Collection<String> registers) {
+            this.registers = new LinkedHashSet<>(registers);
+        }
 
+        public boolean containsRegister(String registerName) {
+            return registers.contains(registerName);
+        }
     }
 
     public enum DiscoveryEnum {
@@ -44,11 +66,6 @@ public class SseServerProperties {
 
     public static class Remote {
         private boolean enabled = false;
-        private DiscoveryEnum discovery = DiscoveryEnum.AUTO;
-        private final Nacos nacos = new Nacos();
-        private final Redis redis = new Redis();
-        private final MessageRepository messageRepository = new MessageRepository();
-        private final ConnectionService connectionService = new ConnectionService();
 
         public boolean isEnabled() {
             return enabled;
@@ -56,6 +73,44 @@ public class SseServerProperties {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
+        }
+    }
+
+    public static class ClusterConfig {
+        private final Nacos nacos = new Nacos();
+        private final Redis redis = new Redis();
+        private final MessageRepository messageRepository = new MessageRepository();
+        private final ConnectionService connectionService = new ConnectionService();
+        private String groupName;
+        private DiscoveryEnum discovery = DiscoveryEnum.AUTO;
+        private ClusterRoleEnum role = ClusterRoleEnum.SERVER;
+        /**
+         * 是否默认集群，多个ClusterConfig时，默认注入。实现spring的 @Primary注解
+         */
+        private boolean primary = false;
+
+        public boolean isPrimary() {
+            return primary;
+        }
+
+        public void setPrimary(boolean primary) {
+            this.primary = primary;
+        }
+
+        public ClusterRoleEnum getRole() {
+            return role;
+        }
+
+        public void setRole(ClusterRoleEnum role) {
+            this.role = role;
+        }
+
+        public String getGroupName() {
+            return groupName;
+        }
+
+        public void setGroupName(String groupName) {
+            this.groupName = groupName;
         }
 
         public DiscoveryEnum getDiscovery() {
@@ -116,10 +171,10 @@ public class SseServerProperties {
             public Properties buildProperties() {
                 Properties properties = new Properties();
                 properties.putAll(this.properties);
-                if (serverAddr != null && serverAddr.length() > 0) {
+                if (serverAddr != null && !serverAddr.isEmpty()) {
                     properties.put("serverAddr", serverAddr);
                 }
-                if (namespace != null && namespace.length() > 0) {
+                if (namespace != null && !namespace.isEmpty()) {
                     properties.put("namespace", namespace);
                 }
                 return properties;

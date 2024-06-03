@@ -246,6 +246,26 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
+    public <ACCESS_USER> SseEmitter<ACCESS_USER> disconnectByConnectionId(Long connectionId, Long duration, Long sessionDuration) {
+        SseEmitter<ACCESS_USER> sseEmitter = getConnectionById(connectionId);
+        if (sseEmitter != null) {
+            if (duration != null || sessionDuration != null) {
+                if (duration == null) {
+                    duration = 0L;
+                }
+                if (sessionDuration == null) {
+                    sessionDuration = 0L;
+                }
+                sseEmitter.setSessionDuration(duration + sessionDuration);
+            }
+            if (sseEmitter.disconnect()) {
+                return sseEmitter;
+            }
+        }
+        return null;
+    }
+
+    @Override
     public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> disconnectByConnectionIds(Collection<Long> connectionIds) {
         if (connectionIds == null) {
             return Collections.emptyList();
@@ -806,4 +826,10 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         this.serverPort = serverPort;
     }
 
+    @Override
+    public String toString() {
+        return "LocalConnectionServiceImpl{" +
+                beanName + "[" + connectionMap.size() + "]" +
+                '}';
+    }
 }

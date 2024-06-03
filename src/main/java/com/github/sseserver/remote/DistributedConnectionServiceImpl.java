@@ -60,13 +60,19 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
     }
 
     @Override
+    public void setBeanName(String beanName) {
+        this.beanName = beanName;
+    }
+
+    @Override
     public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
         this.beanFactory = beanFactory;
     }
 
     @Override
-    public void setBeanName(String beanName) {
-        this.beanName = beanName;
+    public String toString() {
+        return "DistributedConnectionServiceImpl{" +
+                beanName +
+                '}';
     }
-
 }

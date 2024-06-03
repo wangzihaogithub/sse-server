@@ -31,9 +31,8 @@ import java.util.concurrent.TimeUnit;
 public class RedisServiceDiscoveryService implements ServiceDiscoveryService, DisposableBean {
     public static final String DEVICE_ID = String.valueOf(SnowflakeIdWorker.INSTANCE.nextId());
     private static final int TEST_SOCKET_TIMEOUT = Integer.getInteger("sseserver.RedisServiceDiscoveryService.testSocketTimeout", 150);
-    private static volatile ScheduledExecutorService scheduled;
     private static final int MIN_REDIS_INSTANCE_EXPIRE_SEC = 2;
-
+    private static volatile ScheduledExecutorService scheduled;
     private final int redisInstanceExpireSec;
     private final byte[] keySubBytes;
     private final byte[] keyPubSubBytes;
@@ -42,7 +41,7 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
     private final ScanOptions keySetScanOptions;
     private final MessageListener messageListener;
     private final Jackson2JsonRedisSerializer<ServerInstance> instanceSerializer = new Jackson2JsonRedisSerializer<>(ServerInstance.class);
-    private final SseServerProperties.Remote remoteConfig;
+    private final SseServerProperties.ClusterConfig clusterConfig;
     private final RedisTemplate<byte[], byte[]> redisTemplate = new RedisTemplate<>();
     private final ServerInstance instance = new ServerInstance();
 
@@ -59,7 +58,7 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
                                         String groupName,
                                         String redisKeyRootPrefix,
                                         int redisInstanceExpireSec,
-                                        SseServerProperties.Remote remoteConfig) {
+                                        SseServerProperties.ClusterConfig clusterConfig) {
         String shortGroupName = String.valueOf(Math.abs(groupName.hashCode()));
         if (shortGroupName.length() >= groupName.length()) {
             shortGroupName = groupName;
@@ -70,7 +69,7 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
         this.instance.setPassword(UUID.randomUUID().toString().replace("-", ""));
 
         this.redisInstanceExpireSec = Math.max(redisInstanceExpireSec, MIN_REDIS_INSTANCE_EXPIRE_SEC);
-        this.remoteConfig = remoteConfig;
+        this.clusterConfig = clusterConfig;
         StringRedisSerializer keySerializer = StringRedisSerializer.UTF_8;
         this.keyPubSubBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + ":c:sub");
         this.keyPubUnsubBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + ":c:unsub");
@@ -95,6 +94,26 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
 
         this.redisTemplate.setConnectionFactory((RedisConnectionFactory) redisConnectionFactory);
         this.redisTemplate.afterPropertiesSet();
+    }
+
+    private static ScheduledExecutorService getScheduled() {
+        if (scheduled == null) {
+            synchronized (RedisServiceDiscoveryService.class) {
+                if (scheduled == null) {
+                    scheduled = new ScheduledThreadPoolExecutor(1, r -> {
+                        Thread result = new Thread(r, "SseRedisServiceDiscoveryHeartbeat");
+                        result.setDaemon(true);
+                        return result;
+                    });
+                }
+            }
+        }
+        return scheduled;
+    }
+
+    @Override
+    public boolean isPrimary() {
+        return clusterConfig.isPrimary();
     }
 
     @Override
@@ -160,7 +179,7 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
             String password = instance.getPassword();
             try {
                 URL url = new URL(String.format("http://%s:%d", instance.getIp(), instance.getPort()));
-                RemoteMessageRepository service = new RemoteMessageRepository(url, account, password, remoteConfig.getMessageRepository());
+                RemoteMessageRepository service = new RemoteMessageRepository(url, account, password, clusterConfig.getMessageRepository());
                 list.add(service);
             } catch (MalformedURLException e) {
                 throw new IllegalStateException(
@@ -181,7 +200,7 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
             String password = instance.getPassword();
             try {
                 URL url = new URL(String.format("http://%s:%d", instance.getIp(), instance.getPort()));
-                RemoteConnectionServiceImpl service = new RemoteConnectionServiceImpl(url, account, password, remoteConfig.getConnectionService());
+                RemoteConnectionServiceImpl service = new RemoteConnectionServiceImpl(url, account, password, clusterConfig.getConnectionService());
                 list.add(service);
             } catch (MalformedURLException e) {
                 throw new IllegalStateException(
@@ -380,21 +399,6 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
         public void setPassword(String password) {
             this.password = password;
         }
-    }
-
-    private static ScheduledExecutorService getScheduled() {
-        if (scheduled == null) {
-            synchronized (RedisServiceDiscoveryService.class) {
-                if (scheduled == null) {
-                    scheduled = new ScheduledThreadPoolExecutor(1, r -> {
-                        Thread result = new Thread(r, "SseRedisServiceDiscoveryHeartbeat");
-                        result.setDaemon(true);
-                        return result;
-                    });
-                }
-            }
-        }
-        return scheduled;
     }
 
 }

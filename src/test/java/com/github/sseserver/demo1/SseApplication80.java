@@ -9,11 +9,12 @@ import org.springframework.boot.web.servlet.ServletComponentScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.redis.connection.RedisClusterConfiguration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 
 /**
- * Websocket服务端 端口号:10005
- * 访问 http://localhost:10005/index.html 可以看效果
+ * Websocket服务端 端口号:80
+ * 访问 http://localhost:80/index.html 可以看效果
  *
  * @author wangzihao
  */
@@ -26,11 +27,11 @@ public class SseApplication80 {
         SpringApplication.run(SseApplication80.class, args);
     }
 
-//    @Bean
-//    public RedisConnectionFactory redisConnectionFactory(RedisProperties redisProperties) {
-//        RedisClusterConfiguration configuration = new RedisClusterConfiguration(redisProperties.getCluster().getNodes());
-//        configuration.setPassword(redisProperties.getPassword());
-//        return new LettuceConnectionFactory(configuration);
-//    }
+    @Bean
+    public RedisConnectionFactory c1redis(RedisProperties redisProperties) {
+        RedisStandaloneConfiguration configuration = new RedisStandaloneConfiguration(redisProperties.getHost(), redisProperties.getPort());
+        configuration.setPassword(redisProperties.getPassword());
+        return new LettuceConnectionFactory(configuration);
+    }
 
 }

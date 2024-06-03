@@ -1,5 +1,5 @@
 server:
-  port: 81
+  port: 80
 spring:
   servlet:
     multipart:
@@ -13,9 +13,9 @@ spring:
   sse-server:
     remote:
       enabled: true
+
   redis:
-    password: 1tI4Y9c3jkEj
-    cluster:
-      nodes: '192.168.24.63:6579,192.168.24.234:6579,192.168.24.234:6479,192.168.24.156:6479,192.168.24.63:6479,192.168.24.156:6579'
+    host: localhost
+    password: xxx
   application:
     name: 'xx-123'

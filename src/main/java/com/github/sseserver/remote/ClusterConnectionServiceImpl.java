@@ -21,18 +21,22 @@ import java.util.function.Supplier;
 
 public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     private final static Logger log = LoggerFactory.getLogger(ClusterConnectionServiceImpl.class);
-    private final Supplier<Optional<LocalConnectionService>> localSupplier;
+    private final Supplier<LocalConnectionService> localSupplier;
     private final Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier;
     private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
 
-    public ClusterConnectionServiceImpl(Supplier<Optional<LocalConnectionService>> localSupplier,
+    /**
+     * @param localSupplier  非必填
+     * @param remoteSupplier 非必填
+     */
+    public ClusterConnectionServiceImpl(Supplier<LocalConnectionService> localSupplier,
                                         Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier) {
         this.localSupplier = localSupplier;
         this.remoteSupplier = remoteSupplier;
     }
 
     public Optional<LocalConnectionService> getLocalService() {
-        return localSupplier.get();
+        return localSupplier != null ? Optional.ofNullable(localSupplier.get()) : Optional.empty();
     }
 
     public ReferenceCounted<List<RemoteConnectionService>> getRemoteServiceRef() {
@@ -429,6 +433,15 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
         return mapReduce(
                 e -> e.disconnectByConnectionId(connectionId),
                 e -> e.disconnectByConnectionId(connectionId) != null ? 1 : 0,
+                Integer::sum,
+                LambdaUtil.defaultZero());
+    }
+
+    @Override
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByConnectionId(Long connectionId, Long duration, Long sessionDuration) {
+        return mapReduce(
+                e -> e.disconnectByConnectionId(connectionId, duration, sessionDuration),
+                e -> e.disconnectByConnectionId(connectionId, duration, sessionDuration) != null ? 1 : 0,
                 Integer::sum,
                 LambdaUtil.defaultZero());
     }

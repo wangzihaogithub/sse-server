@@ -18,6 +18,7 @@ public class ConnectionDTO<ACCESS_USER> extends AutoTypeBean {
     private Date accessTime;
     private Integer messageCount;
     private String channel;
+    private Long sessionDuration;
 
     // request
     private Date lastRequestTime;
@@ -58,6 +59,7 @@ public class ConnectionDTO<ACCESS_USER> extends AutoTypeBean {
     public static <ACCESS_USER> ConnectionDTO<ACCESS_USER> convert(SseEmitter<ACCESS_USER> connection) {
         ConnectionDTO<ACCESS_USER> dto = new ConnectionDTO<>();
         dto.setId(connection.getId());
+        dto.setSessionDuration(connection.getSessionDuration());
         dto.setMessageCount(connection.getCount());
         dto.setTimeout(connection.getTimeout());
         dto.setChannel(connection.getChannel());
@@ -320,6 +322,14 @@ public class ConnectionDTO<ACCESS_USER> extends AutoTypeBean {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Long getSessionDuration() {
+        return sessionDuration;
+    }
+
+    public void setSessionDuration(Long sessionDuration) {
+        this.sessionDuration = sessionDuration;
     }
 
     public String getAccessUserName() {

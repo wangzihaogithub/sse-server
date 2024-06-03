@@ -9,11 +9,11 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.2.15</version>
+ *      <version>1.2.16</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.2.15'
+  static version = '1.2.16'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,
@@ -24,7 +24,9 @@ class Sse {
     clientId: null,
     accessTimestamp: null,
     reconnectTime: null,
-    useWindowEventBus: true
+    useWindowEventBus: true,
+    leaveTimeout: 5000,
+    leaveCheckInterval: 500
   }
   static IMPORT_MODULE_TIMESTAMP = Date.now()
   static DEFAULT_RECONNECT_TIME = 5000
@@ -59,6 +61,9 @@ class Sse {
   createTimestamp = Date.now()
   connectionName = ''
   retryQueue = []
+  isPageActive = true
+  lastActiveTime = Date.now()
+  durationTime = Date.now()
 
   constructor(options) {
     this.options = Object.assign({}, Sse.DEFAULT_OPTIONS, options)
@@ -98,6 +103,13 @@ class Sse {
       this.serverVersion = res.version
 
       this.flush()
+      if (!this.isPageActive) {
+        this.isPageActive = true
+        this.lastActiveTime = Date.now()
+        setTimeout(() => {
+          this.handleChangeActiveEvent(false, true)
+        }, 0)
+      }
     }
 
     this.flush = () => {
@@ -163,6 +175,7 @@ class Sse {
       this.state = Sse.STATE_CONNECTING
 
       const query = new URLSearchParams()
+      query.append('sessionDuration', sessionStorage.getItem('sseDuration') || '0')
       query.append('keepaliveTime', String(this.options.keepaliveTime))
       query.append('clientId', this.clientId)
       query.append('clientVersion', Sse.version)
@@ -428,15 +441,31 @@ class Sse {
       this.clearReconnectTimer()
       const connectionId = this.connectionId
       if (connectionId !== undefined) {
+        if (this.isPageActive) {
+          this.isPageActive = false
+          this.handleChangeActiveEvent(true, false)
+        }
         this.clientClose = { connectionId, reason }
+        const duration = this.getDuration()
         const params = new URLSearchParams()
         params.set('clientId', this.clientId)
         params.set('connectionId', connectionId)
         params.set('reason', reason)
         params.set('sseVersion', Sse.version)
+        params.set('duration', String(duration.duration))
+        params.set('sessionDuration', String(duration.sessionDuration))
         return navigator.sendBeacon(`${this.options.url}/connect/disconnect.do`, params)
       } else {
         return false
+      }
+    }
+
+    this.getDuration = () => {
+      const sessionDuration = Math.round(Number(sessionStorage.getItem('sseDuration') || 0))
+      const duration = this.durationTime === null? 0 : Math.round((Date.now() - this.durationTime) / 1000)
+      return {
+        sessionDuration,
+        duration
       }
     }
 
@@ -504,6 +533,53 @@ class Sse {
       }
     }
 
+    // 挂机检测
+    setInterval(() => {
+      const leaveTimeout = this.options.leaveTimeout
+      const oldActive = this.isPageActive
+      const leaveTime = Date.now() - this.lastActiveTime
+      const newActive = leaveTime < leaveTimeout
+      // 状态发生改变, 恢复活跃使用 或 变成挂机状态.
+      if (oldActive !== newActive) {
+        this.handleChangeActiveEvent(oldActive, newActive)
+      }
+      this.isPageActive = newActive
+    }, this.options.leaveCheckInterval)
+
+    this.handleChangeActiveEvent = (oldActive, newActive) => {
+      const duration = this.getDuration()
+      if (newActive) {
+        this.durationTime = Date.now()
+      } else {
+        sessionStorage.setItem('sseDuration', String(duration.sessionDuration + duration.duration))
+        this.durationTime = null
+      }
+      const event = new MessageEvent('sse-change-active', {
+        data: {oldActive, newActive, duration}
+      })
+      const eventListeners = this.options.eventListeners[event.type]
+      if (eventListeners instanceof Function) {
+        try {
+          eventListeners.apply(this, [event])
+        } catch (e) {
+          console.warn(event.type + ' listeners error', e)
+        }
+      }
+      this._dispatchEvent(event)
+    }
+
+    this.handleLastActiveTime = (event) => {
+      if (window.requestAnimationFrame) {
+        window.requestAnimationFrame(() => {
+          this.lastActiveTime = Date.now()
+        });
+      } else {
+        this.lastActiveTime = Date.now()
+      }
+    }
+    document.addEventListener('mouseover', this.handleLastActiveTime, false)
+    document.addEventListener('click', this.handleLastActiveTime, false)
+
     // 页签关闭时
     window.addEventListener('unload', () => {
       this.close('unload')
@@ -530,5 +606,3 @@ class Sse {
 if (window.Sse === undefined) {
   window.Sse = Sse
 }
-
-export default Sse

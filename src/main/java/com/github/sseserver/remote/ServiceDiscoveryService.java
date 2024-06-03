@@ -13,11 +13,11 @@ import java.util.Objects;
 public interface ServiceDiscoveryService {
 
     static ServiceDiscoveryService newInstance(String groupName,
-                                               SseServerProperties.Remote remote,
+                                               SseServerProperties.ClusterConfig config,
                                                ListableBeanFactory beanFactory) {
-        SseServerProperties.DiscoveryEnum discoveryEnum = remote.getDiscovery();
+        SseServerProperties.DiscoveryEnum discoveryEnum = config.getDiscovery();
         if (discoveryEnum == SseServerProperties.DiscoveryEnum.AUTO) {
-            if (Objects.toString(remote.getNacos().getServerAddr(), "").length() > 0) {
+            if (!Objects.toString(config.getNacos().getServerAddr(), "").isEmpty()) {
                 discoveryEnum = SseServerProperties.DiscoveryEnum.NACOS;
             } else if (PlatformDependentUtil.isSupportSpringframeworkRedis() && beanFactory.getBeanNamesForType(PlatformDependentUtil.REDIS_CONNECTION_FACTORY_CLASS).length > 0) {
                 discoveryEnum = SseServerProperties.DiscoveryEnum.REDIS;
@@ -26,16 +26,16 @@ public interface ServiceDiscoveryService {
 
         switch (discoveryEnum) {
             case NACOS: {
-                SseServerProperties.Remote.Nacos nacos = remote.getNacos();
+                SseServerProperties.ClusterConfig.Nacos nacos = config.getNacos();
                 return new NacosServiceDiscoveryService(
                         groupName,
                         nacos.getServiceName(),
                         nacos.getClusterName(),
                         nacos.buildProperties(),
-                        remote);
+                        config);
             }
             case REDIS: {
-                SseServerProperties.Remote.Redis redis = remote.getRedis();
+                SseServerProperties.ClusterConfig.Redis redis = config.getRedis();
                 Object redisConnectionFactory;
                 try {
                     redisConnectionFactory = beanFactory.getBean(redis.getRedisConnectionFactoryBeanName());
@@ -47,13 +47,15 @@ public interface ServiceDiscoveryService {
                         groupName,
                         redis.getRedisKeyRootPrefix(),
                         redis.getRedisInstanceExpireSec(),
-                        remote);
+                        config);
             }
             default: {
                 throw new IllegalArgumentException("ServiceDiscoveryService newInstance fail! remote discovery config is empty!");
             }
         }
     }
+
+    boolean isPrimary();
 
     HttpPrincipal login(String authorization);
 
