@@ -11,7 +11,8 @@ public class SseServerProperties {
     public static final String PREFIX_CLUSTER = PREFIX + ".cluster.";
     public static final String PREFIX_CLUSTER_ROLE = PREFIX + ".cluster.%s.role";
     public static final String PREFIX_CLUSTER_PRIMARY = PREFIX + ".cluster.%s.primary";
-    public static final String DEFAULT_BEAN_NAME_CONNECTION_SERVICE = "defaultConnectionService";
+    public static final String DEFAULT_BEAN_NAME = "defaultConnectionService";
+    public static final String DEFAULT_GROUP_NAME = "default";
     private final Remote remote = new Remote();
     private final Map<String, ClusterConfig> cluster = new LinkedHashMap<>();
 

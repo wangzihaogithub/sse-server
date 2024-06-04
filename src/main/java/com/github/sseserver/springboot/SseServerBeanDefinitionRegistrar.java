@@ -146,7 +146,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
             registerConnectionService(names, enableLocalConnectionService);
         }
         if (names.length == 0) {
-            names = new String[]{SseServerProperties.DEFAULT_BEAN_NAME_CONNECTION_SERVICE};
+            names = new String[]{SseServerProperties.DEFAULT_BEAN_NAME};
             registerConnectionService(names, enableLocalConnectionService);
         }
         return names;
@@ -257,7 +257,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
                         SseServerAutoConfiguration.bindNacos(config.getNacos(), environment);
                         String groupName = config.getGroupName();
                         if (groupName == null || groupName.isEmpty()) {
-                            groupName = connectionServiceBeanName;
+                            groupName = SseServerProperties.DEFAULT_GROUP_NAME;
                         }
                         return ServiceDiscoveryService.newInstance(groupName, config, beanFactory);
                     });
