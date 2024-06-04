@@ -13,7 +13,7 @@ public interface Message extends Serializable {
     int FILTER_CHANNEL = (1 << 5);
 
     static String newId(String type, String serverId) {
-        return type + "" + serverId + "-" + SnowflakeIdWorker.INSTANCE.nextId();
+        return type + serverId + "-" + SnowflakeIdWorker.INSTANCE.nextId();
     }
 
     String getListenerName();

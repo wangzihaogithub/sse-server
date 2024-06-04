@@ -43,6 +43,8 @@ public interface MessageRepository extends AutoCloseable {
 
     void addDeleteListener(Consumer<Message> listener);
 
+    boolean isPrimary();
+
     interface Query {
         Serializable getTenantId();
 

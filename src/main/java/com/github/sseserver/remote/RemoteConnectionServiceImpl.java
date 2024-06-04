@@ -30,13 +30,13 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     private final String urlConnectionQueryService;
     private final String urlSendService;
     private final String urlRemoteConnectionService;
-    private final SseServerProperties.Remote.ConnectionService config;
+    private final SseServerProperties.ClusterConfig.ConnectionService config;
     private final Set<String> classNotFoundSet = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final String id;
     private boolean closeFlag = false;
 
     public RemoteConnectionServiceImpl(URL url, String account, String password,
-                                       SseServerProperties.Remote.ConnectionService config) {
+                                       SseServerProperties.ClusterConfig.ConnectionService config) {
         this.url = url;
         this.id = account;
         this.urlConnectionQueryService = url + "/ConnectionQueryService";
@@ -388,6 +388,15 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     public RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByConnectionId(Long connectionId) {
         Map<String, Object> request = new HashMap<>(1);
         request.put("connectionId", connectionId);
+        return asyncPostRemoteConnectionService("/disconnectByConnectionId", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByConnectionId(Long connectionId, Long duration, Long sessionDuration) {
+        Map<String, Object> request = new HashMap<>(1);
+        request.put("connectionId", connectionId);
+        request.put("duration", duration);
+        request.put("sessionDuration", sessionDuration);
         return asyncPostRemoteConnectionService("/disconnectByConnectionId", this::extract, request);
     }
 

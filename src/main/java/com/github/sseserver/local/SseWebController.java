@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -26,9 +27,8 @@ import org.springframework.web.context.request.async.DeferredResult;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.Part;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.Serializable;
+import java.io.*;
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -66,13 +66,8 @@ public class SseWebController<ACCESS_USER> {
     public static final String API_REPOSITORY_MESSAGES_JSON = "/connect/repositoryMessages.json";
     public static final String API_USER_JSON = "/connect/users.json";
 
-    /**
-     * @deprecated v1.2.8
-     */
-    @Deprecated
-    public static final String API_CONNECTIONS_JSON_V1 = "/connections";
     public static final String API_CONNECTIONS_JSON = "/connect/connections.json";
-
+    private static final byte[] SSE_APPEND_BYTES = "\nexport default Sse".getBytes(Charset.forName("UTF-8"));
     private final Logger logger = LoggerFactory.getLogger(getClass());
     @Autowired(required = false)
     protected HttpServletRequest request;
@@ -80,7 +75,7 @@ public class SseWebController<ACCESS_USER> {
     private final ClusterBatchDisconnectRunnable batchDisconnectRunnable = new ClusterBatchDisconnectRunnable(() -> localConnectionService != null ? localConnectionService.getCluster() : null);
     @Value("${server.port:8080}")
     private Integer serverPort;
-    private String sseServerIdHeaderName = "Sse-Server-Id";
+    private String sseServerIdHeaderName = "X-Sse-Server-Id";
     private Integer clientIdMaxConnections = 3;
     private Long keepaliveTime;
     private boolean enableGetJson = false;
@@ -125,25 +120,34 @@ public class SseWebController<ACCESS_USER> {
      * 前端文件
      */
     @RequestMapping("")
-    public Object index() {
-        return ssejs();
+    public Object index(@RequestParam(required = false, name = "script-type", defaultValue = "module") String type) throws IOException {
+        return ssejs(type);
     }
 
     /**
      * 前端文件
      */
     @RequestMapping("/sse.js")
-    public Object ssejs() {
+    public Object ssejs(@RequestParam(required = false, name = "script-type", defaultValue = "module") String type) throws IOException {
         HttpHeaders headers = new HttpHeaders();
+
         settingResponseHeader(headers);
         headers.set("Content-Type", "application/javascript;charset=utf-8");
-        Resource body = readSseJs();
+        Resource body = readSseJs(type);
         return new ResponseEntity<>(body, headers, HttpStatus.OK);
     }
 
-    protected Resource readSseJs() {
+    protected Resource readSseJs(String type) throws IOException {
         InputStream stream = SseWebController.class.getResourceAsStream("/sse.js");
-        return new InputStreamResource(stream);
+        if ("module".equalsIgnoreCase(type)) {
+            int bufferSize = Math.max(stream.available(), 4096);
+            ByteArrayOutputStream out = new ByteArrayOutputStream(bufferSize + SSE_APPEND_BYTES.length);
+            copy(stream, out, bufferSize);
+            out.write(SSE_APPEND_BYTES);
+            return new ByteArrayResource(out.toByteArray());
+        } else {
+            return new InputStreamResource(stream);
+        }
     }
 
     public void setLocalConnectionService(LocalConnectionService localConnectionService) {
@@ -152,9 +156,20 @@ public class SseWebController<ACCESS_USER> {
 
     @Autowired(required = false)
     public void setLocalConnectionServiceMap(Map<String, LocalConnectionService> localConnectionServiceMap) {
-        if (this.localConnectionService == null && localConnectionServiceMap != null && localConnectionServiceMap.size() > 0) {
-            this.localConnectionService = localConnectionServiceMap.values().iterator().next();
+        if (localConnectionServiceMap == null || localConnectionServiceMap.isEmpty()) {
+            return;
         }
+        this.localConnectionService = choseLocalConnectionService(localConnectionServiceMap);
+    }
+
+    /**
+     * 选择一个给当前SseWebController用的链接服务
+     *
+     * @return 给当前SseWebController用的链接服务 LocalConnectionService
+     * @since 1.2.16
+     */
+    protected LocalConnectionService choseLocalConnectionService(Map<String, LocalConnectionService> localConnectionServiceMap) {
+        return localConnectionServiceMap.values().iterator().next();
     }
 
     /**
@@ -229,10 +244,6 @@ public class SseWebController<ACCESS_USER> {
         disconnectClientIdMaxConnections(conncet, getClientIdMaxConnections());
     }
 
-    protected void onDisconnect(List<SseEmitter<ACCESS_USER>> disconnectList, ACCESS_USER accessUser, Map query) {
-
-    }
-
     protected ResponseEntity buildIfLoginVerifyErrorResponse(ACCESS_USER accessUser,
                                                              Map query, Map body,
                                                              Long keepaliveTime) {
@@ -266,7 +277,7 @@ public class SseWebController<ACCESS_USER> {
      */
     @RequestMapping(value = API_CONNECT_STREAM, method = {RequestMethod.GET, RequestMethod.POST})
     public Object connect(@RequestParam Map query, @RequestBody(required = false) Map body,
-                          Long keepaliveTime) {
+                          Long keepaliveTime, Long sessionDuration) {
         // args
         Map<String, Object> attributeMap = new LinkedHashMap<>(query);
         if (body != null) {
@@ -294,6 +305,7 @@ public class SseWebController<ACCESS_USER> {
         String channel = Objects.toString(attributeMap.get("channel"), null);
         emitter.setChannel(channel == null || channel.isEmpty() ? null : channel);
         emitter.setUserAgent(request.getHeader("User-Agent"));
+        emitter.setSessionDuration(sessionDuration);
         emitter.setRequestIp(getRequestIpAddr(request));
         emitter.setRequestDomain(getRequestDomain(request));
         emitter.setHttpCookies(request.getCookies());
@@ -433,22 +445,20 @@ public class SseWebController<ACCESS_USER> {
     @PostMapping(API_DISCONNECT_DO)
     public Object disconnect(Long connectionId, @RequestParam Map query,
                              Boolean cluster,
-                             @RequestParam(required = false, defaultValue = "5000") Long timeout) {
+                             @RequestParam(required = false, defaultValue = "5000") Long timeout,
+                             Long duration,
+                             Long sessionDuration) {
         if (connectionId == null) {
             return responseEntity(buildDisconnectResult(0, false));
         }
-        SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId);
+        SseEmitter<ACCESS_USER> disconnect = localConnectionService.disconnectByConnectionId(connectionId, duration, sessionDuration);
         int localCount = disconnect != null ? 1 : 0;
-        if (disconnect != null) {
-            ACCESS_USER currentUser = getAccessUser(API_DISCONNECT_DO);
-            onDisconnect(Collections.singletonList(disconnect), currentUser, query);
-        }
         if (cluster == null || cluster) {
             cluster = localConnectionService.isEnableCluster();
         }
         if (cluster && localCount == 0) {
             DeferredResult<ResponseEntity> result = new DeferredResult<>(timeout, responseEntity(buildDisconnectResult(localCount, true)));
-            localConnectionService.getCluster().disconnectByConnectionId(connectionId)
+            localConnectionService.getCluster().disconnectByConnectionId(connectionId, duration, sessionDuration)
                     .whenComplete((remoteCount, throwable) -> {
                         if (throwable != null) {
                             logger.warn("disconnectConnection exception = {}", throwable, throwable);
@@ -568,21 +578,6 @@ public class SseWebController<ACCESS_USER> {
         return result;
     }
 
-    /**
-     * @deprecated v1.2.8
-     */
-    @Deprecated
-    @GetMapping(API_CONNECTIONS_JSON_V1)
-    public Object connectionsV1(@RequestParam(required = false, defaultValue = "1") Integer pageNum,
-                                @RequestParam(required = false, defaultValue = "100") Integer pageSize,
-                                String name,
-                                String clientId,
-                                Long id,
-                                Boolean cluster,
-                                @RequestParam(required = false, defaultValue = "5000") Long timeout) {
-        return connections(pageNum, pageSize, name, clientId, id, cluster, timeout);
-    }
-
     @GetMapping(API_CONNECTIONS_JSON)
     public Object connections(@RequestParam(required = false, defaultValue = "1") Integer pageNum,
                               @RequestParam(required = false, defaultValue = "100") Integer pageSize,
@@ -652,11 +647,11 @@ public class SseWebController<ACCESS_USER> {
     }
 
     protected void settingResponseHeader(HttpHeaders responseHeaders) {
-        String sseServerIdHeaderName = this.sseServerIdHeaderName;
+        String sseServerIdHeaderName = getSseServerIdHeaderName();
         if (sseServerIdHeaderName != null && sseServerIdHeaderName.length() > 0) {
             responseHeaders.set(sseServerIdHeaderName, getSseServerId());
         }
-        responseHeaders.set("Sse-Server-Version", PlatformDependentUtil.SSE_SERVER_VERSION);
+        responseHeaders.set("X-Sse-Version", PlatformDependentUtil.SSE_SERVER_VERSION);
     }
 
     protected String getSseServerId() {
@@ -753,6 +748,31 @@ public class SseWebController<ACCESS_USER> {
 
     protected Object mapToConnectionVO(ConnectionDTO<ACCESS_USER> connectionDTO) {
         return connectionDTO;
+    }
+
+    protected String getRequestIpAddr(HttpServletRequest request) {
+        String ip = request.getHeader("x-forwarded-for");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        // 如果是多级代理，那么取第一个ip为客户ip
+        if (ip != null) {
+            ip = ip.split(",", 2)[0].trim();
+        }
+        return ip;
+    }
+
+    protected String getRequestDomain(HttpServletRequest request) {
+        StringBuffer url = request.getRequestURL();
+        StringBuffer sb = url.delete(url.length() - request.getRequestURI().length(), url.length());
+
+        if (sb.toString().startsWith("http://localhost")) {
+            String host = request.getHeader("host");
+            if (host != null && !host.isEmpty()) {
+                sb = new StringBuffer("http://" + host);
+            }
+        }
+        return WebUtil.rewriteHttpToHttpsIfSecure(sb.toString(), request.isSecure());
     }
 
     public static class ListenerReq {
@@ -949,31 +969,6 @@ public class SseWebController<ACCESS_USER> {
         }
     }
 
-    protected String getRequestIpAddr(HttpServletRequest request) {
-        String ip = request.getHeader("x-forwarded-for");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        // 如果是多级代理，那么取第一个ip为客户ip
-        if (ip != null) {
-            ip = ip.split(",", 2)[0].trim();
-        }
-        return ip;
-    }
-
-    protected String getRequestDomain(HttpServletRequest request) {
-        StringBuffer url = request.getRequestURL();
-        StringBuffer sb = url.delete(url.length() - request.getRequestURI().length(), url.length());
-
-        if (sb.toString().startsWith("http://localhost")) {
-            String host = request.getHeader("host");
-            if (host != null && !host.isEmpty()) {
-                sb = new StringBuffer("http://" + host);
-            }
-        }
-        return WebUtil.rewriteHttpToHttpsIfSecure(sb.toString(), request.isSecure());
-    }
-
     private static class ClusterBatchDisconnectRunnable implements Runnable {
         private final Collection<Long> batchDisconnectIdList = Collections.newSetFromMap(new ConcurrentHashMap<>());
         private final Supplier<ClusterConnectionService> serviceSupplier;
@@ -1008,6 +1003,18 @@ public class SseWebController<ACCESS_USER> {
                 service.disconnectByConnectionIds(idList);
             }
         }
+    }
+
+    public static long copy(InputStream source, OutputStream sink, int bufferSize)
+            throws IOException {
+        long nread = 0L;
+        byte[] buf = new byte[bufferSize];
+        int n;
+        while ((n = source.read(buf)) > 0) {
+            sink.write(buf, 0, n);
+            nread += n;
+        }
+        return nread;
     }
 
 }

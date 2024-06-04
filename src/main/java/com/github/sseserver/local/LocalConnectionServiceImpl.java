@@ -73,6 +73,15 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
     private int reconnectTime = 5000;
     private Integer serverPort;
+    private final boolean primary;
+
+    public LocalConnectionServiceImpl() {
+        this.primary = false;
+    }
+
+    public LocalConnectionServiceImpl(boolean primary) {
+        this.primary = primary;
+    }
 
     @Override
     public ScheduledExecutorService getScheduled() {
@@ -243,6 +252,26 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         } else {
             return null;
         }
+    }
+
+    @Override
+    public <ACCESS_USER> SseEmitter<ACCESS_USER> disconnectByConnectionId(Long connectionId, Long duration, Long sessionDuration) {
+        SseEmitter<ACCESS_USER> sseEmitter = getConnectionById(connectionId);
+        if (sseEmitter != null) {
+            if (duration != null || sessionDuration != null) {
+                if (duration == null) {
+                    duration = 0L;
+                }
+                if (sessionDuration == null) {
+                    sessionDuration = 0L;
+                }
+                sseEmitter.setSessionDuration(duration + sessionDuration);
+            }
+            if (sseEmitter.disconnect()) {
+                return sseEmitter;
+            }
+        }
+        return null;
     }
 
     @Override
@@ -666,6 +695,11 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
+    public boolean isPrimary() {
+        return primary;
+    }
+
+    @Override
     public void setBeanName(String beanName) {
         this.beanName = beanName;
     }
@@ -806,4 +840,10 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
         this.serverPort = serverPort;
     }
 
+    @Override
+    public String toString() {
+        return "LocalConnectionServiceImpl{" +
+                beanName + "[" + connectionMap.size() + "]" +
+                '}';
+    }
 }

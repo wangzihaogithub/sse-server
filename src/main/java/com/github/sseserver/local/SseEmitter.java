@@ -58,6 +58,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     private String requestIp;
     private String requestDomain;
     private String userAgent;
+    private Long sessionDuration;
     private Cookie[] httpCookies;
     /**
      * 前端已正在监听的钩子, 值是 {@link SseEventBuilder#name(String)}
@@ -219,6 +220,14 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
 
     public void setUserAgent(String userAgent) {
         this.userAgent = userAgent;
+    }
+
+    public void setSessionDuration(Long sessionDuration) {
+        this.sessionDuration = sessionDuration;
+    }
+
+    public Long getSessionDuration() {
+        return sessionDuration;
     }
 
     public int getCount() {

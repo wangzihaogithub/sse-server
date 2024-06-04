@@ -11,8 +11,17 @@ import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.BeanNameAware;
 
 public class DistributedConnectionServiceImpl implements DistributedConnectionService, BeanNameAware, BeanFactoryAware {
+    private final boolean primary;
     private BeanFactory beanFactory;
     private String beanName = getClass().getSimpleName();
+
+    public DistributedConnectionServiceImpl() {
+        this.primary = false;
+    }
+
+    public DistributedConnectionServiceImpl(boolean primary) {
+        this.primary = primary;
+    }
 
     @Override
     public SendService<QosCompletableFuture<Integer>> qos() {
@@ -60,8 +69,8 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
     }
 
     @Override
-    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
-        this.beanFactory = beanFactory;
+    public boolean isPrimary() {
+        return primary;
     }
 
     @Override
@@ -69,4 +78,15 @@ public class DistributedConnectionServiceImpl implements DistributedConnectionSe
         this.beanName = beanName;
     }
 
+    @Override
+    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+        this.beanFactory = beanFactory;
+    }
+
+    @Override
+    public String toString() {
+        return "DistributedConnectionServiceImpl{" +
+                beanName +
+                '}';
+    }
 }

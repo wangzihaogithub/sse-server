@@ -14,10 +14,13 @@ import java.util.function.Supplier;
 
 public interface ClusterConnectionService extends ConnectionQueryService, SendService<ClusterCompletableFuture<Integer, ClusterConnectionService>> {
 
-    static ClusterConnectionService newInstance(Supplier<Optional<LocalConnectionService>> localSupplier,
-                                                Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier) {
-        return new ClusterConnectionServiceImpl(localSupplier, remoteSupplier);
+    static ClusterConnectionService newInstance(Supplier<LocalConnectionService> localSupplier,
+                                                Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier,
+                                                boolean primary) {
+        return new ClusterConnectionServiceImpl(localSupplier, remoteSupplier, primary);
     }
+
+    boolean isPrimary();
 
     /* getUsers */
 
@@ -52,6 +55,8 @@ public interface ClusterConnectionService extends ConnectionQueryService, SendSe
     ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByAccessToken(String accessToken);
 
     ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByConnectionId(Long connectionId);
+
+    ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByConnectionId(Long connectionId, Long duration, Long sessionDuration);
 
     ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByConnectionIds(Collection<Long> connectionIds);
 }

@@ -39,6 +39,9 @@
         'connect-close': function (event) {
             setMessageInnerHTML(`connect-close ${event.data}. whoTriggerClose=${event.whoTriggerClose}`)
         },
+        'sse-change-active': function (event) {
+            setMessageInnerHTML(`sse-change-active ${JSON.stringify(event.data)}.`)
+        },
     }
     const query = {
         'access-token': '123'

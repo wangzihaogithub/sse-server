@@ -70,5 +70,7 @@ public interface RemoteConnectionService extends ConnectionQueryService, SendSer
 
     RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByConnectionId(Long connectionId);
 
+    RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByConnectionId(Long connectionId, Long duration, Long sessionDuration);
+
     RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByConnectionIds(Collection<Long> connectionIds);
 }

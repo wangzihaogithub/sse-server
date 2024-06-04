@@ -22,6 +22,11 @@ public class MySseWebController extends SseWebController<MyAccessUser> {
     private HttpServletRequest request;
 
     @Override
+    public boolean isEnableGetJson() {
+        return true;
+    }
+
+    @Override
     protected Object onMessage(String path, SseEmitter<MyAccessUser> connection, Map<String, Object> message) {
         if ("close".equals(path)) {
             connection.disconnect();

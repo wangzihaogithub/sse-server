@@ -33,7 +33,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
     private final String serviceName;
     private final String groupName;
     private final List<String> clusterName;
-    private final SseServerProperties.Remote remoteConfig;
+    private final SseServerProperties.ClusterConfig clusterConfig;
     private volatile ReferenceCounted<List<RemoteConnectionService>> connectionServiceListRef = new ReferenceCounted<>(Collections.emptyList());
     private volatile ReferenceCounted<List<RemoteMessageRepository>> messageRepositoryListRef = new ReferenceCounted<>(Collections.emptyList());
     private List<Instance> instanceList;
@@ -44,13 +44,13 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
                                         String serviceName,
                                         String clusterName,
                                         Properties nacosProperties,
-                                        SseServerProperties.Remote remoteConfig) {
+                                        SseServerProperties.ClusterConfig clusterConfig) {
         this.groupName = groupName;
         this.serviceName = serviceName;
         this.clusterName = clusterName == null || clusterName.isEmpty() ?
                 null : Arrays.asList(clusterName.split(","));
         this.account = SpringUtil.filterNonAscii(groupName + "-" + METADATA_VALUE_DEVICE_ID);
-        this.remoteConfig = remoteConfig;
+        this.clusterConfig = clusterConfig;
         try {
             this.namingService = createNamingService(nacosProperties);
         } catch (NacosException e) {
@@ -195,6 +195,11 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
     }
 
     @Override
+    public boolean isPrimary() {
+        return clusterConfig.isPrimary();
+    }
+
+    @Override
     public HttpPrincipal login(String authorization) {
         if (authorization == null || !authorization.startsWith("Basic ")) {
             return null;
@@ -237,7 +242,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
             String password = getPassword(instance);
             try {
                 URL url = new URL(String.format("http://%s:%d", instance.getIp(), instance.getPort()));
-                RemoteMessageRepository service = new RemoteMessageRepository(url, account, password, remoteConfig.getMessageRepository());
+                RemoteMessageRepository service = new RemoteMessageRepository(url, account, password, clusterConfig.getMessageRepository(), isPrimary());
                 list.add(service);
             } catch (MalformedURLException e) {
                 throw new IllegalStateException(
@@ -258,7 +263,7 @@ public class NacosServiceDiscoveryService implements ServiceDiscoveryService, Di
             String password = getPassword(instance);
             try {
                 URL url = new URL(String.format("http://%s:%d", instance.getIp(), instance.getPort()));
-                RemoteConnectionServiceImpl service = new RemoteConnectionServiceImpl(url, account, password, remoteConfig.getConnectionService());
+                RemoteConnectionServiceImpl service = new RemoteConnectionServiceImpl(url, account, password, clusterConfig.getConnectionService());
                 list.add(service);
             } catch (MalformedURLException e) {
                 throw new IllegalStateException(

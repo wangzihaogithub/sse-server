@@ -2,6 +2,7 @@ package com.github.sseserver.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.util.LinkedCaseInsensitiveMap;
 import org.springframework.util.StringUtils;
 
@@ -17,6 +18,19 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class SpringUtil {
+
+    public static <T> T getBean(String beanName, Class<T> type, ListableBeanFactory beanFactory) {
+        if (beanFactory.containsBeanDefinition(beanName)) {
+            try {
+                Object bean = beanFactory.getBean(beanName);
+                return type.isInstance(bean) ? (T) bean : null;
+            } catch (Exception e) {
+                return null;
+            }
+        } else {
+            return null;
+        }
+    }
 
     public static AsyncRestTemplate newAsyncRestTemplate(int connectTimeout, int readTimeout,
                                                          int threadsIfAsyncRequest, int threadsIfBlockRequest,
@@ -101,6 +115,37 @@ public class SpringUtil {
             }
         }
         return builder.toString();
+    }
+
+    private static String resolving(String url, Object... uriVariables) {
+        if (uriVariables.length == 0) {
+            return url;
+        }
+        StringBuilder sqlBuffer = new StringBuilder(url);
+        int urlLength = url.length();
+        int beginIndex = 0;
+        String beginSymbol = "{";
+        String endSymbol = "}";
+
+        int uriVariablesIndex = 0;
+        while (true) {
+            beginIndex = url.indexOf(beginSymbol, beginIndex);
+            if (beginIndex == -1) {
+                break;
+            }
+            beginIndex = beginIndex + beginSymbol.length();
+            int endIndex = url.indexOf(endSymbol, beginIndex);
+
+            int offset = urlLength - sqlBuffer.length();
+            int offsetBegin = beginIndex - beginSymbol.length() - offset;
+            int offsetEnd = endIndex + endSymbol.length() - offset;
+            if (uriVariablesIndex >= uriVariables.length) {
+                break;
+            }
+            sqlBuffer.replace(offsetBegin, offsetEnd, String.valueOf(uriVariables[uriVariablesIndex]));
+            uriVariablesIndex++;
+        }
+        return sqlBuffer.toString();
     }
 
     public interface AsyncClientHttpRequestFactory {
@@ -510,37 +555,6 @@ public class SpringUtil {
         public HttpHeaders getHeaders() {
             return headers;
         }
-    }
-
-    private static String resolving(String url, Object... uriVariables) {
-        if (uriVariables.length == 0) {
-            return url;
-        }
-        StringBuilder sqlBuffer = new StringBuilder(url);
-        int urlLength = url.length();
-        int beginIndex = 0;
-        String beginSymbol = "{";
-        String endSymbol = "}";
-
-        int uriVariablesIndex = 0;
-        while (true) {
-            beginIndex = url.indexOf(beginSymbol, beginIndex);
-            if (beginIndex == -1) {
-                break;
-            }
-            beginIndex = beginIndex + beginSymbol.length();
-            int endIndex = url.indexOf(endSymbol, beginIndex);
-
-            int offset = urlLength - sqlBuffer.length();
-            int offsetBegin = beginIndex - beginSymbol.length() - offset;
-            int offsetEnd = endIndex + endSymbol.length() - offset;
-            if (uriVariablesIndex >= uriVariables.length) {
-                break;
-            }
-            sqlBuffer.replace(offsetBegin, offsetEnd, String.valueOf(uriVariables[uriVariablesIndex]));
-            uriVariablesIndex++;
-        }
-        return sqlBuffer.toString();
     }
 
 }

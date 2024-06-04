@@ -47,6 +47,7 @@ public interface LocalConnectionService extends DistributedConnectionService, Co
     <ACCESS_USER> List<SseEmitter<ACCESS_USER>> disconnectByAccessToken(String accessToken);
 
     <ACCESS_USER> SseEmitter<ACCESS_USER> disconnectByConnectionId(Long connectionId);
+    <ACCESS_USER> SseEmitter<ACCESS_USER> disconnectByConnectionId(Long connectionId, Long duration, Long sessionDuration);
 
     <ACCESS_USER> List<SseEmitter<ACCESS_USER>> disconnectByConnectionIds(Collection<Long> connectionIds);
 

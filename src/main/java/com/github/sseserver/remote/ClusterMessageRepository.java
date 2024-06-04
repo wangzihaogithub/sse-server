@@ -24,15 +24,28 @@ public class ClusterMessageRepository implements MessageRepository {
     private final static Logger log = LoggerFactory.getLogger(ClusterConnectionServiceImpl.class);
     private final Supplier<MessageRepository> localRepositorySupplier;
     private final Supplier<ReferenceCounted<List<RemoteMessageRepository>>> remoteRepositorySupplier;
+    private final boolean primary;
 
+    /**
+     * @param localRepositorySupplier  非必填
+     * @param remoteRepositorySupplier 非必填
+     * @param primary 是否主要
+     */
     public ClusterMessageRepository(Supplier<MessageRepository> localRepositorySupplier,
-                                    Supplier<ReferenceCounted<List<RemoteMessageRepository>>> remoteRepositorySupplier) {
+                                    Supplier<ReferenceCounted<List<RemoteMessageRepository>>> remoteRepositorySupplier,
+                                    boolean primary) {
         this.localRepositorySupplier = localRepositorySupplier;
         this.remoteRepositorySupplier = remoteRepositorySupplier;
+        this.primary = primary;
+    }
+
+    @Override
+    public boolean isPrimary() {
+        return primary;
     }
 
     public MessageRepository getLocalRepository() {
-        return localRepositorySupplier.get();
+        return localRepositorySupplier != null ? localRepositorySupplier.get() : null;
     }
 
     public ReferenceCounted<List<RemoteMessageRepository>> getRemoteRepositoryRef() {
@@ -44,7 +57,12 @@ public class ClusterMessageRepository implements MessageRepository {
 
     @Override
     public String insert(Message message) {
-        return getLocalRepository().insert(message);
+        MessageRepository localRepository = getLocalRepository();
+        if (localRepository != null) {
+            return localRepository.insert(message);
+        } else {
+            return message.getId();
+        }
     }
 
     @Override
@@ -67,7 +85,10 @@ public class ClusterMessageRepository implements MessageRepository {
 
     @Override
     public void addDeleteListener(Consumer<Message> listener) {
-        getLocalRepository().addDeleteListener(listener);
+        MessageRepository localRepository = getLocalRepository();
+        if (localRepository != null) {
+            localRepository.addDeleteListener(listener);
+        }
     }
 
     public ClusterCompletableFuture<List<Message>, ClusterMessageRepository> listAsync() {
@@ -118,6 +139,7 @@ public class ClusterMessageRepository implements MessageRepository {
             BiFunction<T, T, T> reduce,
             Function<T, R> finisher,
             Supplier<T> supplier) {
+        MessageRepository localRepository = getLocalRepository();
         try (ReferenceCounted<List<RemoteMessageRepository>> ref = getRemoteRepositoryRef()) {
             List<RemoteMessageRepository> serviceList = ref.get();
 
@@ -130,7 +152,7 @@ public class ClusterMessageRepository implements MessageRepository {
             }
 
             // local method call
-            T localPart = localFunction.apply(getLocalRepository());
+            T localPart = localRepository != null ? localFunction.apply(localRepository) : null;
 
             ClusterCompletableFuture<R, ClusterMessageRepository> future = new ClusterCompletableFuture<>(remoteUrlList, this);
             CompletableFuture.join(remoteFutureList, future, () -> {
@@ -155,8 +177,11 @@ public class ClusterMessageRepository implements MessageRepository {
                         handleRemoteException(remoteFuture, exception, future);
                     }
                 }
-                T end = reduce.apply(remotePart, localPart);
-                return finisher.apply(end);
+                if (localRepository != null) {
+                    return finisher.apply(reduce.apply(remotePart, localPart));
+                } else {
+                    return finisher.apply(remotePart);
+                }
             });
             return future;
         }

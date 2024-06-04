@@ -14,6 +14,15 @@ public class MemoryMessageRepository implements MessageRepository {
         }
     });
     protected final List<Consumer<Message>> deleteListenerList = new LinkedList<>();
+    private final boolean primary;
+
+    public MemoryMessageRepository() {
+        this.primary = false;
+    }
+
+    public MemoryMessageRepository(boolean primary) {
+        this.primary = primary;
+    }
 
     @Override
     public String insert(Message message) {
@@ -64,6 +73,11 @@ public class MemoryMessageRepository implements MessageRepository {
     @Override
     public void addDeleteListener(Consumer<Message> listener) {
         deleteListenerList.add(listener);
+    }
+
+    @Override
+    public boolean isPrimary() {
+        return primary;
     }
 
     protected boolean match(Query query, Message message) {

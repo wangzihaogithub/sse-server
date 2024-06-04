@@ -24,26 +24,34 @@ import java.util.stream.Collectors;
 public class LocalController implements Closeable {
     private static final Charset UTF_8 = Charset.forName("UTF-8");
     private final HttpServer httpServer;
-    private final Supplier<Optional<LocalConnectionService>> localConnectionServiceSupplier;
+    private final Supplier<LocalConnectionService> localConnectionServiceSupplier;
     private final Supplier<MessageRepository> localMessageRepositorySupplier;
     private final Supplier<? extends ServiceDiscoveryService> discoverySupplier;
+    private final boolean primary;
 
-    public LocalController(Supplier<Optional<LocalConnectionService>> localConnectionServiceSupplier,
+    public LocalController(Supplier<LocalConnectionService> localConnectionServiceSupplier,
                            Supplier<MessageRepository> localMessageRepositorySupplier,
-                           Supplier<ServiceDiscoveryService> discoverySupplier) {
-        this(WebUtil.getIPAddress(), localConnectionServiceSupplier, localMessageRepositorySupplier, discoverySupplier);
+                           Supplier<ServiceDiscoveryService> discoverySupplier,
+                           boolean primary) {
+        this(WebUtil.getIPAddress(), localConnectionServiceSupplier, localMessageRepositorySupplier, discoverySupplier, primary);
     }
 
     public LocalController(String ip,
-                           Supplier<Optional<LocalConnectionService>> localConnectionServiceSupplier,
+                           Supplier<LocalConnectionService> localConnectionServiceSupplier,
                            Supplier<MessageRepository> localMessageRepositorySupplier,
-                           Supplier<ServiceDiscoveryService> discoverySupplier) {
+                           Supplier<ServiceDiscoveryService> discoverySupplier,
+                           boolean primary) {
         this.localMessageRepositorySupplier = localMessageRepositorySupplier;
         this.localConnectionServiceSupplier = localConnectionServiceSupplier;
         this.discoverySupplier = discoverySupplier;
+        this.primary = primary;
         this.httpServer = createHttpServer(ip);
         configHttpServer(httpServer);
         httpServer.start();
+    }
+
+    public boolean isPrimary() {
+        return primary;
     }
 
     public InetSocketAddress getAddress() {
@@ -56,6 +64,9 @@ public class LocalController implements Closeable {
         }
         InetSocketAddress address = httpServer.getAddress();
         ServiceDiscoveryService discoveryService = discoverySupplier.get();
+        if (discoveryService == null) {
+            return;
+        }
         for (int i = 0, retry = 3; i < retry; i++) {
             try {
                 discoveryService.registerInstance(address.getAddress().getHostAddress(), address.getPort());
@@ -87,12 +98,12 @@ public class LocalController implements Closeable {
 
     protected HttpContext configConnectionQueryService(HttpServer httpServer) {
         return httpServer.createContext("/ConnectionQueryService/",
-                new ConnectionQueryServiceHttpHandler(localConnectionServiceSupplier::get));
+                new ConnectionQueryServiceHttpHandler(localConnectionServiceSupplier));
     }
 
     protected HttpContext configSendService(HttpServer httpServer) {
         return httpServer.createContext("/SendService/",
-                new SendServiceHttpHandler(localConnectionServiceSupplier::get));
+                new SendServiceHttpHandler(localConnectionServiceSupplier));
     }
 
     protected HttpContext configRemoteConnectionService(HttpServer httpServer) {
@@ -135,20 +146,20 @@ public class LocalController implements Closeable {
     }
 
     public static class RemoteConnectionServiceHttpHandler extends AbstractHttpHandler {
-        private final Supplier<Optional<LocalConnectionService>> supplier;
+        private final Supplier<LocalConnectionService> supplier;
 
-        public RemoteConnectionServiceHttpHandler(Supplier<Optional<LocalConnectionService>> supplier) {
+        public RemoteConnectionServiceHttpHandler(Supplier<LocalConnectionService> supplier) {
             this.supplier = supplier;
         }
 
         @Override
         public void handle0(HttpExchange request) throws IOException {
+            LocalConnectionService service = supplier != null ? supplier.get() : null;
             String rpcMethodName = getRpcMethodName();
-            Optional<LocalConnectionService> service = supplier.get();
             switch (rpcMethodName) {
                 case "disconnectByUserId": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().disconnectByUserId(
+                    if (service != null) {
+                        writeResponse(request, service.disconnectByUserId(
                                 body("userId")
                         ).size());
                     } else {
@@ -157,8 +168,8 @@ public class LocalController implements Closeable {
                     break;
                 }
                 case "disconnectByAccessToken": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().disconnectByAccessToken(
+                    if (service != null) {
+                        writeResponse(request, service.disconnectByAccessToken(
                                 body("accessToken")
                         ).size());
                     } else {
@@ -167,9 +178,11 @@ public class LocalController implements Closeable {
                     break;
                 }
                 case "disconnectByConnectionId": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().disconnectByConnectionId(
-                                body("connectionId", Long.class)
+                    if (service != null) {
+                        writeResponse(request, service.disconnectByConnectionId(
+                                body("connectionId", Long.class),
+                                body("duration", Long.class),
+                                body("sessionDuration", Long.class)
                         ) != null ? 1 : 0);
                     } else {
                         writeResponse(request, 0);
@@ -177,12 +190,12 @@ public class LocalController implements Closeable {
                     break;
                 }
                 case "disconnectByConnectionIds": {
-                    if (service.isPresent()) {
+                    if (service != null) {
                         Collection<?> connectionIds = body("connectionIds", Collection.class);
                         if (connectionIds == null) {
                             writeResponse(request, 0);
                         } else {
-                            writeResponse(request, service.get().disconnectByConnectionIds(connectionIds.stream()
+                            writeResponse(request, service.disconnectByConnectionIds(connectionIds.stream()
                                     .map(TypeUtil::castToLong)
                                     .collect(Collectors.toList())
                             ).size());
@@ -201,26 +214,26 @@ public class LocalController implements Closeable {
     }
 
     public static class SendServiceHttpHandler extends AbstractHttpHandler {
-        private final Supplier<Optional<? extends SendService<Integer>>> supplier;
+        private final Supplier<? extends SendService<Integer>> supplier;
 
-        public SendServiceHttpHandler(Supplier<Optional<? extends SendService<Integer>>> supplier) {
+        public SendServiceHttpHandler(Supplier<? extends SendService<Integer>> supplier) {
             this.supplier = supplier;
         }
 
         @Override
         public void handle0(HttpExchange request) throws IOException {
             String rpcMethodName = getRpcMethodName();
-            Optional<? extends SendService<Integer>> service = supplier.get();
+            SendService<Integer> service = supplier != null ? supplier.get() : null;
 
-            if (service.isPresent()) {
+            if (service != null) {
                 Object scopeOnWriteable = body("scopeOnWriteable");
                 if (Boolean.TRUE.equals(scopeOnWriteable)) {
-                    service.get().scopeOnWriteable(() -> {
-                        handleCase(request, rpcMethodName, service.get());
+                    service.scopeOnWriteable(() -> {
+                        handleCase(request, rpcMethodName, service);
                         return null;
                     });
                 } else {
-                    handleCase(request, rpcMethodName, service.get());
+                    handleCase(request, rpcMethodName, service);
                 }
             } else {
                 writeResponse(request, 0);
@@ -388,20 +401,20 @@ public class LocalController implements Closeable {
     }
 
     public static class ConnectionQueryServiceHttpHandler extends AbstractHttpHandler {
-        private final Supplier<Optional<? extends ConnectionQueryService>> supplier;
+        private final Supplier<? extends ConnectionQueryService> supplier;
 
-        public ConnectionQueryServiceHttpHandler(Supplier<Optional<? extends ConnectionQueryService>> supplier) {
+        public ConnectionQueryServiceHttpHandler(Supplier<? extends ConnectionQueryService> supplier) {
             this.supplier = supplier;
         }
 
         @Override
         public void handle0(HttpExchange request) throws IOException {
             String rpcMethodName = getRpcMethodName();
-            Optional<? extends ConnectionQueryService> service = supplier.get();
+            ConnectionQueryService service = supplier != null ? supplier.get() : null;
             switch (rpcMethodName) {
                 case "isOnline": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().isOnline(
+                    if (service != null) {
+                        writeResponse(request, service.isOnline(
                                 query("userId")
                         ));
                     } else {
@@ -410,8 +423,8 @@ public class LocalController implements Closeable {
                     break;
                 }
                 case "getUser": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getUser(
+                    if (service != null) {
+                        writeResponse(request, service.getUser(
                                 query("userId")
                         ));
                     } else {
@@ -420,16 +433,16 @@ public class LocalController implements Closeable {
                     break;
                 }
                 case "getUsers": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getUsers());
+                    if (service != null) {
+                        writeResponse(request, service.getUsers());
                     } else {
                         writeResponse(request, Collections.emptyList());
                     }
                     break;
                 }
                 case "getUsersByListening": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getUsersByListening(
+                    if (service != null) {
+                        writeResponse(request, service.getUsersByListening(
                                 query("sseListenerName")
                         ));
                     } else {
@@ -438,8 +451,8 @@ public class LocalController implements Closeable {
                     break;
                 }
                 case "getUsersByTenantIdListening": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getUsersByTenantIdListening(
+                    if (service != null) {
+                        writeResponse(request, service.getUsersByTenantIdListening(
                                 query("tenantId"),
                                 query("sseListenerName")
                         ));
@@ -449,16 +462,16 @@ public class LocalController implements Closeable {
                     break;
                 }
                 case "getUserIds": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getUserIds(String.class));
+                    if (service != null) {
+                        writeResponse(request, service.getUserIds(String.class));
                     } else {
                         writeResponse(request, Collections.emptyList());
                     }
                     break;
                 }
                 case "getUserIdsByListening": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getUserIdsByListening(
+                    if (service != null) {
+                        writeResponse(request, service.getUserIdsByListening(
                                 query("sseListenerName"),
                                 String.class
                         ));
@@ -468,8 +481,8 @@ public class LocalController implements Closeable {
                     break;
                 }
                 case "getUserIdsByTenantIdListening": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getUserIdsByTenantIdListening(
+                    if (service != null) {
+                        writeResponse(request, service.getUserIdsByTenantIdListening(
                                 query("tenantId"),
                                 query("sseListenerName"),
                                 String.class
@@ -480,16 +493,16 @@ public class LocalController implements Closeable {
                     break;
                 }
                 case "getAccessTokens": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getAccessTokens());
+                    if (service != null) {
+                        writeResponse(request, service.getAccessTokens());
                     } else {
                         writeResponse(request, Collections.emptyList());
                     }
                     break;
                 }
                 case "getTenantIds": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getTenantIds(
+                    if (service != null) {
+                        writeResponse(request, service.getTenantIds(
                                 String.class
                         ));
                     } else {
@@ -498,48 +511,48 @@ public class LocalController implements Closeable {
                     break;
                 }
                 case "getConnectionDTOAll": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getConnectionDTOAll());
+                    if (service != null) {
+                        writeResponse(request, service.getConnectionDTOAll());
                     } else {
                         writeResponse(request, Collections.emptyList());
                     }
                     break;
                 }
                 case "getConnectionDTOByUserId": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getConnectionDTOByUserId(query("userId")));
+                    if (service != null) {
+                        writeResponse(request, service.getConnectionDTOByUserId(query("userId")));
                     } else {
                         writeResponse(request, Collections.emptyList());
                     }
                     break;
                 }
                 case "getChannels": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getChannels());
+                    if (service != null) {
+                        writeResponse(request, service.getChannels());
                     } else {
                         writeResponse(request, Collections.emptyList());
                     }
                     break;
                 }
                 case "getAccessTokenCount": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getAccessTokenCount());
+                    if (service != null) {
+                        writeResponse(request, service.getAccessTokenCount());
                     } else {
                         writeResponse(request, 0);
                     }
                     break;
                 }
                 case "getUserCount": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getUserCount());
+                    if (service != null) {
+                        writeResponse(request, service.getUserCount());
                     } else {
                         writeResponse(request, 0);
                     }
                     break;
                 }
                 case "getConnectionCount": {
-                    if (service.isPresent()) {
-                        writeResponse(request, service.get().getConnectionCount());
+                    if (service != null) {
+                        writeResponse(request, service.getConnectionCount());
                     } else {
                         writeResponse(request, 0);
                     }
@@ -562,8 +575,13 @@ public class LocalController implements Closeable {
 
         @Override
         public void handle0(HttpExchange request) throws IOException {
+            MessageRepository service = supplier != null ? supplier.get() : null;
+            if (service == null) {
+                request.sendResponseHeaders(404, 0);
+                return;
+            }
+
             String rpcMethodName = getRpcMethodName();
-            MessageRepository service = supplier.get();
             switch (rpcMethodName) {
                 case "insert": {
                     writeResponse(request, service.insert(
@@ -722,8 +740,11 @@ public class LocalController implements Closeable {
 
         @Override
         public Result authenticate(HttpExchange exchange) {
+            ServiceDiscoveryService service = supplier != null ? supplier.get() : null;
+            if (service == null) {
+                return new Failure(401);
+            }
             String authorization = exchange.getRequestHeaders().getFirst("Authorization");
-            ServiceDiscoveryService service = supplier.get();
             HttpPrincipal principal = service.login(authorization);
             if (principal != null) {
                 return new Success(principal);

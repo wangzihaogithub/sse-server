@@ -33,18 +33,27 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
     protected final MessageRepository messageRepository;
     protected final Map<String, QosCompletableFuture<Integer>> futureMap = new ConcurrentHashMap<>(32);
     protected final String serverId = SpringUtil.filterNonAscii(WebUtil.getIPAddress(WebUtil.port));
-
-    public AtLeastOnceSendService(LocalConnectionService localConnectionService, DistributedConnectionService distributedConnectionService, MessageRepository messageRepository) {
+    private boolean primary;
+    /**
+     * @param localConnectionService       非必填
+     * @param distributedConnectionService 非必填
+     * @param messageRepository            非必填
+     * @param primary 是否主要
+     */
+    public AtLeastOnceSendService(LocalConnectionService localConnectionService, DistributedConnectionService distributedConnectionService, MessageRepository messageRepository, boolean primary) {
         this.localConnectionService = localConnectionService;
         this.distributedConnectionService = distributedConnectionService;
         this.messageRepository = messageRepository;
-        this.messageRepository.addDeleteListener(message -> {
-            QosCompletableFuture<Integer> future = futureMap.remove(message.getId());
-            if (future != null) {
-                complete(future, 1);
-            }
-        });
-        if (localConnectionService != null) {
+        this.primary = primary;
+        if (messageRepository != null) {
+            messageRepository.addDeleteListener(message -> {
+                QosCompletableFuture<Integer> future = futureMap.remove(message.getId());
+                if (future != null) {
+                    complete(future, 1);
+                }
+            });
+        }
+        if (localConnectionService != null && messageRepository != null) {
             AtLeastResend<ACCESS_USER> atLeastResend = new AtLeastResend<>(messageRepository);
             localConnectionService.<ACCESS_USER>addConnectListener(atLeastResend::resend);
             localConnectionService.addListeningChangeWatch((Consumer<SseChangeEvent<ACCESS_USER, Set<String>>>) event -> {
@@ -57,7 +66,7 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
 
     public QosCompletableFuture<Integer> qosSend(Function<SendService, ?> sendFunction, Supplier<AtLeastOnceMessage> messageSupplier) {
         QosCompletableFuture<Integer> future = new QosCompletableFuture<>(Message.newId("qos", serverId));
-        if (distributedConnectionService.isEnableCluster()) {
+        if (distributedConnectionService != null && distributedConnectionService.isEnableCluster()) {
             ClusterConnectionService cluster = distributedConnectionService.getCluster();
 
             ClusterCompletableFuture<Integer, ClusterConnectionService> clusterFuture = cluster.scopeOnWriteable(
@@ -83,6 +92,10 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
             future.complete(0);
         }
         return future;
+    }
+
+    public boolean isPrimary() {
+        return primary;
     }
 
     @Override
@@ -223,6 +236,9 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
     }
 
     protected void enqueue(Message message, QosCompletableFuture<Integer> future) {
+        if (messageRepository == null) {
+            return;
+        }
         String messageId = future.getMessageId();
         message.setId(messageId);
         messageRepository.insert(message);
