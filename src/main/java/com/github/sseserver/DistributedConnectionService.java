@@ -34,4 +34,7 @@ public interface DistributedConnectionService {
      * @return spring的bean名称
      */
     String getBeanName();
+
+    boolean isPrimary();
+
 }

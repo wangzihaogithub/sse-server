@@ -27,23 +27,31 @@ public class LocalController implements Closeable {
     private final Supplier<LocalConnectionService> localConnectionServiceSupplier;
     private final Supplier<MessageRepository> localMessageRepositorySupplier;
     private final Supplier<? extends ServiceDiscoveryService> discoverySupplier;
+    private final boolean primary;
 
     public LocalController(Supplier<LocalConnectionService> localConnectionServiceSupplier,
                            Supplier<MessageRepository> localMessageRepositorySupplier,
-                           Supplier<ServiceDiscoveryService> discoverySupplier) {
-        this(WebUtil.getIPAddress(), localConnectionServiceSupplier, localMessageRepositorySupplier, discoverySupplier);
+                           Supplier<ServiceDiscoveryService> discoverySupplier,
+                           boolean primary) {
+        this(WebUtil.getIPAddress(), localConnectionServiceSupplier, localMessageRepositorySupplier, discoverySupplier, primary);
     }
 
     public LocalController(String ip,
                            Supplier<LocalConnectionService> localConnectionServiceSupplier,
                            Supplier<MessageRepository> localMessageRepositorySupplier,
-                           Supplier<ServiceDiscoveryService> discoverySupplier) {
+                           Supplier<ServiceDiscoveryService> discoverySupplier,
+                           boolean primary) {
         this.localMessageRepositorySupplier = localMessageRepositorySupplier;
         this.localConnectionServiceSupplier = localConnectionServiceSupplier;
         this.discoverySupplier = discoverySupplier;
+        this.primary = primary;
         this.httpServer = createHttpServer(ip);
         configHttpServer(httpServer);
         httpServer.start();
+    }
+
+    public boolean isPrimary() {
+        return primary;
     }
 
     public InetSocketAddress getAddress() {

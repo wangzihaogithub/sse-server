@@ -154,13 +154,14 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
 
     protected void registerConnectionService(String[] beanNames, boolean enableLocalConnectionService) {
         for (String beanName : beanNames) {
+            boolean primary = isPrimary(beanName);
             BeanDefinitionBuilder builder;
             if (enableLocalConnectionService && containsRegister(beanName, registerLocalConnectionService)) {
-                builder = BeanDefinitionBuilder.genericBeanDefinition(LocalConnectionService.class, LocalConnectionServiceImpl::new);
+                builder = BeanDefinitionBuilder.genericBeanDefinition(LocalConnectionService.class, () -> new LocalConnectionServiceImpl(primary));
             } else {
-                builder = BeanDefinitionBuilder.genericBeanDefinition(DistributedConnectionService.class, DistributedConnectionServiceImpl::new);
+                builder = BeanDefinitionBuilder.genericBeanDefinition(DistributedConnectionService.class, () -> new DistributedConnectionServiceImpl(primary));
             }
-            builder.setPrimary(isPrimary(beanName));
+            builder.setPrimary(primary);
             registerBeanDefinition(beanName, builder.getBeanDefinition());
         }
     }
@@ -170,15 +171,16 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
             if (!containsRegister(connectionServiceBeanName, registerClusterConnectionService)) {
                 continue;
             }
+            boolean primary = isPrimary(connectionServiceBeanName);
             BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(ClusterConnectionService.class,
                     () -> {
                         Supplier<LocalConnectionService> localSupplier = () -> getBean(connectionServiceBeanName, LocalConnectionService.class);
                         Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier =
                                 () -> getBean(getServiceDiscoveryServiceBeanName(connectionServiceBeanName), ServiceDiscoveryService.class)
                                         .getConnectionServiceListRef();
-                        return ClusterConnectionService.newInstance(localSupplier, remoteSupplier);
+                        return ClusterConnectionService.newInstance(localSupplier, remoteSupplier, primary);
                     });
-            builder.setPrimary(isPrimary(connectionServiceBeanName));
+            builder.setPrimary(primary);
             String beanName = getClusterConnectionServiceBeanName(connectionServiceBeanName);
             registerBeanDefinition(beanName, builder.getBeanDefinition());
         }
@@ -189,10 +191,11 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
             if (!containsRegister(connectionServiceBeanName, registerLocalMessageRepository)) {
                 continue;
             }
+            boolean primary = isPrimary(connectionServiceBeanName);
             BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(
                     MessageRepository.class,
-                    MemoryMessageRepository::new);
-            builder.setPrimary(isPrimary(connectionServiceBeanName));
+                    () -> new MemoryMessageRepository(primary));
+            builder.setPrimary(primary);
             String beanName = getLocalMessageRepositoryBeanName(connectionServiceBeanName);
             registerBeanDefinition(beanName, builder.getBeanDefinition());
         }
@@ -203,6 +206,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
             if (!containsRegister(connectionServiceBeanName, registerClusterMessageRepository)) {
                 continue;
             }
+            boolean primary = isPrimary(connectionServiceBeanName);
             BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(ClusterMessageRepository.class,
                     () -> {
                         Supplier<MessageRepository> localSupplier =
@@ -210,9 +214,9 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
                         Supplier<ReferenceCounted<List<RemoteMessageRepository>>> remoteSupplier =
                                 () -> getBean(getServiceDiscoveryServiceBeanName(connectionServiceBeanName), ServiceDiscoveryService.class)
                                         .getMessageRepositoryListRef();
-                        return new ClusterMessageRepository(localSupplier, remoteSupplier);
+                        return new ClusterMessageRepository(localSupplier, remoteSupplier, primary);
                     });
-            builder.setPrimary(isPrimary(connectionServiceBeanName));
+            builder.setPrimary(primary);
             String beanName = getClusterMessageRepositoryBeanName(connectionServiceBeanName);
             registerBeanDefinition(beanName, builder.getBeanDefinition());
         }
@@ -223,6 +227,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
             if (!containsRegister(connectionServiceBeanName, registerAtLeastOnce)) {
                 continue;
             }
+            boolean primary = isPrimary(connectionServiceBeanName);
             BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(SendService.class,
                     () -> {
                         String repositoryBeanName;
@@ -234,9 +239,9 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
                         MessageRepository repository = getBean(repositoryBeanName, MessageRepository.class);
                         DistributedConnectionService distributedConnectionService = getBean(connectionServiceBeanName, DistributedConnectionService.class);
                         LocalConnectionService localConnectionService = getBean(connectionServiceBeanName, LocalConnectionService.class);
-                        return new AtLeastOnceSendService(localConnectionService, distributedConnectionService, repository);
+                        return new AtLeastOnceSendService(localConnectionService, distributedConnectionService, repository, primary);
                     });
-            builder.setPrimary(isPrimary(connectionServiceBeanName));
+            builder.setPrimary(primary);
             String beanName = getAtLeastOnceBeanName(connectionServiceBeanName);
             registerBeanDefinition(beanName, builder.getBeanDefinition());
         }
@@ -247,6 +252,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
             if (!containsRegister(connectionServiceBeanName, registerServiceDiscoveryService)) {
                 continue;
             }
+            boolean primary = isPrimary(connectionServiceBeanName);
             BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(ServiceDiscoveryService.class,
                     () -> {
                         SseServerProperties properties = beanFactory.getBean(SseServerProperties.class);
@@ -262,7 +268,7 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
                         return ServiceDiscoveryService.newInstance(groupName, config, beanFactory);
                     });
 
-            builder.setPrimary(isPrimary(connectionServiceBeanName));
+            builder.setPrimary(primary);
             String beanName = getServiceDiscoveryServiceBeanName(connectionServiceBeanName);
             registerBeanDefinition(beanName, builder.getBeanDefinition());
         }
@@ -273,15 +279,16 @@ public class SseServerBeanDefinitionRegistrar implements ImportBeanDefinitionReg
             if (!containsRegister(connectionServiceBeanName, registerLocalConnectionController)) {
                 continue;
             }
+            boolean primary = isPrimary(connectionServiceBeanName);
             BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(LocalController.class,
                     () -> {
                         Supplier<LocalConnectionService> localConnectionServiceSupplier = () -> getBean(connectionServiceBeanName, LocalConnectionService.class);
                         Supplier<MessageRepository> localMessageRepositorySupplier = () -> getBean(getLocalMessageRepositoryBeanName(connectionServiceBeanName), MessageRepository.class);
                         Supplier<ServiceDiscoveryService> discoverySupplier = () -> getBean(getServiceDiscoveryServiceBeanName(connectionServiceBeanName), ServiceDiscoveryService.class);
-                        return new LocalController(localConnectionServiceSupplier, localMessageRepositorySupplier, discoverySupplier);
+                        return new LocalController(localConnectionServiceSupplier, localMessageRepositorySupplier, discoverySupplier, primary);
                     });
 
-            builder.setPrimary(isPrimary(connectionServiceBeanName));
+            builder.setPrimary(primary);
             String beanName = getLocalConnectionControllerBeanName(connectionServiceBeanName);
             registerBeanDefinition(beanName, builder.getBeanDefinition());
         }

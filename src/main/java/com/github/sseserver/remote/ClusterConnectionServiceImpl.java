@@ -24,15 +24,18 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     private final Supplier<LocalConnectionService> localSupplier;
     private final Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier;
     private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
-
+    private final boolean primary;
     /**
      * @param localSupplier  非必填
      * @param remoteSupplier 非必填
+     * @param primary 是否主要
      */
     public ClusterConnectionServiceImpl(Supplier<LocalConnectionService> localSupplier,
-                                        Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier) {
+                                        Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier,
+                                        boolean primary) {
         this.localSupplier = localSupplier;
         this.remoteSupplier = remoteSupplier;
+        this.primary = primary;
     }
 
     public Optional<LocalConnectionService> getLocalService() {
@@ -302,6 +305,11 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
                 e -> e.sendByTenantIdListening(tenantIds, eventName, body),
                 Integer::sum,
                 LambdaUtil.defaultZero());
+    }
+
+    @Override
+    public boolean isPrimary() {
+        return primary;
     }
 
     @Override

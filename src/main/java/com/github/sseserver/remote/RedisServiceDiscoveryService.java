@@ -179,7 +179,7 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
             String password = instance.getPassword();
             try {
                 URL url = new URL(String.format("http://%s:%d", instance.getIp(), instance.getPort()));
-                RemoteMessageRepository service = new RemoteMessageRepository(url, account, password, clusterConfig.getMessageRepository());
+                RemoteMessageRepository service = new RemoteMessageRepository(url, account, password, clusterConfig.getMessageRepository(), isPrimary());
                 list.add(service);
             } catch (MalformedURLException e) {
                 throw new IllegalStateException(

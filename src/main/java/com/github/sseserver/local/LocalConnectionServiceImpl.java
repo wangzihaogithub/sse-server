@@ -73,6 +73,15 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
     private int reconnectTime = 5000;
     private Integer serverPort;
+    private final boolean primary;
+
+    public LocalConnectionServiceImpl() {
+        this.primary = false;
+    }
+
+    public LocalConnectionServiceImpl(boolean primary) {
+        this.primary = primary;
+    }
 
     @Override
     public ScheduledExecutorService getScheduled() {
@@ -683,6 +692,11 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     @Override
     public String getBeanName() {
         return beanName;
+    }
+
+    @Override
+    public boolean isPrimary() {
+        return primary;
     }
 
     @Override

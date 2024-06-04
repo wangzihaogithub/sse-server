@@ -24,15 +24,24 @@ public class ClusterMessageRepository implements MessageRepository {
     private final static Logger log = LoggerFactory.getLogger(ClusterConnectionServiceImpl.class);
     private final Supplier<MessageRepository> localRepositorySupplier;
     private final Supplier<ReferenceCounted<List<RemoteMessageRepository>>> remoteRepositorySupplier;
+    private final boolean primary;
 
     /**
      * @param localRepositorySupplier  非必填
      * @param remoteRepositorySupplier 非必填
+     * @param primary 是否主要
      */
     public ClusterMessageRepository(Supplier<MessageRepository> localRepositorySupplier,
-                                    Supplier<ReferenceCounted<List<RemoteMessageRepository>>> remoteRepositorySupplier) {
+                                    Supplier<ReferenceCounted<List<RemoteMessageRepository>>> remoteRepositorySupplier,
+                                    boolean primary) {
         this.localRepositorySupplier = localRepositorySupplier;
         this.remoteRepositorySupplier = remoteRepositorySupplier;
+        this.primary = primary;
+    }
+
+    @Override
+    public boolean isPrimary() {
+        return primary;
     }
 
     public MessageRepository getLocalRepository() {

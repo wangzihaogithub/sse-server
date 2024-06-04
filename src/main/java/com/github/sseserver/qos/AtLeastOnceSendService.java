@@ -33,16 +33,18 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
     protected final MessageRepository messageRepository;
     protected final Map<String, QosCompletableFuture<Integer>> futureMap = new ConcurrentHashMap<>(32);
     protected final String serverId = SpringUtil.filterNonAscii(WebUtil.getIPAddress(WebUtil.port));
-
+    private boolean primary;
     /**
      * @param localConnectionService       非必填
      * @param distributedConnectionService 非必填
      * @param messageRepository            非必填
+     * @param primary 是否主要
      */
-    public AtLeastOnceSendService(LocalConnectionService localConnectionService, DistributedConnectionService distributedConnectionService, MessageRepository messageRepository) {
+    public AtLeastOnceSendService(LocalConnectionService localConnectionService, DistributedConnectionService distributedConnectionService, MessageRepository messageRepository, boolean primary) {
         this.localConnectionService = localConnectionService;
         this.distributedConnectionService = distributedConnectionService;
         this.messageRepository = messageRepository;
+        this.primary = primary;
         if (messageRepository != null) {
             messageRepository.addDeleteListener(message -> {
                 QosCompletableFuture<Integer> future = futureMap.remove(message.getId());
@@ -90,6 +92,10 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
             future.complete(0);
         }
         return future;
+    }
+
+    public boolean isPrimary() {
+        return primary;
     }
 
     @Override

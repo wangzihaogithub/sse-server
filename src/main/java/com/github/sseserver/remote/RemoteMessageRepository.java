@@ -37,16 +37,23 @@ public class RemoteMessageRepository implements MessageRepository {
     private final SseServerProperties.ClusterConfig.MessageRepository config;
     private final Set<String> classNotFoundSet = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private boolean closeFlag = false;
+    private final boolean primary;
 
-    public RemoteMessageRepository(URL url, String account, String password, SseServerProperties.ClusterConfig.MessageRepository config) {
+    public RemoteMessageRepository(URL url, String account, String password, SseServerProperties.ClusterConfig.MessageRepository config, boolean primary) {
         this.url = url;
         this.urlMessageRepository = url + "/MessageRepository";
         this.id = account;
         this.config = config;
+        this.primary = primary;
         this.restTemplate = SpringUtil.newAsyncRestTemplate(
                 connectTimeout, readTimeout,
                 threadsIfAsyncRequest, threadsIfBlockRequest,
                 account + "RemoteMessageRepository", account, password);
+    }
+
+    @Override
+    public boolean isPrimary() {
+        return primary;
     }
 
     @Override
