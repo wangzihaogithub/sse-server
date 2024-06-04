@@ -40,7 +40,6 @@ public class SseServerProperties {
                 SseServerBeanDefinitionRegistrar.registerAtLeastOnce
         )),
         CLIENT(Arrays.asList(
-                SseServerBeanDefinitionRegistrar.registerLocalMessageRepository,
                 SseServerBeanDefinitionRegistrar.registerClusterConnectionService,
                 SseServerBeanDefinitionRegistrar.registerClusterMessageRepository,
                 SseServerBeanDefinitionRegistrar.registerServiceDiscoveryService,

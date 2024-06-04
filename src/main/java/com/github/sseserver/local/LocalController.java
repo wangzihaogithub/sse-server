@@ -56,6 +56,9 @@ public class LocalController implements Closeable {
         }
         InetSocketAddress address = httpServer.getAddress();
         ServiceDiscoveryService discoveryService = discoverySupplier.get();
+        if (discoveryService == null) {
+            return;
+        }
         for (int i = 0, retry = 3; i < retry; i++) {
             try {
                 discoveryService.registerInstance(address.getAddress().getHostAddress(), address.getPort());

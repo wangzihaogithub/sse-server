@@ -13,6 +13,13 @@ spring:
   sse-server:
     remote:
       enabled: true
+    cluster:
+      c1:
+        role: client
+        redis:
+          redis-connection-factory-bean-name: c1redis
+      c2:
+        role: server
 
   redis:
     host: localhost
