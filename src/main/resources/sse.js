@@ -426,7 +426,7 @@ class Sse {
     }
 
     this.destroy = () => {
-      this._close('destroy')
+      this.close('destroy')
     }
 
     this.switchURL = (newUrl) => {
