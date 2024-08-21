@@ -967,14 +967,15 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             if (requestSet.isEmpty()) {
                 return;
             }
+            ArrayList<Request> list;
             synchronized (requestSet) {
-                ArrayList<Request> list = new ArrayList<>(requestSet);
+                list = new ArrayList<>(requestSet);
                 requestSet.clear();
-                ClusterConnectionService cluster = localConnectionService.getCluster();
-                if (cluster instanceof ClusterConnectionServiceImpl) {
-                    for (Request request : list) {
-                        ((ClusterConnectionServiceImpl) cluster).active(request.userId, request.accessToken);
-                    }
+            }
+            ClusterConnectionService cluster = localConnectionService.getCluster();
+            if (cluster instanceof ClusterConnectionServiceImpl) {
+                for (Request request : list) {
+                    ((ClusterConnectionServiceImpl) cluster).active(request.userId, request.accessToken);
                 }
             }
         }
