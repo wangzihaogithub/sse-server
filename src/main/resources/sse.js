@@ -426,7 +426,7 @@ class Sse {
     }
 
     this.destroy = () => {
-      this.close('destroy')
+      this._close('destroy')
     }
 
     this.switchURL = (newUrl) => {
@@ -434,7 +434,7 @@ class Sse {
         return
       }
       this.options.url = newUrl
-      this.close('switchURL')
+      this._close('switchURL')
       this.newEventSource()
     }
 
@@ -468,6 +468,11 @@ class Sse {
     }
 
     this.close = (reason = 'close') => {
+      this._close(reason)
+      window_sessionStorage.removeItem(this.options.sseDurationKey)
+    }
+
+    this._close = (reason) => {
       if (this.state === Sse.STATE_CLOSED) {
         return false
       }
@@ -619,11 +624,11 @@ class Sse {
 
     // 页签关闭时
     window_addEventListener('unload', () => {
-      this.close('unload')
+      this._close('unload')
     }, false)
 
     window_addEventListener('beforeunload', () => {
-      this.close('beforeunload')
+      this._close('beforeunload')
     }, false)
 
     // 监听浏览器窗口切换时
@@ -631,7 +636,7 @@ class Sse {
       if (getVisibilityState() === 'visible') {
         this.newEventSource()
       } else {
-        this.close('visibilitychange')
+        this._close('visibilitychange')
       }
     })
 
