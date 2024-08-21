@@ -9,7 +9,6 @@ import com.github.sseserver.util.ReferenceCounted;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 public interface ClusterConnectionService extends ConnectionQueryService, SendService<ClusterCompletableFuture<Integer, ClusterConnectionService>> {
@@ -59,4 +58,30 @@ public interface ClusterConnectionService extends ConnectionQueryService, SendSe
     ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByConnectionId(Long connectionId, Long duration, Long sessionDuration);
 
     ClusterCompletableFuture<Integer, ClusterConnectionService> disconnectByConnectionIds(Collection<Long> connectionIds);
+
+    /**
+     * 清零已统计的在线时长
+     *
+     * @param userId 用户ID
+     * @return 清空的链接
+     */
+    default ClusterCompletableFuture<Integer, ClusterConnectionService> clearDurationByUserId(Serializable userId) {
+        return setDurationByUserId(userId, 0L);
+    }
+
+    default ClusterCompletableFuture<Integer, ClusterConnectionService> clearDurationByAccessToken(String accessToken) {
+        return setDurationByAccessToken(accessToken, 0L);
+    }
+
+    /**
+     * 修改已统计的在线时长
+     *
+     * @param userId         用户ID
+     * @param durationSecond 在线时长（秒）
+     * @return 修改的链接
+     */
+    ClusterCompletableFuture<Integer, ClusterConnectionService> setDurationByUserId(Serializable userId, long durationSecond);
+
+    ClusterCompletableFuture<Integer, ClusterConnectionService> setDurationByAccessToken(String accessToken, long durationSecond);
+
 }

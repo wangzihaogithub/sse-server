@@ -47,9 +47,43 @@ public interface LocalConnectionService extends DistributedConnectionService, Co
     <ACCESS_USER> List<SseEmitter<ACCESS_USER>> disconnectByAccessToken(String accessToken);
 
     <ACCESS_USER> SseEmitter<ACCESS_USER> disconnectByConnectionId(Long connectionId);
+
     <ACCESS_USER> SseEmitter<ACCESS_USER> disconnectByConnectionId(Long connectionId, Long duration, Long sessionDuration);
 
     <ACCESS_USER> List<SseEmitter<ACCESS_USER>> disconnectByConnectionIds(Collection<Long> connectionIds);
+
+    /**
+     * 清零已统计的在线时长
+     *
+     * @param userId        用户ID
+     * @param <ACCESS_USER> 用户
+     * @return 清空的链接
+     */
+    default <ACCESS_USER> List<SseEmitter<ACCESS_USER>> clearDurationByUserId(Serializable userId) {
+        return setDurationByUserId(userId, 0L);
+    }
+
+    default <ACCESS_USER> List<SseEmitter<ACCESS_USER>> clearDurationByAccessToken(String accessToken) {
+        return setDurationByAccessToken(accessToken, 0L);
+    }
+
+    default <ACCESS_USER> SseEmitter<ACCESS_USER> clearDurationByConnectionId(Long connectionId) {
+        return setDurationByConnectionId(connectionId, 0L);
+    }
+
+    /**
+     * 修改已统计的在线时长
+     *
+     * @param userId         用户ID
+     * @param durationSecond 在线时长（秒）
+     * @param <ACCESS_USER>  用户
+     * @return 清空的链接
+     */
+    <ACCESS_USER> List<SseEmitter<ACCESS_USER>> setDurationByUserId(Serializable userId, long durationSecond);
+
+    <ACCESS_USER> List<SseEmitter<ACCESS_USER>> setDurationByAccessToken(String accessToken, long durationSecond);
+
+    <ACCESS_USER> SseEmitter<ACCESS_USER> setDurationByConnectionId(Long connectionId, long durationSecond);
 
     /* getConnectionId */
 

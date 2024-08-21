@@ -25,10 +25,11 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
     private final Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier;
     private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
     private final boolean primary;
+
     /**
      * @param localSupplier  非必填
      * @param remoteSupplier 非必填
-     * @param primary 是否主要
+     * @param primary        是否主要
      */
     public ClusterConnectionServiceImpl(Supplier<LocalConnectionService> localSupplier,
                                         Supplier<ReferenceCounted<List<RemoteConnectionService>>> remoteSupplier,
@@ -459,6 +460,32 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
         return mapReduce(
                 e -> e.disconnectByConnectionIds(connectionIds),
                 e -> e.disconnectByConnectionIds(connectionIds).size(),
+                Integer::sum,
+                LambdaUtil.defaultZero());
+    }
+
+    @Override
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> setDurationByUserId(Serializable userId, long durationSecond) {
+        return mapReduce(
+                e -> e.setDurationByUserId(userId, durationSecond),
+                e -> e.setDurationByUserId(userId, durationSecond).size(),
+                Integer::sum,
+                LambdaUtil.defaultZero());
+    }
+
+    @Override
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> setDurationByAccessToken(String accessToken, long durationSecond) {
+        return mapReduce(
+                e -> e.setDurationByAccessToken(accessToken, durationSecond),
+                e -> e.setDurationByAccessToken(accessToken, durationSecond).size(),
+                Integer::sum,
+                LambdaUtil.defaultZero());
+    }
+
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> active(Serializable userId, String accessToken) {
+        return mapReduce(
+                e -> e.active(userId, accessToken),
+                e -> 0,
                 Integer::sum,
                 LambdaUtil.defaultZero());
     }

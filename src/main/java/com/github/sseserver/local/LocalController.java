@@ -157,6 +157,35 @@ public class LocalController implements Closeable {
             LocalConnectionService service = supplier != null ? supplier.get() : null;
             String rpcMethodName = getRpcMethodName();
             switch (rpcMethodName) {
+                case "active": {
+                    if (service instanceof LocalConnectionServiceImpl) {
+                        ((LocalConnectionServiceImpl) service).localActive(body("userId"), body("accessToken"));
+                        writeResponse(request, 1);
+                    } else {
+                        writeResponse(request, 0);
+                    }
+                    break;
+                }
+                case "setDurationByUserId": {
+                    if (service != null) {
+                        writeResponse(request, service.setDurationByUserId(
+                                        body("userId"), body("durationSecond"))
+                                .size());
+                    } else {
+                        writeResponse(request, 0);
+                    }
+                    break;
+                }
+                case "setDurationByAccessToken": {
+                    if (service != null) {
+                        writeResponse(request, service.setDurationByAccessToken(
+                                        body("accessToken"), body("durationSecond"))
+                                .size());
+                    } else {
+                        writeResponse(request, 0);
+                    }
+                    break;
+                }
                 case "disconnectByUserId": {
                     if (service != null) {
                         writeResponse(request, service.disconnectByUserId(

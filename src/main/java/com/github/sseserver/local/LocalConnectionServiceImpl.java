@@ -68,12 +68,16 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     protected final Map<String, List<Predicate<SseEmitter>>> connectListenerMap = new ConcurrentHashMap<>();
     protected final Map<String, List<Predicate<SseEmitter>>> disconnectListenerMap = new ConcurrentHashMap<>();
     private final ThreadLocal<Boolean> scopeOnWriteableThreadLocal = new ThreadLocal<>();
+    private final boolean primary;
+    private final Map<String, Long> setDurationByUserIdMap = new ConcurrentHashMap<>();
+    private final Map<String, Long> setDurationByAccessTokenMap = new ConcurrentHashMap<>();
     private BeanFactory beanFactory;
     private String beanName = getClass().getSimpleName();
     private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
     private int reconnectTime = 5000;
     private Integer serverPort;
-    private final boolean primary;
+    private volatile BatchActiveRunnable clusterBatchActiveRunnable;
+    private long clusterBatchActiveDelay = 500L;
 
     public LocalConnectionServiceImpl() {
         this.primary = false;
@@ -203,6 +207,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                 log.debug("sse {} connection create : {}", beanName, e);
             }
             notifyListener(e, connectListenerList, connectListenerMap);
+            notifyActive(userId, accessToken);
         });
         result.addListeningWatch(e -> {
             for (Consumer<SseChangeEvent<?, Set<String>>> changeEventConsumer : new ArrayList<>(listeningChangeWatchList)) {
@@ -241,6 +246,48 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                 log.error("sse {} send {} IOException:{}", beanName, result, e, e);
             }
             return null;
+        }
+    }
+
+    public long getClusterBatchActiveDelay() {
+        return clusterBatchActiveDelay;
+    }
+
+    public void setClusterBatchActiveDelay(long clusterBatchActiveDelay) {
+        this.clusterBatchActiveDelay = clusterBatchActiveDelay;
+    }
+
+    private void notifyActive(String userId, String accessToken) {
+        localActive(userId, accessToken);
+        if (clusterBatchActiveRunnable != null || isEnableCluster()) {
+            if (clusterBatchActiveRunnable == null) {
+                synchronized (this) {
+                    if (clusterBatchActiveRunnable == null) {
+                        clusterBatchActiveRunnable = new BatchActiveRunnable(this);
+                    }
+                }
+            }
+            clusterBatchActiveRunnable.active(userId, accessToken);
+            getScheduled().schedule(clusterBatchActiveRunnable, clusterBatchActiveDelay, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    public void localActive(String userId, String accessToken) {
+        removeSetDuration(userId, accessToken);
+    }
+
+    private void removeSetDuration(String userId, String accessToken) {
+        Long setDurationByAccessToken = setDurationByAccessTokenMap.remove(wrapStringKey(accessToken));
+        if (setDurationByAccessToken != null) {
+            for (SseEmitter<Object> e : getConnectionByAccessToken(accessToken)) {
+                sendSetDuration(e, setDurationByAccessToken);
+            }
+        }
+        Long setDurationByUserId = setDurationByUserIdMap.remove(wrapStringKey(userId));
+        if (setDurationByUserId != null) {
+            for (SseEmitter<Object> e : getConnectionByUserId(accessToken)) {
+                sendSetDuration(e, setDurationByUserId);
+            }
         }
     }
 
@@ -287,6 +334,60 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             }
         }
         return disconnectList;
+    }
+
+    private <ACCESS_USER> boolean sendSetDuration(SseEmitter<ACCESS_USER> result, long durationSecond) {
+        try {
+            result.send(SseEmitter.event()
+                    .name("_set-duration")
+                    .data("{\"duration\":\"" + durationSecond + "\"}"));
+            return true;
+        } catch (IOException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("sse {} setDuration{} {} IOException:{}", beanName, durationSecond, result, e, e);
+            }
+            return false;
+        }
+    }
+
+    @Override
+    public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> setDurationByUserId(Serializable userId, long durationSecond) {
+        List<SseEmitter<ACCESS_USER>> list = getConnectionByUserId(userId);
+        List<SseEmitter<ACCESS_USER>> result = new ArrayList<>(list.size());
+        for (SseEmitter<ACCESS_USER> emitter : list) {
+            if (sendSetDuration(emitter, durationSecond)) {
+                result.add(emitter);
+            }
+        }
+        if (result.isEmpty()) {
+            setDurationByUserIdMap.put(wrapStringKey(userId), durationSecond);
+        }
+        return result;
+    }
+
+    @Override
+    public <ACCESS_USER> List<SseEmitter<ACCESS_USER>> setDurationByAccessToken(String accessToken, long durationSecond) {
+        List<SseEmitter<ACCESS_USER>> list = getConnectionByAccessToken(accessToken);
+        List<SseEmitter<ACCESS_USER>> result = new ArrayList<>(list.size());
+        for (SseEmitter<ACCESS_USER> emitter : list) {
+            if (sendSetDuration(emitter, durationSecond)) {
+                result.add(emitter);
+            }
+        }
+        if (result.isEmpty()) {
+            setDurationByAccessTokenMap.put(wrapStringKey(accessToken), durationSecond);
+        }
+        return result;
+    }
+
+    @Override
+    public <ACCESS_USER> SseEmitter<ACCESS_USER> setDurationByConnectionId(Long connectionId, long durationSecond) {
+        SseEmitter<ACCESS_USER> result = getConnectionById(connectionId);
+        if (sendSetDuration(result, durationSecond)) {
+            return result;
+        } else {
+            return null;
+        }
     }
 
     @Override
@@ -518,8 +619,6 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                 .collect(Collectors.toList());
     }
 
-    /* getChannels */
-
     @Override
     public List<String> getChannels() {
         return getConnectionAll().stream()
@@ -528,6 +627,8 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                 .distinct()
                 .collect(Collectors.toList());
     }
+
+    /* getChannels */
 
     @Override
     public <ACCESS_USER> ACCESS_USER getUser(Serializable userId) {
@@ -695,13 +796,13 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     @Override
-    public boolean isPrimary() {
-        return primary;
+    public void setBeanName(String beanName) {
+        this.beanName = beanName;
     }
 
     @Override
-    public void setBeanName(String beanName) {
-        this.beanName = beanName;
+    public boolean isPrimary() {
+        return primary;
     }
 
     @Override
@@ -846,4 +947,60 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                 beanName + "[" + connectionMap.size() + "]" +
                 '}';
     }
+
+    private static class BatchActiveRunnable implements Runnable {
+        private final LocalConnectionServiceImpl localConnectionService;
+        private final Set<Request> requestSet = new LinkedHashSet<>();
+
+        private BatchActiveRunnable(LocalConnectionServiceImpl localConnectionService) {
+            this.localConnectionService = localConnectionService;
+        }
+
+        public void active(String userId, String accessToken) {
+            synchronized (requestSet) {
+                requestSet.add(new Request(userId, accessToken));
+            }
+        }
+
+        @Override
+        public void run() {
+            if (requestSet.isEmpty()) {
+                return;
+            }
+            synchronized (requestSet) {
+                ArrayList<Request> list = new ArrayList<>(requestSet);
+                requestSet.clear();
+                ClusterConnectionService cluster = localConnectionService.getCluster();
+                if (cluster instanceof ClusterConnectionServiceImpl) {
+                    for (Request request : list) {
+                        ((ClusterConnectionServiceImpl) cluster).active(request.userId, request.accessToken);
+                    }
+                }
+            }
+        }
+
+        private static class Request {
+            final String userId;
+            final String accessToken;
+
+            private Request(String userId, String accessToken) {
+                this.userId = userId;
+                this.accessToken = accessToken;
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                if (this == o) return true;
+                if (!(o instanceof Request)) return false;
+                Request request = (Request) o;
+                return Objects.equals(userId, request.userId) && Objects.equals(accessToken, request.accessToken);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(userId, accessToken);
+            }
+        }
+    }
+
 }

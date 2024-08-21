@@ -407,6 +407,30 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
         return asyncPostRemoteConnectionService("/disconnectByConnectionIds", this::extract, request);
     }
 
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> setDurationByUserId(Serializable userId, long durationSecond) {
+        Map<String, Object> request = new HashMap<>(2);
+        request.put("userId", userId);
+        request.put("durationSecond", durationSecond);
+        return asyncPostRemoteConnectionService("/setDurationByUserId", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> setDurationByAccessToken(String accessToken, long durationSecond) {
+        Map<String, Object> request = new HashMap<>(2);
+        request.put("accessToken", accessToken);
+        request.put("durationSecond", durationSecond);
+        return asyncPostRemoteConnectionService("/setDurationByAccessToken", this::extract, request);
+    }
+
+    @Override
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> active(Serializable userId, String accessToken) {
+        Map<String, Object> request = new HashMap<>(2);
+        request.put("userId", userId);
+        request.put("accessToken", accessToken);
+        return asyncPostRemoteConnectionService("/active", this::extract, request);
+    }
+
     protected <T> RemoteCompletableFuture<T, RemoteConnectionService> asyncGetConnectionQueryService(String uri, Function<HttpEntity<Response>, T> extract, Object... uriVariables) {
         return asyncGet(urlConnectionQueryService + uri, extract, uriVariables);
     }

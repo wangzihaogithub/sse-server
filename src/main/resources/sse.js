@@ -9,11 +9,11 @@
  *   <dependency>
  *      <groupId>com.github.wangzihaogithub</groupId>
  *      <artifactId>sse-server</artifactId>
- *      <version>1.2.16</version>
+ *      <version>1.2.17</version>
  *   </dependency>
  */
 class Sse {
-  static version = '1.2.16'
+  static version = '1.2.17'
   static DEFAULT_OPTIONS = {
     url: '/api/sse',
     keepaliveTime: 900000,
@@ -26,7 +26,11 @@ class Sse {
     reconnectTime: null,
     useWindowEventBus: true,
     leaveTimeout: 5000,
-    leaveCheckInterval: 500
+    leaveCheckInterval: 500,
+    sseDurationKey: '',
+    windowGlobal: window,
+    documentGlobal: document,
+    jsonGlobal: JSON
   }
   static IMPORT_MODULE_TIMESTAMP = Date.now()
   static DEFAULT_RECONNECT_TIME = 5000
@@ -76,25 +80,52 @@ class Sse {
       this.options.eventListeners = eventListeners
     }
 
+    let {
+      MessageEvent: window_MessageEvent,
+      EventSource: window_EventSource,
+      URLSearchParams: window_URLSearchParams,
+      performance: window_performance,
+      screen: window_screen,
+      localStorage: window_localStorage,
+      sessionStorage: window_sessionStorage,
+      dispatchEvent: window_dispatchEvent,
+      removeEventListener: window_removeEventListener,
+      requestAnimationFrame: window_requestAnimationFrame,
+      addEventListener: window_addEventListener
+    } = this.options.windowGlobal
+
+    let {
+      addEventListener: document_addEventListener,
+      getVisibilityState = () => this.options.documentGlobal.visibilityState
+    } = this.options.documentGlobal
+
+    let {
+      parse: json_parse,
+      stringify: json_stringify
+    } = this.options.jsonGlobal
+
+    if (!this.options.sseDurationKey) {
+      this.options.sseDurationKey = `${this.options.url}-sseDuration`
+    }
     if (!this.options.accessTimestamp) {
-      const accessTimestamp = sessionStorage.getItem('sseAccessTimestamp')
+      const accessTimestamp = window_sessionStorage.getItem('sseAccessTimestamp')
       this.options.accessTimestamp = accessTimestamp ? Number(accessTimestamp) : Date.now()
     }
-    sessionStorage.setItem('sseAccessTimestamp', `${this.options.accessTimestamp}`)
+    window_sessionStorage.setItem('sseAccessTimestamp', `${this.options.accessTimestamp}`)
 
-    let clientId = this.options.clientId || localStorage.getItem('sseClientId')
+    let clientId = this.options.clientId || window_localStorage.getItem('sseClientId')
     const h = () => Math.floor(65536 * (1 + Math.random())).toString(16).substring(1)
     if (!clientId) {
       clientId = `${h() + h()}-${h()}-${h()}-${h()}-${h()}${h()}${h()}`
     }
-    localStorage.setItem('sseClientId', clientId)
+    window_localStorage.setItem('sseClientId', clientId)
     this.clientId = clientId
     this.instanceId = `${h() + h()}-${h()}-${h()}-${h()}-${h()}${h()}${h()}`
     this.clientClose = null
 
     this.handleConnectionFinish = (event) => {
       this.clearReconnectTimer()
-      const res = JSON.parse(event.data)
+      const res = json_parse(event.data)
       this.connectResponse = res
       this.connectionId = res.connectionId
       this.reconnectDuration = this.options.reconnectTime || res.reconnectTime || Sse.DEFAULT_RECONNECT_TIME
@@ -139,11 +170,16 @@ class Sse {
       }
     }
 
+    this.handleSetDuration = (event) => {
+      let res = json_parse(event.data)
+      window_sessionStorage.setItem(this.options.sseDurationKey, res && res.duration || '0')
+    }
+
     this.handleConnectionClose = (event) => {
       this.state = Sse.STATE_CLOSED
       setTimeout(this.removeEventSource, 0)
       this.clearReconnectTimer()
-      this.closeResponse = JSON.parse(event.data)
+      this.closeResponse = json_parse(event.data)
     }
 
     this.toString = () => {
@@ -174,12 +210,12 @@ class Sse {
       }
       this.state = Sse.STATE_CONNECTING
 
-      const query = new URLSearchParams()
-      query.append('sessionDuration', sessionStorage.getItem('sseDuration') || '0')
+      const query = new window_URLSearchParams()
+      query.append('sessionDuration', window_sessionStorage.getItem('sseDuration') || '0')
       query.append('keepaliveTime', String(this.options.keepaliveTime))
       query.append('clientId', this.clientId)
       query.append('clientVersion', Sse.version)
-      query.append('screen', `${window.screen.width}x${window.screen.height}`)
+      query.append('screen', `${window_screen.width}x${window_screen.height}`)
       query.append('accessTime', this.options.accessTimestamp)
       query.append('listeners', Object.keys(this.options.eventListeners).join(','))
       query.append('useWindowEventBus', String(this.options.useWindowEventBus))
@@ -188,18 +224,19 @@ class Sse {
       query.append('clientInstanceTime', String(this.createTimestamp))
       query.append('clientInstanceId', this.instanceId)
 
-      if (window.performance.memory) {
-        for (const key in window.performance.memory) {
-          query.append(key, window.performance.memory[key])
+      if (window_performance.memory) {
+        for (const key in window_performance.memory) {
+          query.append(key, window_performance.memory[key])
         }
       }
       for (const key in this.options.query) {
         query.append(key, this.options.query[key])
       }
 
-      const es = new EventSource(`${this.options.url}/connect?${query.toString()}`, { withCredentials: this.options.withCredentials })
+      const es = new window_EventSource(`${this.options.url}/connect?${query.toString()}`, { withCredentials: this.options.withCredentials })
       es.addEventListener('connect-finish', this.handleConnectionFinish)
       es.addEventListener('connect-close', this.handleConnectionClose)
+      es.addEventListener('_set-duration', this.handleSetDuration) // 设置统计时长
       es.addEventListener('open', this.handleOpen) // 连接成功
       es.addEventListener('error', this.handleError) // 失败
 
@@ -279,9 +316,9 @@ class Sse {
           console.warn('intercept error ', e)
         }
       }
-      const newEvent = new MessageEvent(event.type, event)
+      const newEvent = new window_MessageEvent(event.type, event)
       newEvent.url = this.options.url
-      window.dispatchEvent(newEvent)
+      window_dispatchEvent(newEvent)
     }
 
     this.addListener = (eventListeners, fn) => {
@@ -306,14 +343,14 @@ class Sse {
         listener: Object.keys(eventListenersMap)
       }
 
-      const query = new URLSearchParams()
+      const query = new window_URLSearchParams()
       for (const key in this.options.query) {
         query.append(key, this.options.query[key])
       }
       try {
         const responsePromise = fetch(`${this.options.url}/connect/addListener.do?${query.toString()}`, {
           method: 'POST',
-          body: JSON.stringify(body),
+          body: json_stringify(body),
           credentials: 'include',
           mode: 'cors',
           headers: {
@@ -354,14 +391,14 @@ class Sse {
         connectionId: this.connectionId,
         listener: Object.keys(eventListenersMap)
       }
-      const query = new URLSearchParams()
+      const query = new window_URLSearchParams()
       for (const key in this.options.query) {
         query.append(key, this.options.query[key])
       }
       try {
         const responsePromise = fetch(`${this.options.url}/connect/removeListener.do?${query.toString()}`, {
           method: 'POST',
-          body: JSON.stringify(body),
+          body: json_stringify(body),
           credentials: 'include',
           mode: 'cors',
           headers: {
@@ -420,7 +457,7 @@ class Sse {
             this.es.removeEventListener(eventName, fn)
           }
           if (this.options.useWindowEventBus) {
-            window.removeEventListener(eventName, this._dispatchEvent)
+            window_removeEventListener(eventName, this._dispatchEvent)
           }
         } catch (e) {
           console.error(`removeEventListener(${eventName}) error`, e)
@@ -447,7 +484,7 @@ class Sse {
         }
         this.clientClose = { connectionId, reason }
         const duration = this.getDuration()
-        const params = new URLSearchParams()
+        const params = new window_URLSearchParams()
         params.set('clientId', this.clientId)
         params.set('connectionId', connectionId)
         params.set('reason', reason)
@@ -461,7 +498,7 @@ class Sse {
     }
 
     this.getDuration = () => {
-      const sessionDuration = Math.round(Number(sessionStorage.getItem('sseDuration') || 0))
+      const sessionDuration = Math.round(Number(window_sessionStorage.getItem(this.options.sseDurationKey) || 0))
       const duration = this.durationTime === null? 0 : Math.round((Date.now() - this.durationTime) / 1000)
       return {
         sessionDuration,
@@ -480,7 +517,7 @@ class Sse {
           this.retryQueue.push({ path, body, query, headers, resolve, reject })
         })
       }
-      const queryBuilder = new URLSearchParams()
+      const queryBuilder = new window_URLSearchParams()
       queryBuilder.append('connectionId', this.connectionId)
       for (const key in query) {
         queryBuilder.append(key, query[key])
@@ -488,7 +525,7 @@ class Sse {
       try {
         return fetch(`${this.options.url}/connect/message/${path}.do?${queryBuilder.toString()}`, {
           method: 'POST',
-          body: JSON.stringify(body),
+          body: json_stringify(body),
           credentials: 'include',
           mode: 'cors',
           headers: {
@@ -513,7 +550,7 @@ class Sse {
           this.retryQueue.push({ path, formData, query, headers, resolve, reject })
         })
       }
-      const queryBuilder = new URLSearchParams()
+      const queryBuilder = new window_URLSearchParams()
       queryBuilder.append('connectionId', this.connectionId)
       for (const key in query) {
         queryBuilder.append(key, query[key])
@@ -551,10 +588,10 @@ class Sse {
       if (newActive) {
         this.durationTime = Date.now()
       } else {
-        sessionStorage.setItem('sseDuration', String(duration.sessionDuration + duration.duration))
+        window_sessionStorage.setItem(this.options.sseDurationKey, String(duration.sessionDuration + duration.duration))
         this.durationTime = null
       }
-      const event = new MessageEvent('sse-change-active', {
+      const event = new window_MessageEvent('sse-change-active', {
         data: {oldActive, newActive, duration}
       })
       const eventListeners = this.options.eventListeners[event.type]
@@ -569,29 +606,29 @@ class Sse {
     }
 
     this.handleLastActiveTime = (event) => {
-      if (window.requestAnimationFrame) {
-        window.requestAnimationFrame(() => {
+      if (window_requestAnimationFrame) {
+        window_requestAnimationFrame(() => {
           this.lastActiveTime = Date.now()
         });
       } else {
         this.lastActiveTime = Date.now()
       }
     }
-    document.addEventListener('mouseover', this.handleLastActiveTime, false)
-    document.addEventListener('click', this.handleLastActiveTime, false)
+    document_addEventListener('mouseover', this.handleLastActiveTime, false)
+    document_addEventListener('click', this.handleLastActiveTime, false)
 
     // 页签关闭时
-    window.addEventListener('unload', () => {
+    window_addEventListener('unload', () => {
       this.close('unload')
     }, false)
 
-    window.addEventListener('beforeunload', () => {
+    window_addEventListener('beforeunload', () => {
       this.close('beforeunload')
     }, false)
 
     // 监听浏览器窗口切换时
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
+    document_addEventListener('visibilitychange', () => {
+      if (getVisibilityState() === 'visible') {
         this.newEventSource()
       } else {
         this.close('visibilitychange')
@@ -599,10 +636,10 @@ class Sse {
     })
 
     this.newEventSource()
-    window.sse = this
-  }
-}
+    this.options.windowGlobal.sse = this
 
-if (window.Sse === undefined) {
-  window.Sse = Sse
+    if (this.options.windowGlobal.Sse === undefined) {
+      this.options.windowGlobal.Sse = Sse
+    }
+  }
 }

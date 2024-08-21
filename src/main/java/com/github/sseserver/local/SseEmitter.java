@@ -4,6 +4,7 @@ import com.github.sseserver.AccessToken;
 import com.github.sseserver.AccessUser;
 import com.github.sseserver.TenantAccessUser;
 import com.github.sseserver.qos.MessageRepository;
+import com.github.sseserver.remote.ConnectionDTO;
 import com.github.sseserver.util.SnowflakeIdWorker;
 import com.github.sseserver.util.WebUtil;
 import org.slf4j.Logger;
@@ -278,6 +279,15 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     @Override
     public boolean existListener(String sseListenerName) {
         return getListeners().contains(sseListenerName);
+    }
+
+    /**
+     * 浏览器的sessionID
+     *
+     * @return 浏览器的sessionID = clientId(36) + accessTime(13) = 长度49位
+     */
+    public String getBrowserSessionId() {
+        return ConnectionDTO.browserSessionId(getClientId(), getAccessTime());
     }
 
     /**

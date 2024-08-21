@@ -32,29 +32,38 @@ public class ConnectionDTO<ACCESS_USER> extends AutoTypeBean {
     private String accessToken;
     private ACCESS_USER accessUser;
     private String accessUserClass;
-
     // client
     private String clientId;
     private String clientVersion;
     private Long clientImportModuleTime;
     private String clientInstanceId;
     private Long clientInstanceTime;
-
     // server
     private String serverId;
-
     // http
     private String requestIp;
     private String requestDomain;
     private String userAgent;
     private Map<String, Object> httpParameters;
     private Map<String, String> httpHeaders;
-
     // browser
     private String screen;
     private Long totalJSHeapSize;
     private Long usedJSHeapSize;
     private Long jsHeapSizeLimit;
+
+    /**
+     * 浏览器的sessionID
+     *
+     * @return 浏览器的sessionID = clientId(36) + accessTime(13) = 长度49位
+     */
+    public static String browserSessionId(String clientId, Date accessTime) {
+        if (accessTime == null) {
+            return clientId;
+        } else {
+            return clientId + accessTime.getTime();
+        }
+    }
 
     public static <ACCESS_USER> ConnectionDTO<ACCESS_USER> convert(SseEmitter<ACCESS_USER> connection) {
         ConnectionDTO<ACCESS_USER> dto = new ConnectionDTO<>();
@@ -99,6 +108,15 @@ public class ConnectionDTO<ACCESS_USER> extends AutoTypeBean {
         dto.setTotalJSHeapSize(connection.getTotalJSHeapSize());
         dto.setUsedJSHeapSize(connection.getUsedJSHeapSize());
         return dto;
+    }
+
+    /**
+     * 浏览器的sessionID
+     *
+     * @return 浏览器的sessionID = clientId(36) + accessTime(13) = 长度49位
+     */
+    public String browserSessionId() {
+        return browserSessionId(clientId, accessTime);
     }
 
     public String getServerId() {

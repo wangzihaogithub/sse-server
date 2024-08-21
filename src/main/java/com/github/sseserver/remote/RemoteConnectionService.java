@@ -73,4 +73,18 @@ public interface RemoteConnectionService extends ConnectionQueryService, SendSer
     RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByConnectionId(Long connectionId, Long duration, Long sessionDuration);
 
     RemoteCompletableFuture<Integer, RemoteConnectionService> disconnectByConnectionIds(Collection<Long> connectionIds);
+
+    /**
+     * 修改已统计的在线时长
+     *
+     * @param userId         用户ID
+     * @param durationSecond 在线时长（秒）
+     * @return 清空的链接
+     */
+    RemoteCompletableFuture<Integer, RemoteConnectionService> setDurationByUserId(Serializable userId, long durationSecond);
+
+    RemoteCompletableFuture<Integer, RemoteConnectionService> setDurationByAccessToken(String accessToken, long durationSecond);
+
+    RemoteCompletableFuture<Integer, RemoteConnectionService> active(Serializable userId, String accessToken);
+
 }
