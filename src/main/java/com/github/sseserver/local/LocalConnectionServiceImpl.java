@@ -77,7 +77,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     private int reconnectTime = 5000;
     private Integer serverPort;
     private volatile BatchActiveRunnable clusterBatchActiveRunnable;
-    private long clusterBatchActiveDelay = 500L;
+    private long clusterBatchActiveDelay = 50L;
 
     public LocalConnectionServiceImpl() {
         this.primary = false;
@@ -338,6 +338,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
 
     private <ACCESS_USER> boolean sendSetDuration(SseEmitter<ACCESS_USER> result, long durationSecond) {
         try {
+            result.setSessionDuration(durationSecond);
             result.send(SseEmitter.event()
                     .name("_set-duration")
                     .data("{\"duration\":\"" + durationSecond + "\"}"));
