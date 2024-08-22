@@ -236,7 +236,7 @@ class Sse {
       const es = new window_EventSource(`${this.options.url}/connect?${query.toString()}`, { withCredentials: this.options.withCredentials })
       es.addEventListener('connect-finish', this.handleConnectionFinish)
       es.addEventListener('connect-close', this.handleConnectionClose)
-      es.addEventListener('_set-duration', this.handleSetDuration) // 设置统计时长
+      es.addEventListener('sse-set-duration', this.handleSetDuration) // 设置统计时长
       es.addEventListener('open', this.handleOpen) // 连接成功
       es.addEventListener('error', this.handleError) // 失败
 

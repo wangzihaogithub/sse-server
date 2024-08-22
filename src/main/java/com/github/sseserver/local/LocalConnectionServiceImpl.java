@@ -337,7 +337,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     private <ACCESS_USER> boolean sendSetDuration(SseEmitter<ACCESS_USER> result, long durationSecond) {
-        if (send(result, "_set-duration", "{\"duration\":\"" + durationSecond + "\"}")) {
+        if (send(result, "sse-set-duration", "{\"duration\":\"" + durationSecond + "\"}")) {
             result.setSessionDuration(durationSecond);
             return true;
         } else {
