@@ -61,6 +61,7 @@ class Sse {
    */
   static CLIENT_TRIGGER_CLOSE = 'client'
 
+  destroyed = false
   state = Sse.STATE_CONNECTING
   createTimestamp = Date.now()
   connectionName = ''
@@ -195,11 +196,18 @@ class Sse {
      * 则将该属性CLOSED设置readyState为CLOSED并触发error在该EventSource对象上 命名的事件。一旦用户代理连接失败，它就不会尝试重新连接。
      */
     this.handleError = () => {
-      this.state = Sse.STATE_CLOSED
-      this.timer = setTimeout(this.newEventSource, this.reconnectDuration || this.options.reconnectTime || Sse.DEFAULT_RECONNECT_TIME)
+      if (this.destroyed) {
+        this.removeEventSource()
+      } else {
+        this.state = Sse.STATE_CLOSED
+        this.timer = setTimeout(this.newEventSource, this.reconnectDuration || this.options.reconnectTime || Sse.DEFAULT_RECONNECT_TIME)
+      }
     }
 
     this.newEventSource = () => {
+      if (this.destroyed) {
+        return;
+      }
       if (this.es) {
         if (this.es.readyState === Sse.STATE_CLOSED) {
           this.removeEventSource()
@@ -469,6 +477,7 @@ class Sse {
 
     this.close = (reason = 'close') => {
       this._close(reason)
+      this.destroyed = true
       window_sessionStorage.removeItem(this.options.sseDurationKey)
     }
 
