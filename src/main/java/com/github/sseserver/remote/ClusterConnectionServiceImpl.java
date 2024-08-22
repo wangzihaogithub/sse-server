@@ -482,9 +482,9 @@ public class ClusterConnectionServiceImpl implements ClusterConnectionService {
                 LambdaUtil.defaultZero());
     }
 
-    public ClusterCompletableFuture<Integer, ClusterConnectionService> active(Serializable userId, String accessToken) {
+    public ClusterCompletableFuture<Integer, ClusterConnectionService> active(List<Map<String, Object>> activeList) {
         return mapReduce(
-                e -> e.active(userId, accessToken),
+                e -> e.active(activeList),
                 e -> 0,
                 Integer::sum,
                 LambdaUtil.defaultZero());

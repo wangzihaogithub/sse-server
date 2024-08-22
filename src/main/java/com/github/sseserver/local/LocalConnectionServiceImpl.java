@@ -77,7 +77,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     private int reconnectTime = 5000;
     private Integer serverPort;
     private volatile BatchActiveRunnable clusterBatchActiveRunnable;
-    private long clusterBatchActiveDelay = 50L;
+    private long clusterBatchActiveDelay = 100L;
 
     public LocalConnectionServiceImpl() {
         this.primary = false;
@@ -267,7 +267,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
                     }
                 }
             }
-            clusterBatchActiveRunnable.active(userId, accessToken);
+            clusterBatchActiveRunnable.add(userId, accessToken);
             getScheduled().schedule(clusterBatchActiveRunnable, clusterBatchActiveDelay, TimeUnit.MILLISECONDS);
         }
     }
@@ -337,16 +337,10 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     }
 
     private <ACCESS_USER> boolean sendSetDuration(SseEmitter<ACCESS_USER> result, long durationSecond) {
-        try {
+        if (send(result, "_set-duration", "{\"duration\":\"" + durationSecond + "\"}")) {
             result.setSessionDuration(durationSecond);
-            result.send(SseEmitter.event()
-                    .name("_set-duration")
-                    .data("{\"duration\":\"" + durationSecond + "\"}"));
             return true;
-        } catch (IOException e) {
-            if (log.isDebugEnabled()) {
-                log.debug("sse {} setDuration{} {} IOException:{}", beanName, durationSecond, result, e, e);
-            }
+        } else {
             return false;
         }
     }
@@ -957,7 +951,7 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             this.localConnectionService = localConnectionService;
         }
 
-        public void active(String userId, String accessToken) {
+        public void add(String userId, String accessToken) {
             synchronized (requestSet) {
                 requestSet.add(new Request(userId, accessToken));
             }
@@ -968,16 +962,16 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             if (requestSet.isEmpty()) {
                 return;
             }
-            ArrayList<Request> list;
+            ArrayList<Map<String, Object>> activeList = new ArrayList<>();
             synchronized (requestSet) {
-                list = new ArrayList<>(requestSet);
+                for (Request request : requestSet) {
+                    activeList.add(request.toMap());
+                }
                 requestSet.clear();
             }
             ClusterConnectionService cluster = localConnectionService.getCluster();
             if (cluster instanceof ClusterConnectionServiceImpl) {
-                for (Request request : list) {
-                    ((ClusterConnectionServiceImpl) cluster).active(request.userId, request.accessToken);
-                }
+                ((ClusterConnectionServiceImpl) cluster).active(activeList);
             }
         }
 
@@ -1001,6 +995,13 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
             @Override
             public int hashCode() {
                 return Objects.hash(userId, accessToken);
+            }
+
+            public Map<String, Object> toMap() {
+                Map<String, Object> map = new HashMap<>();
+                map.put("userId", userId);
+                map.put("accessToken", accessToken);
+                return map;
             }
         }
     }

@@ -105,7 +105,7 @@ class Sse {
     } = this.options.jsonGlobal
 
     if (!this.options.sseDurationKey) {
-      this.options.sseDurationKey = `${this.options.url}-sseDuration`
+      this.options.sseDurationKey = `sseDuration${this.options.url}`
     }
     if (!this.options.accessTimestamp) {
       const accessTimestamp = window_sessionStorage.getItem('sseAccessTimestamp')
@@ -211,7 +211,7 @@ class Sse {
       this.state = Sse.STATE_CONNECTING
 
       const query = new window_URLSearchParams()
-      query.append('sessionDuration', window_sessionStorage.getItem('sseDuration') || '0')
+      query.append('sessionDuration', window_sessionStorage.getItem(this.options.sseDurationKey) || '0')
       query.append('keepaliveTime', String(this.options.keepaliveTime))
       query.append('clientId', this.clientId)
       query.append('clientVersion', Sse.version)

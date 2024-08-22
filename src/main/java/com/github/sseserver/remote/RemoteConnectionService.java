@@ -9,6 +9,7 @@ import java.io.Serializable;
 import java.net.URL;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 public interface RemoteConnectionService extends ConnectionQueryService, SendService<RemoteCompletableFuture<Integer, RemoteConnectionService>>, Closeable {
 
@@ -85,6 +86,6 @@ public interface RemoteConnectionService extends ConnectionQueryService, SendSer
 
     RemoteCompletableFuture<Integer, RemoteConnectionService> setDurationByAccessToken(String accessToken, long durationSecond);
 
-    RemoteCompletableFuture<Integer, RemoteConnectionService> active(Serializable userId, String accessToken);
+    RemoteCompletableFuture<Integer, RemoteConnectionService> active(List<Map<String, Object>> activeList);
 
 }

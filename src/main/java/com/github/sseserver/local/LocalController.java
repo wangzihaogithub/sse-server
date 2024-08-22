@@ -159,7 +159,13 @@ public class LocalController implements Closeable {
             switch (rpcMethodName) {
                 case "active": {
                     if (service instanceof LocalConnectionServiceImpl) {
-                        ((LocalConnectionServiceImpl) service).localActive(body("userId"), body("accessToken"));
+                        LocalConnectionServiceImpl local = ((LocalConnectionServiceImpl) service);
+                        List<Map<String, Object>> activeList = body("activeList");
+                        for (Map<String, Object> active : activeList) {
+                            local.localActive(
+                                    Objects.toString(active.get("userId"), null),
+                                    Objects.toString(active.get("accessToken"), null));
+                        }
                         writeResponse(request, 1);
                     } else {
                         writeResponse(request, 0);

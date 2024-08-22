@@ -424,10 +424,9 @@ public class RemoteConnectionServiceImpl implements RemoteConnectionService {
     }
 
     @Override
-    public RemoteCompletableFuture<Integer, RemoteConnectionService> active(Serializable userId, String accessToken) {
-        Map<String, Object> request = new HashMap<>(2);
-        request.put("userId", userId);
-        request.put("accessToken", accessToken);
+    public RemoteCompletableFuture<Integer, RemoteConnectionService> active(List<Map<String,Object>> activeList) {
+        Map<String, Object> request = new HashMap<>(1);
+        request.put("activeList", activeList);
         return asyncPostRemoteConnectionService("/active", this::extract, request);
     }
 
