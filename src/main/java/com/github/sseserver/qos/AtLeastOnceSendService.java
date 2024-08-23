@@ -33,7 +33,7 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
     protected final MessageRepository messageRepository;
     protected final Map<String, QosCompletableFuture<Integer>> futureMap = new ConcurrentHashMap<>(32);
     protected final String serverId = SpringUtil.filterNonAscii(WebUtil.getIPAddress(WebUtil.port));
-    private boolean primary;
+    private final boolean primary;
     /**
      * @param localConnectionService       非必填
      * @param distributedConnectionService 非必填
