@@ -225,6 +225,16 @@ public class SseServerProperties {
             private String redisConnectionFactoryBeanName = "redisConnectionFactory";
             private String redisKeyRootPrefix = "sse:";
             private int redisInstanceExpireSec = 10;
+            // 防止sub，pub命令有延迟，增加定时轮训
+            private int updateInstanceTimerMs = 5000;
+
+            public int getUpdateInstanceTimerMs() {
+                return updateInstanceTimerMs;
+            }
+
+            public void setUpdateInstanceTimerMs(int updateInstanceTimerMs) {
+                this.updateInstanceTimerMs = updateInstanceTimerMs;
+            }
 
             public String getRedisConnectionFactoryBeanName() {
                 return redisConnectionFactoryBeanName;

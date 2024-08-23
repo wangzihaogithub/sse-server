@@ -1,10 +1,7 @@
 package com.github.sseserver.remote;
 
 import com.github.sseserver.springboot.SseServerProperties;
-import com.github.sseserver.util.KeepaliveSocket;
-import com.github.sseserver.util.ReferenceCounted;
-import com.github.sseserver.util.SnowflakeIdWorker;
-import com.github.sseserver.util.SpringUtil;
+import com.github.sseserver.util.*;
 import com.sun.net.httpserver.HttpPrincipal;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.data.redis.connection.MessageListener;
@@ -34,7 +31,6 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
     private static final int MIN_REDIS_INSTANCE_EXPIRE_SEC = 2;
     private static volatile ScheduledExecutorService scheduled;
     private final int redisInstanceExpireSec;
-    private final byte[] keySubBytes;
     private final byte[] keyPubSubBytes;
     private final byte[] keyPubUnsubBytes;
     private final byte[] keySetBytes;
@@ -44,15 +40,15 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
     private final SseServerProperties.ClusterConfig clusterConfig;
     private final RedisTemplate<byte[], byte[]> redisTemplate = new RedisTemplate<>();
     private final ServerInstance instance = new ServerInstance();
-
+    private final int updateServerInstanceTimerMs;
     private long heartbeatCount;
     private byte[] instanceBytes;
     private Map<String, ServerInstance> instanceMap = new LinkedHashMap<>();
     private ScheduledFuture<?> heartbeatScheduledFuture;
-
     private boolean destroy;
     private volatile ReferenceCounted<List<RemoteConnectionService>> connectionServiceListRef = new ReferenceCounted<>(Collections.emptyList());
     private volatile ReferenceCounted<List<RemoteMessageRepository>> messageRepositoryListRef = new ReferenceCounted<>(Collections.emptyList());
+    private ScheduledFuture<?> updateServerInstanceScheduledFuture;
 
     public RedisServiceDiscoveryService(Object redisConnectionFactory,
                                         String groupName,
@@ -68,12 +64,12 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
         this.instance.setAccount(account);
         this.instance.setPassword(UUID.randomUUID().toString().replace("-", ""));
 
+        this.updateServerInstanceTimerMs = clusterConfig.getRedis().getUpdateInstanceTimerMs();
         this.redisInstanceExpireSec = Math.max(redisInstanceExpireSec, MIN_REDIS_INSTANCE_EXPIRE_SEC);
         this.clusterConfig = clusterConfig;
         StringRedisSerializer keySerializer = StringRedisSerializer.UTF_8;
         this.keyPubSubBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + ":c:sub");
         this.keyPubUnsubBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + ":c:unsub");
-        this.keySubBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + ":c:*");
         this.keySetBytes = keySerializer.serialize(redisKeyRootPrefix + shortGroupName + ":d:" + DEVICE_ID);
         this.keySetScanOptions = ScanOptions.scanOptions()
                 .count(20)
@@ -220,11 +216,22 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
         Map<String, ServerInstance> instanceMap = redisTemplate.execute(connection -> {
             connection.set(keySetBytes, instanceBytes, Expiration.seconds(redisInstanceExpireSec), RedisStringCommands.SetOption.UPSERT);
             connection.publish(keyPubSubBytes, instanceBytes);
-            connection.pSubscribe(messageListener, keySubBytes);
+            connection.subscribe(messageListener, keyPubSubBytes, keyPubUnsubBytes);
             return getInstanceMap(connection);
         }, true);
         updateInstance(filterInstance(instanceMap));
         this.heartbeatScheduledFuture = scheduledHeartbeat();
+    }
+
+    private ScheduledFuture<?> scheduledUpdateServerInstance() {
+        if (updateServerInstanceTimerMs <= 0) {
+            return null;
+        }
+        ScheduledFuture<?> scheduledFuture = this.updateServerInstanceScheduledFuture;
+        if (scheduledFuture != null) {
+            scheduledFuture.cancel(false);
+        }
+        return getScheduled().scheduleWithFixedDelay(() -> updateInstance(getInstanceMap()), updateServerInstanceTimerMs, updateServerInstanceTimerMs, TimeUnit.MILLISECONDS);
     }
 
     private ScheduledFuture<?> scheduledHeartbeat() {
@@ -236,19 +243,13 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
         if (redisInstanceExpireSec == MIN_REDIS_INSTANCE_EXPIRE_SEC) {
             delay = 500;
         } else {
-            delay = redisInstanceExpireSec * 1000 - 100;
+            delay = (redisInstanceExpireSec * 1000) / 3;
         }
         return getScheduled().scheduleWithFixedDelay(() -> {
             redisTemplate.execute(connection -> {
                 // 续期过期时间
-                Long ttl = connection.ttl(keySetBytes, TimeUnit.SECONDS);
-                if (ttl != null && ttl > 0) {
-                    long exp = redisInstanceExpireSec * (heartbeatCount + 2) - ttl;
-                    Boolean success = connection.expire(keySetBytes, exp);
-                    if (success == null || !success) {
-                        redisSetInstance(connection);
-                    }
-                } else {
+                Boolean success = connection.expire(keySetBytes, redisInstanceExpireSec);
+                if (success == null || !success) {
                     redisSetInstance(connection);
                 }
                 heartbeatCount++;
@@ -261,7 +262,11 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
         return connection.set(keySetBytes, instanceBytes, Expiration.seconds(redisInstanceExpireSec), RedisStringCommands.SetOption.UPSERT);
     }
 
-    public void updateInstance(Map<String, ServerInstance> instanceMap) {
+    public synchronized void updateInstance(Map<String, ServerInstance> instanceMap) {
+        DifferentComparatorUtil.ListDiffResult<String> diff = DifferentComparatorUtil.listDiff(this.instanceMap.keySet(), instanceMap.keySet());
+        if (diff.isEmpty()) {
+            return;
+        }
         this.instanceMap = instanceMap;
         List<ServerInstance> instanceList = new ArrayList<>(instanceMap.values());
         rebuildConnectionService(instanceList);
@@ -398,6 +403,15 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
 
         public void setPassword(String password) {
             this.password = password;
+        }
+
+        @Override
+        public String toString() {
+            return "ServerInstance{" +
+                    "ip='" + ip + '\'' +
+                    ", port=" + port +
+                    ", deviceId='" + deviceId + '\'' +
+                    '}';
         }
     }
 
