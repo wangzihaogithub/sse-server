@@ -220,24 +220,28 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
             return getInstanceMap(connection);
         }, true);
         updateInstance(filterInstance(instanceMap));
-        this.heartbeatScheduledFuture = scheduledHeartbeat();
+
+        scheduledHeartbeat();
+        scheduledUpdateServerInstance();
     }
 
-    private ScheduledFuture<?> scheduledUpdateServerInstance() {
-        if (updateServerInstanceTimerMs <= 0) {
-            return null;
-        }
+    private synchronized void scheduledUpdateServerInstance() {
         ScheduledFuture<?> scheduledFuture = this.updateServerInstanceScheduledFuture;
         if (scheduledFuture != null) {
             scheduledFuture.cancel(false);
+            this.updateServerInstanceScheduledFuture = null;
         }
-        return getScheduled().scheduleWithFixedDelay(() -> updateInstance(getInstanceMap()), updateServerInstanceTimerMs, updateServerInstanceTimerMs, TimeUnit.MILLISECONDS);
+        if (updateServerInstanceTimerMs <= 0) {
+            return;
+        }
+        this.updateServerInstanceScheduledFuture = getScheduled().scheduleWithFixedDelay(() -> updateInstance(getInstanceMap()), updateServerInstanceTimerMs, updateServerInstanceTimerMs, TimeUnit.MILLISECONDS);
     }
 
-    private ScheduledFuture<?> scheduledHeartbeat() {
+    private synchronized void scheduledHeartbeat() {
         ScheduledFuture<?> scheduledFuture = this.heartbeatScheduledFuture;
         if (scheduledFuture != null) {
             scheduledFuture.cancel(false);
+            this.heartbeatScheduledFuture = null;
         }
         int delay;
         if (redisInstanceExpireSec == MIN_REDIS_INSTANCE_EXPIRE_SEC) {
@@ -245,7 +249,7 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
         } else {
             delay = (redisInstanceExpireSec * 1000) / 3;
         }
-        return getScheduled().scheduleWithFixedDelay(() -> {
+        this.heartbeatScheduledFuture = getScheduled().scheduleWithFixedDelay(() -> {
             redisTemplate.execute(connection -> {
                 // 续期过期时间
                 Boolean success = connection.expire(keySetBytes, redisInstanceExpireSec);
