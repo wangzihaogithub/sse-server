@@ -455,6 +455,7 @@ class Sse {
       this.connectionId = undefined
       this.es.removeEventListener('error', this.handleError)
       this.es.removeEventListener('open', this.handleOpen)
+      this.es.removeEventListener('sse-set-duration', this.handleSetDuration)
       this.es.removeEventListener('connect-finish', this.handleConnectionFinish)
       this.es.removeEventListener('connect-close', this.handleConnectionClose)
       // 用户事件
