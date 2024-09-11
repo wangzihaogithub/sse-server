@@ -41,7 +41,6 @@ import java.util.stream.Collectors;
  */
 public class LocalConnectionServiceImpl implements LocalConnectionService, BeanNameAware, BeanFactoryAware {
     private final static Logger log = LoggerFactory.getLogger(LocalConnectionServiceImpl.class);
-    private final static AtomicInteger SCHEDULED_INDEX = new AtomicInteger();
     /**
      * 业务维度与链接ID的关系表
      */
@@ -73,7 +72,8 @@ public class LocalConnectionServiceImpl implements LocalConnectionService, BeanN
     private final Map<String, Long> setDurationByAccessTokenMap = new ConcurrentHashMap<>();
     private BeanFactory beanFactory;
     private String beanName = getClass().getSimpleName();
-    private final ScheduledThreadPoolExecutor scheduled = new ScheduledThreadPoolExecutor(1, r -> new Thread(r, getBeanName() + "-" + SCHEDULED_INDEX.incrementAndGet()));
+    private final ScheduledThreadPoolExecutor scheduled = PlatformDependentUtil.newScheduled(
+            1, this::getBeanName, e -> log.warn("Scheduled error {}", e.toString(), e));
     private int reconnectTime = 5000;
     private Integer serverPort;
     private volatile BatchActiveRunnable clusterBatchActiveRunnable;

@@ -3,6 +3,8 @@ package com.github.sseserver.remote;
 import com.github.sseserver.springboot.SseServerProperties;
 import com.github.sseserver.util.*;
 import com.sun.net.httpserver.HttpPrincipal;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.data.redis.connection.RedisConnection;
@@ -22,11 +24,11 @@ import java.net.URL;
 import java.util.*;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 public class RedisServiceDiscoveryService implements ServiceDiscoveryService, DisposableBean {
     public static final String DEVICE_ID = String.valueOf(SnowflakeIdWorker.INSTANCE.nextId());
+    private static final Logger log = LoggerFactory.getLogger(RedisServiceDiscoveryService.class);
     private static final int TEST_SOCKET_TIMEOUT = Integer.getInteger("sseserver.RedisServiceDiscoveryService.testSocketTimeout", 150);
     private static final int MIN_REDIS_INSTANCE_EXPIRE_SEC = 2;
     private static volatile ScheduledExecutorService scheduled;
@@ -96,11 +98,8 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
         if (scheduled == null) {
             synchronized (RedisServiceDiscoveryService.class) {
                 if (scheduled == null) {
-                    scheduled = new ScheduledThreadPoolExecutor(1, r -> {
-                        Thread result = new Thread(r, "SseRedisServiceDiscoveryHeartbeat");
-                        result.setDaemon(true);
-                        return result;
-                    });
+                    scheduled = PlatformDependentUtil.newScheduled(
+                            1, () -> "SseRedisServiceDiscoveryHeartbeat", e -> log.warn("Scheduled error {}", e.toString(), e));
                 }
             }
         }
@@ -118,7 +117,12 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
             return null;
         }
         String token = authorization.substring("Basic ".length());
-        String[] accountAndPassword = new String(Base64.getDecoder().decode(token)).split(":", 2);
+        String[] accountAndPassword;
+        try {
+            accountAndPassword = new String(Base64.getDecoder().decode(token)).split(":", 2);
+        } catch (Exception e) {
+            return null;
+        }
         if (accountAndPassword.length != 2) {
             return null;
         }

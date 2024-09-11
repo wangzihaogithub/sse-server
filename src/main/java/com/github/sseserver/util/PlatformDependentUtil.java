@@ -1,13 +1,18 @@
 package com.github.sseserver.util;
 
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
 public class PlatformDependentUtil {
-    public static final String SSE_SERVER_VERSION = "1.2.18";
+    public static final String SSE_SERVER_VERSION = "1.2.19";
+    public static final Class REDIS_CONNECTION_FACTORY_CLASS;
     private static final boolean SUPPORT_NETTY4;
     private static final boolean SUPPORT_OKHTTP3;
     private static final boolean SUPPORT_APACHE_HTTP;
     private static final boolean SUPPORT_SPRINGFRAMEWORK_WEB;
     private static final boolean SUPPORT_SPRINGFRAMEWORK_REDIS;
-    public static final Class REDIS_CONNECTION_FACTORY_CLASS;
 
     static {
         boolean supportNetty4;
@@ -95,6 +100,21 @@ public class PlatformDependentUtil {
         } else {
             return httpRequestFactory;
         }
+    }
+
+    public static ScheduledThreadPoolExecutor newScheduled(int corePoolSize, Supplier<String> name, Consumer<Exception> exceptionConsumer) {
+        AtomicInteger id = new AtomicInteger();
+        return new ScheduledThreadPoolExecutor(corePoolSize, r -> {
+            Thread result = new Thread(() -> {
+                try {
+                    r.run();
+                } catch (Exception e) {
+                    exceptionConsumer.accept(e);
+                }
+            }, name.get() + id.incrementAndGet());
+            result.setDaemon(true);
+            return result;
+        });
     }
 
 }
