@@ -105,6 +105,13 @@ public class PlatformDependentUtil {
     public static ScheduledThreadPoolExecutor newScheduled(int corePoolSize, Supplier<String> name, Consumer<Throwable> exceptionConsumer) {
         AtomicInteger id = new AtomicInteger();
         return new ScheduledThreadPoolExecutor(corePoolSize, r -> {
+            String name1;
+            try {
+                String nameGet = name.get();
+                name1 = nameGet + id.incrementAndGet();
+            } catch (Exception e) {
+                name1 = String.valueOf(name.getClass()) + id.incrementAndGet();
+            }
             Thread result = new Thread(() -> {
                 try {
                     r.run();
@@ -115,9 +122,17 @@ public class PlatformDependentUtil {
                         e.printStackTrace();
                     }
                 }
-            }, name.get() + id.incrementAndGet());
+            }, name1);
             result.setDaemon(true);
             return result;
+        }, (r, exe) -> {
+            if (!exe.isShutdown()) {
+                try {
+                    exe.getQueue().put(r);
+                } catch (InterruptedException e) {
+                    // ignore
+                }
+            }
         });
     }
 
