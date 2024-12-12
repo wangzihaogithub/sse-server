@@ -6,7 +6,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class PlatformDependentUtil {
-    public static final String SSE_SERVER_VERSION = "1.2.19";
+    public static final String SSE_SERVER_VERSION = "1.2.20";
     public static final Class REDIS_CONNECTION_FACTORY_CLASS;
     private static final boolean SUPPORT_NETTY4;
     private static final boolean SUPPORT_OKHTTP3;

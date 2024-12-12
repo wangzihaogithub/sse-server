@@ -282,13 +282,13 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
     }
 
     private void onServerInstanceOnline(ServerInstance instance) {
-        if (!isLocalDevice(instance)) {
+        if (instance != null && !isLocalDevice(instance)) {
             updateInstance(filterInstance(getInstanceMap()));
         }
     }
 
     private void onServerInstanceOffline(ServerInstance instance) {
-        if (!isLocalDevice(instance)) {
+        if (instance != null && !isLocalDevice(instance)) {
             updateInstance(filterInstance(getInstanceMap()));
         }
     }
@@ -306,11 +306,11 @@ public class RedisServiceDiscoveryService implements ServiceDiscoveryService, Di
         for (Map.Entry<String, ServerInstance> entry : instanceMap.entrySet()) {
             ServerInstance instance = entry.getValue();
             if (isLocalDevice(instance)) {
-                connectInstanceMap.put(entry.getKey(), entry.getValue());
+                connectInstanceMap.put(entry.getKey(), instance);
             } else {
                 try (KeepaliveSocket socket = new KeepaliveSocket(instance.getIp(), instance.getPort())) {
                     if (socket.isConnected(TEST_SOCKET_TIMEOUT)) {
-                        connectInstanceMap.put(entry.getKey(), entry.getValue());
+                        connectInstanceMap.put(entry.getKey(), instance);
                     }
                 } catch (IOException ignored) {
                 }
