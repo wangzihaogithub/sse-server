@@ -142,7 +142,7 @@ sse协议的后端API, 比websocket轻量的实时通信, 支持集群，qos，�
 
 #### 安装教程
 
-1.  添加maven依赖, 在pom.xml中加入 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.wangzihaogithub/sse-server/badge.svg)](https://search.maven.org/search?q=g:com.github.wangzihaogithub%20AND%20a:sse-server)
+1.  添加maven依赖, 在pom.xml中加入 [![Maven Central](https://img.shields.io/maven-central/v/com.github.wangzihaogithub/sse-server.svg?label=Maven%20Central)](https://search.maven.org/search?q=g:com.github.wangzihaogithub%20AND%20a:sse-server)
 
 
         <!-- https://mvnrepository.com/artifact/com.github.wangzihaogithub/sse-server -->
