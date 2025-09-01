@@ -20,6 +20,7 @@ import java.nio.channels.ClosedChannelException;
 import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -42,7 +43,7 @@ public class SseEmitter<ACCESS_USER> extends org.springframework.web.servlet.mvc
     private final List<Consumer<SseEmitter<ACCESS_USER>>> connectListeners = new ArrayList<>(2);
     private final List<Consumer<SseEmitter<ACCESS_USER>>> disconnectListeners = new ArrayList<>(2);
     private final List<Consumer<SseChangeEvent<ACCESS_USER, Set<String>>>> listenersWatchList = new ArrayList<>(2);
-    private final Map<String, Object> attributeMap = new LinkedHashMap<>(3);
+    private final Map<String, Object> attributeMap = new ConcurrentHashMap<>(3);
     private final long createTime = System.currentTimeMillis();
     private final Map<String, Object> httpParameters = new LinkedHashMap<>(6);
     private final Map<String, String> httpHeaders = new LinkedHashMap<>(6);

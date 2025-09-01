@@ -235,8 +235,11 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
         future.complete(succeedCount);
     }
 
-    protected void enqueue(Message message, QosCompletableFuture<Integer> future) {
+    protected void enqueue(AtLeastOnceMessage message, QosCompletableFuture<Integer> future) {
         if (messageRepository == null) {
+            return;
+        }
+        if (future.isDone()) {
             return;
         }
         String messageId = future.getMessageId();
