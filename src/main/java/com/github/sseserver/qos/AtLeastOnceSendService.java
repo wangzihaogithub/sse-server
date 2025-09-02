@@ -34,11 +34,12 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
     protected final Map<String, QosCompletableFuture<Integer>> futureMap = new ConcurrentHashMap<>(32);
     protected final String serverId = SpringUtil.filterNonAscii(WebUtil.getIPAddress(WebUtil.port));
     private final boolean primary;
+
     /**
      * @param localConnectionService       非必填
      * @param distributedConnectionService 非必填
      * @param messageRepository            非必填
-     * @param primary 是否主要
+     * @param primary                      是否主要
      */
     public AtLeastOnceSendService(LocalConnectionService localConnectionService, DistributedConnectionService distributedConnectionService, MessageRepository messageRepository, boolean primary) {
         this.localConnectionService = localConnectionService;
@@ -65,7 +66,17 @@ public class AtLeastOnceSendService<ACCESS_USER> implements SendService<QosCompl
     }
 
     public QosCompletableFuture<Integer> qosSend(Function<SendService, ?> sendFunction, Supplier<AtLeastOnceMessage> messageSupplier) {
-        QosCompletableFuture<Integer> future = new QosCompletableFuture<>(Message.newId("qos", serverId));
+        String messageId = Message.newId("qos", serverId);
+        QosCompletableFuture<Integer> future = new QosCompletableFuture<Integer>(messageId) {
+            @Override
+            public boolean cancel(boolean mayInterruptIfRunning) {
+                boolean cancel = super.cancel(mayInterruptIfRunning);
+                if (cancel && messageRepository != null) {
+                    messageRepository.delete(messageId);
+                }
+                return cancel;
+            }
+        };
         if (distributedConnectionService != null && distributedConnectionService.isEnableCluster()) {
             ClusterConnectionService cluster = distributedConnectionService.getCluster();
 

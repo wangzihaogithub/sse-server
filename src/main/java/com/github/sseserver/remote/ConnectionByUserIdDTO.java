@@ -8,45 +8,156 @@ import java.util.Map;
 
 public class ConnectionByUserIdDTO {
     // connection
+    /**
+     * 连接的唯一标识符
+     */
     private Long id;
+
+    /**
+     * 连接创建时间
+     */
     private Date createTime;
+
+    /**
+     * 连接超时时间（毫秒）
+     */
     private Long timeout;
+
+    /**
+     * 连接访问时间
+     */
     private Date accessTime;
+
+    /**
+     * 连接接收到的消息数量
+     */
     private Integer messageCount;
+
+    /**
+     * 连接使用的频道
+     */
     private String channel;
 
     // request
+
+    /**
+     * 上一次请求时间
+     */
     private Date lastRequestTime;
+
+    /**
+     * 请求中的消息数量
+     */
     private Integer requestMessageCount;
+
+    /**
+     * 请求中的上传文件数量
+     */
     private Integer requestUploadCount;
+
+    /**
+     * 请求中监听的事件
+     */
     private Collection<String> listeners;
+
+    /**
+     * 请求的位置信息（URL）
+     */
     private String locationHref;
 
     // user
+
+    /**
+     * 用户租户ID标识符
+     */
     private Object accessTenantId;
+
+    /**
+     * 用户唯一标识符
+     */
     private Object accessUserId;
+
+    /**
+     * 用户的访问令牌
+     */
     private String accessToken;
 
     // client
+
+    /**
+     * 客户端唯一标识符
+     */
     private String clientId;
+
+    /**
+     * 客户端版本号
+     */
     private String clientVersion;
+
+    /**
+     * 客户端导入模块的时间
+     */
     private Long clientImportModuleTime;
+
+    /**
+     * 客户端实例的唯一标识符
+     */
     private String clientInstanceId;
+
+    /**
+     * 客户端实例的时间
+     */
     private Long clientInstanceTime;
 
     // server
+
+    /**
+     * 服务器唯一标识符
+     */
     private String serverId;
 
     // http
+
+    /**
+     * 请求的 IP 地址
+     */
     private String requestIp;
+
+    /**
+     * 请求的域名
+     */
     private String requestDomain;
+
+    /**
+     * 用户代理信息
+     */
     private String userAgent;
+
+    /**
+     * HTTP 请求参数
+     */
     private Map<String, Object> httpParameters;
 
     // browser
+
+    /**
+     * 浏览器屏幕信息（宽度 x 高度）`${window_screen.width}x${window_screen.height}`
+     */
     private String screen;
+
+    /**
+     * JavaScript 堆内存总大小
+     */
     private Long totalJSHeapSize;
+
+    /**
+     * JavaScript 堆内存使用大小
+     */
     private Long usedJSHeapSize;
+
+    /**
+     * JavaScript 堆内存限制
+     */
     private Long jsHeapSizeLimit;
 
     public static <ACCESS_USER> ConnectionByUserIdDTO convert(SseEmitter<ACCESS_USER> connection) {
